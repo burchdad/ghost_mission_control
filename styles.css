@@ -535,6 +535,34 @@ select:focus-visible {
   font-style: italic;
 }
 
+.collab-chained {
+  border-left: 3px solid var(--blue);
+  background: rgba(55, 182, 255, 0.08);
+}
+
+.collab-chain-badge {
+  display: inline-block;
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+  background: rgba(55, 182, 255, 0.25);
+  color: var(--blue);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-left: 0.15rem;
+}
+
+.collab-sequence-label {
+  display: inline-block;
+  padding: 0.08rem 0.3rem;
+  border-radius: 3px;
+  background: rgba(100, 200, 255, 0.15);
+  color: #a3d5ff;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
 .exec-detail {
   margin-top: 0.25rem;
   color: var(--muted);

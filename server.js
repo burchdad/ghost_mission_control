@@ -87,6 +87,71 @@ const collabGraph = {
   }
 };
 
+const chainTemplates = {
+  identify_seo_breakpoints: [
+    {
+      agent: "Analytics Agent",
+      message: "SEO breakpoints identified. Analyze keyword ranking trends and priority pages.",
+      sequence: 1,
+      label: "Trend Analysis"
+    },
+    {
+      agent: "Content Scraper Agent",
+      message: "Ranking analysis complete. Generate recovery content for top-priority keywords.",
+      sequence: 2,
+      label: "Content Generation"
+    },
+    {
+      agent: "Social Publisher Agent",
+      message: "Recovery content ready. Distribute to authority channels to reinforce ranking signals.",
+      sequence: 3,
+      label: "Distribution"
+    }
+  ],
+  patch_schema_and_metadata: [
+    {
+      agent: "Analytics Agent",
+      message: "Schema patches applied. Validate impact on crawlability and indexation signals.",
+      sequence: 1,
+      label: "Validation"
+    },
+    {
+      agent: "Funnel Monitor Agent",
+      message: "Validation complete. Monitor funnel entry impact from recovered pages.",
+      sequence: 2,
+      label: "Funnel Monitoring"
+    }
+  ],
+  launch_cta_experiment: [
+    {
+      agent: "Analytics Agent",
+      message: "CTA experiment active. Monitor conversion rate and statistical significance.",
+      sequence: 1,
+      label: "Statistical Monitoring"
+    },
+    {
+      agent: "Lead Router Agent",
+      message: "Conversion data collected. Route winning variations to high-intent segments.",
+      sequence: 2,
+      label: "Lead Routing"
+    }
+  ],
+  expand_campaign_reach: [
+    {
+      agent: "Analytics Agent",
+      message: "Campaign reach expanded. Monitor cost per lead and audience quality.",
+      sequence: 1,
+      label: "Quality Monitoring"
+    },
+    {
+      agent: "Funnel Monitor Agent",
+      message: "Quality confirmed. Optimize funnel for expanded traffic volume.",
+      sequence: 2,
+      label: "Funnel Optimization"
+    }
+  ]
+};
+
 function createRunId() {
   return `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -226,6 +291,28 @@ function recordAgentEvent(action, eventType, run) {
   profile.updatedAt = now;
 }
 
+function createChainCollaborations(action, actionProfile, now) {
+  const chain = chainTemplates[action.action];
+  if (!chain || chain.length === 0) {
+    return [];
+  }
+
+  const chainId = `chain_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+  return chain.map((step) => ({
+    from: step.sequence === 1 ? action.agent : chain[step.sequence - 2]?.agent || action.agent,
+    to: step.agent,
+    triggerAction: action.action,
+    message: step.message,
+    reason: "Multi-step chain routing",
+    decision: `chained_step_${step.sequence}`,
+    chainId,
+    sequence: step.sequence,
+    label: step.label,
+    timestamp: now,
+    status: "pending"
+  }));
+}
+
 function getCollaborationDecisions(action, run) {
   const decisions = [];
   const now = new Date().toISOString();
@@ -281,18 +368,23 @@ function getCollaborationDecisions(action, run) {
         });
 
         if (isHighConfidence && action.attempts === 1) {
-          const followUp = getFollowUpCollab(action);
-          if (followUp) {
-            decisions.push({
-              from: action.agent,
-              to: followUp.agent,
-              triggerAction: action.action,
-              message: followUp.message,
-              reason: "High-confidence secondary chain",
-              decision: "chained_secondary",
-              timestamp: now,
-              status: "queued"
-            });
+          const chainCollabs = createChainCollaborations(action, actionProfile, now);
+          if (chainCollabs.length > 0) {
+            decisions.push(...chainCollabs);
+          } else {
+            const followUp = getFollowUpCollab(action);
+            if (followUp) {
+              decisions.push({
+                from: action.agent,
+                to: followUp.agent,
+                triggerAction: action.action,
+                message: followUp.message,
+                reason: "High-confidence secondary chain",
+                decision: "chained_secondary",
+                timestamp: now,
+                status: "queued"
+              });
+            }
           }
         }
       }

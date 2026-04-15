@@ -664,21 +664,26 @@ function renderCollaborationFeed(collaborations) {
 
   elements.agentCollabFeed.innerHTML = [...collaborations]
     .reverse()
-    .map(
-      (collab) => `<article class="collab-item">
+    .map((collab) => {
+      const isChained = collab.chainId && collab.sequence;
+      const chainBadge = isChained ? `<span class="collab-chain-badge">Chain Step ${collab.sequence}</span>` : "";
+      const sequenceLabel = collab.label ? `<span class="collab-sequence-label">${collab.label}</span>` : "";
+      return `<article class="collab-item ${isChained ? "collab-chained" : ""}">
         <div class="collab-header">
           <span class="collab-from">${collab.from}</span>
-          <span class="collab-arrow">&#8594;</span>
+          <span class="collab-arrow">→</span>
           <span class="collab-to">${collab.to}</span>
           <span class="exec-status ${collab.status === "queued" ? "exec-pending" : "exec-ok"}">${collab.status}</span>
+          ${chainBadge}
         </div>
         <p class="collab-message">${collab.message}</p>
         <div class="collab-meta-row">
           <span class="collab-decision">${collab.decision || "standard"}</span>
           <span class="collab-reason">${collab.reason || "No reason logged"}</span>
+          ${sequenceLabel}
         </div>
-      </article>`
-    )
+      </article>`;
+    })
     .join("");
 }
 
