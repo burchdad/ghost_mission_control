@@ -1122,6 +1122,84 @@ select:focus-visible {
   color: var(--muted);
 }
 
+.autonomy-goals,
+.scenario-forecasts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.autonomy-item,
+.scenario-item {
+  border-radius: 10px;
+  border: 1px solid rgba(145, 194, 220, 0.22);
+  background: rgba(10, 25, 44, 0.86);
+  padding: 0.85rem;
+}
+
+.autonomy-header,
+.scenario-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.autonomy-header h3,
+.scenario-header h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+.autonomy-trigger,
+.autonomy-impact,
+.scenario-assumption,
+.scenario-rationale {
+  margin: 0.4rem 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.autonomy-meta,
+.scenario-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.autonomy-meta span,
+.scenario-metrics span {
+  display: inline-block;
+  border: 1px solid rgba(145, 194, 220, 0.2);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.22);
+  padding: 0.22rem 0.35rem;
+  font-size: 0.74rem;
+  color: var(--text);
+}
+
+.autonomy-command {
+  margin-top: 0.55rem;
+  border-top: 1px solid rgba(145, 194, 220, 0.2);
+  padding-top: 0.45rem;
+  font-size: 0.79rem;
+  color: #a3d5ff;
+}
+
+.scenario-recommended {
+  border-color: rgba(0, 245, 158, 0.45);
+  background: rgba(0, 245, 158, 0.08);
+}
+
+.autonomy-empty,
+.scenario-empty {
+  text-align: center;
+  color: var(--muted);
+}
+
 @keyframes pulse {
   0%,
   100% {

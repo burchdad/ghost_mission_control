@@ -34,6 +34,8 @@ const executionRuns = new Map();
 const commandHistory = [];
 const agentIntelligence = new Map();
 const predictiveSignals = [];
+const autonomousGoals = [];
+const scenarioForecasts = [];
 const MAX_COMMAND_HISTORY = 25;
 const EXECUTION_TTL_MS = 60 * 60 * 1000;
 
@@ -722,6 +724,243 @@ function generateStrategicRationale(sortedGoals, signals) {
   }
 
   return rationale;
+}
+
+// ============================================================================
+// LAYER 7: GOAL-BASED AUTONOMY + SCENARIO SIMULATION
+// ============================================================================
+
+function toNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getSiteRecentRuns(siteId, limit = 12) {
+  return [...executionRuns.values()]
+    .filter((run) => run.siteId === siteId)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, limit);
+}
+
+function analyzeAutonomousGoals(siteId) {
+  const now = new Date().toISOString();
+  const signals = getOrCreatePredictiveSignals(siteId);
+  const recentRuns = getSiteRecentRuns(siteId, 12);
+  const strategy = analyzeStrategicGoals(siteId);
+
+  const criticalSignals = signals.filter((signal) => signal.severity === "critical").length;
+  const warningSignals = signals.filter((signal) => signal.severity === "warning").length;
+  const failedRuns = recentRuns.filter((run) => run.status === "failed" || run.status === "attention").length;
+  const unstableRuns = recentRuns.filter((run) =>
+    (run.actions || []).some((action) => action.status === "retrying" || toNumber(action.attempts) > 1)
+  ).length;
+
+  const siteCommands = commandHistory.filter((entry) => entry.siteId === siteId).slice(0, 10);
+  const seoPressure = siteCommands.filter((entry) => entry.category === "seo").length;
+  const funnelPressure = siteCommands.filter((entry) => entry.category === "funnel").length;
+  const campaignPressure = siteCommands.filter((entry) => entry.category === "campaign").length;
+
+  const generated = [];
+
+  if (criticalSignals > 0 || failedRuns >= 2 || unstableRuns >= 3) {
+    generated.push({
+      id: `goal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type: "stabilize_operations",
+      priority: "P1",
+      title: "Stabilize execution reliability",
+      trigger: `${criticalSignals} critical signals, ${failedRuns} failed runs, ${unstableRuns} unstable runs detected.`,
+      proposedCommand: "stabilize system reliability and fallback routing",
+      expectedImpact: "Lower execution volatility and prevent cascading failures.",
+      confidence: clamp(70 + criticalSignals * 6 + failedRuns * 4, 72, 95),
+      horizonHours: 24,
+      source: "autonomous_reasoner",
+      siteId,
+      createdAt: now
+    });
+  }
+
+  if (funnelPressure <= 1 && strategy.primaryGoal !== "lead_funnel_optimization") {
+    generated.push({
+      id: `goal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type: "improve_conversion_yield",
+      priority: "P1",
+      title: "Increase lead conversion throughput",
+      trigger: "Funnel focus is underrepresented relative to system priorities.",
+      proposedCommand: "optimize funnel conversion and reduce step two drop-off",
+      expectedImpact: "Higher lead yield from existing traffic before acquisition expansion.",
+      confidence: clamp(76 + warningSignals * 2, 74, 92),
+      horizonHours: 36,
+      source: "autonomous_reasoner",
+      siteId,
+      createdAt: now
+    });
+  }
+
+  if (seoPressure >= 2 && campaignPressure <= 1) {
+    generated.push({
+      id: `goal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type: "expand_demand_capture",
+      priority: "P2",
+      title: "Create demand-side offset while SEO recovers",
+      trigger: "SEO load is high while campaign expansion remains low.",
+      proposedCommand: "expand campaign reach with conversion-quality guardrails",
+      expectedImpact: "Offsets organic volatility with paid and social demand capture.",
+      confidence: clamp(68 + seoPressure * 3, 70, 90),
+      horizonHours: 48,
+      source: "autonomous_reasoner",
+      siteId,
+      createdAt: now
+    });
+  }
+
+  if (generated.length === 0) {
+    generated.push({
+      id: `goal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type: "compound_growth_experiment",
+      priority: "P2",
+      title: "Run compound growth experiment",
+      trigger: "System health stable. No urgent corrective goals detected.",
+      proposedCommand: "launch coordinated seo and funnel uplift experiment",
+      expectedImpact: "Discovers next best growth lever under stable operations.",
+      confidence: 78,
+      horizonHours: 72,
+      source: "autonomous_reasoner",
+      siteId,
+      createdAt: now
+    });
+  }
+
+  return generated;
+}
+
+function getOrCreateAutonomousGoals(siteId) {
+  const freshGoals = analyzeAutonomousGoals(siteId);
+  for (const goal of freshGoals) {
+    const duplicate = autonomousGoals.find(
+      (existing) => existing.siteId === siteId && existing.type === goal.type
+    );
+    if (!duplicate) {
+      autonomousGoals.push(goal);
+    }
+  }
+
+  if (autonomousGoals.length > 80) {
+    autonomousGoals.splice(0, autonomousGoals.length - 80);
+  }
+
+  return autonomousGoals
+    .filter((goal) => goal.siteId === siteId)
+    .sort((a, b) => {
+      const weight = { P1: 1, P2: 2, P3: 3 };
+      const delta = (weight[a.priority] || 4) - (weight[b.priority] || 4);
+      if (delta !== 0) {
+        return delta;
+      }
+      return toNumber(b.confidence) - toNumber(a.confidence);
+    })
+    .slice(0, 6);
+}
+
+function simulateScenarios(siteId) {
+  const now = new Date().toISOString();
+  const strategy = analyzeStrategicGoals(siteId);
+  const goals = getOrCreateAutonomousGoals(siteId);
+  const signals = getOrCreatePredictiveSignals(siteId);
+
+  const criticalCount = signals.filter((signal) => signal.severity === "critical").length;
+  const warningCount = signals.filter((signal) => signal.severity === "warning").length;
+  const topGoal = strategy.allGoals[0];
+
+  const scenarios = [
+    {
+      id: `scenario_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: "SEO-First Recovery",
+      focus: "seo_recovery",
+      assumptions: "Prioritize SEO repairs and content reinforcement over funnel work for 48h.",
+      projectedTrafficLiftPct: clamp(6 + topGoal.agencyScore * 0.08 - criticalCount * 2.2, 1, 18),
+      projectedRevenueLiftPct: clamp(3 + topGoal.roiScore * 0.04 - warningCount * 0.6, 1, 15),
+      riskScore: clamp(45 + criticalCount * 12, 20, 95),
+      paybackDays: clamp(12 - topGoal.efficiencyScore * 0.08 + criticalCount * 0.7, 3, 21),
+      confidence: clamp(68 + topGoal.successProbability * 22 - criticalCount * 5, 55, 91),
+      rationale: "Best when organic ranking volatility is the primary failure source.",
+      siteId,
+      generatedAt: now
+    },
+    {
+      id: `scenario_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: "Funnel-First Monetization",
+      focus: "lead_funnel_optimization",
+      assumptions: "Shift resources to conversion uplift and routing quality before traffic expansion.",
+      projectedTrafficLiftPct: clamp(2 + warningCount * 0.6, 0, 10),
+      projectedRevenueLiftPct: clamp(8 + topGoal.roiScore * 0.05 - criticalCount * 1.4, 2, 22),
+      riskScore: clamp(30 + warningCount * 6 + criticalCount * 4, 15, 85),
+      paybackDays: clamp(8 - topGoal.efficiencyScore * 0.05 + criticalCount * 0.5, 2, 16),
+      confidence: clamp(74 + topGoal.successProbability * 18 - criticalCount * 3, 60, 93),
+      rationale: "Best when lead quality and conversion friction are the immediate growth bottlenecks.",
+      siteId,
+      generatedAt: now
+    },
+    {
+      id: `scenario_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: "Balanced Portfolio",
+      focus: "balanced",
+      assumptions: "Split resources across SEO, funnel, and campaign work to reduce single-channel risk.",
+      projectedTrafficLiftPct: clamp(5 + warningCount * 0.4, 1, 14),
+      projectedRevenueLiftPct: clamp(6 + topGoal.roiScore * 0.03, 2, 16),
+      riskScore: clamp(24 + criticalCount * 5 + warningCount * 2, 12, 70),
+      paybackDays: clamp(10 + criticalCount * 0.3, 4, 18),
+      confidence: clamp(79 - criticalCount * 2 + goals.length, 62, 90),
+      rationale: "Best for steady compounding when no single domain requires full concentration.",
+      siteId,
+      generatedAt: now
+    },
+    {
+      id: `scenario_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: "Reliability-First Guardrail",
+      focus: "stability",
+      assumptions: "Prioritize resilience fixes, fallback hardening, and failure containment before growth pushes.",
+      projectedTrafficLiftPct: clamp(2 + goals.length * 0.4, 0, 8),
+      projectedRevenueLiftPct: clamp(4 + goals.length * 0.8, 1, 12),
+      riskScore: clamp(18 + warningCount * 1.5, 8, 55),
+      paybackDays: clamp(11 - goals.length * 0.6, 3, 20),
+      confidence: clamp(73 + goals.length * 2.2 - criticalCount * 2, 58, 92),
+      rationale: "Best when protecting uptime and execution integrity has higher near-term value than expansion.",
+      siteId,
+      generatedAt: now
+    }
+  ]
+    .map((scenario) => ({
+      ...scenario,
+      outcomeScore: Math.round(
+        scenario.projectedRevenueLiftPct * 0.45 +
+          scenario.projectedTrafficLiftPct * 0.25 +
+          (100 - scenario.riskScore) * 0.2 +
+          scenario.confidence * 0.1
+      )
+    }))
+    .sort((a, b) => b.outcomeScore - a.outcomeScore);
+
+  return {
+    siteId,
+    recommendedScenario: scenarios[0].name,
+    scenarios,
+    generatedAt: now
+  };
+}
+
+function getOrCreateScenarioForecast(siteId) {
+  const fresh = simulateScenarios(siteId);
+  scenarioForecasts.push(fresh);
+
+  if (scenarioForecasts.length > 50) {
+    scenarioForecasts.splice(0, scenarioForecasts.length - 50);
+  }
+
+  return fresh;
 }
 
 function getRankedAgents(siteId) {
@@ -1461,6 +1700,26 @@ const server = http.createServer((request, response) => {
     const siteId = url.searchParams.get("siteId") || "unknown-site";
     const strategy = analyzeStrategicGoals(siteId);
     sendJson(response, 200, strategy);
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/autonomy") {
+    const siteId = url.searchParams.get("siteId") || "unknown-site";
+    const goals = getOrCreateAutonomousGoals(siteId);
+    sendJson(response, 200, {
+      siteId,
+      mode: "self-directed",
+      goals,
+      goalCount: goals.length,
+      generatedAt: new Date().toISOString()
+    });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/simulate") {
+    const siteId = url.searchParams.get("siteId") || "unknown-site";
+    const forecast = getOrCreateScenarioForecast(siteId);
+    sendJson(response, 200, forecast);
     return;
   }
 

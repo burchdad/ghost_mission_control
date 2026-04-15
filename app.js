@@ -525,6 +525,8 @@ const elements = {
   agentCollabFeed: document.getElementById("agentCollabFeed"),
   predictiveAlerts: document.getElementById("predictiveAlerts"),
   strategicGoals: document.getElementById("strategicGoals"),
+  autonomousGoals: document.getElementById("autonomousGoals"),
+  scenarioForecasts: document.getElementById("scenarioForecasts"),
   buildQueueColumns: document.getElementById("buildQueueColumns")
 };
 
@@ -1057,20 +1059,107 @@ function renderStrategicGoals(strategy) {
   `;
 }
 
-async function loadAgentIntelligence(siteId = activeSiteId) {
+async function loadAutonomousGoals(siteId = activeSiteId) {
   try {
-    const response = await fetch(`/mission/agents?siteId=${encodeURIComponent(siteId)}`);
+    const response = await fetch(`/mission/autonomy?siteId=${encodeURIComponent(siteId)}`);
     if (!response.ok) {
       return;
     }
 
     const payload = await response.json();
-    liveAgentIntelligence = payload.agents || [];
-    renderAgents(getActiveSite());
+    renderAutonomousGoals(payload.goals || []);
   } catch {
-    liveAgentIntelligence = [];
-    renderAgents(getActiveSite());
+    renderAutonomousGoals([]);
   }
+}
+
+function renderAutonomousGoals(goals) {
+  if (!elements.autonomousGoals) {
+    return;
+  }
+
+  if (!goals || goals.length === 0) {
+    elements.autonomousGoals.innerHTML = `
+      <article class="autonomy-item autonomy-empty">
+        <h3>No Autonomous Goals</h3>
+        <p>System is stable. No self-directed intervention needed.</p>
+      </article>
+    `;
+    return;
+  }
+
+  elements.autonomousGoals.innerHTML = goals
+    .map((goal) => {
+      const priorityTone = goal.priority === "P1" ? "tone-red" : goal.priority === "P2" ? "tone-yellow" : "tone-blue";
+      return `
+      <article class="autonomy-item">
+        <div class="autonomy-header">
+          <h3>${goal.title}</h3>
+          <span class="pill ${priorityTone}">${goal.priority}</span>
+        </div>
+        <p class="autonomy-trigger">Trigger: ${goal.trigger}</p>
+        <p class="autonomy-impact">Expected: ${goal.expectedImpact}</p>
+        <div class="autonomy-meta">
+          <span>Confidence: ${Math.round(goal.confidence)}%</span>
+          <span>Horizon: ${goal.horizonHours}h</span>
+        </div>
+        <div class="autonomy-command">Suggested command: ${goal.proposedCommand}</div>
+      </article>`;
+    })
+    .join("");
+}
+
+async function loadScenarioForecasts(siteId = activeSiteId) {
+  try {
+    const response = await fetch(`/mission/simulate?siteId=${encodeURIComponent(siteId)}`);
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json();
+    renderScenarioForecasts(payload);
+  } catch {
+    renderScenarioForecasts(null);
+  }
+}
+
+function renderScenarioForecasts(forecast) {
+  if (!elements.scenarioForecasts) {
+    return;
+  }
+
+  if (!forecast || !forecast.scenarios || forecast.scenarios.length === 0) {
+    elements.scenarioForecasts.innerHTML = `
+      <article class="scenario-item scenario-empty">
+        <h3>No Scenario Forecast</h3>
+        <p>Simulation engine is waiting for execution context.</p>
+      </article>
+    `;
+    return;
+  }
+
+  elements.scenarioForecasts.innerHTML = forecast.scenarios
+    .map((scenario, index) => {
+      const rankTone = index === 0 ? "tone-green" : "tone-gray";
+      return `
+      <article class="scenario-item ${index === 0 ? "scenario-recommended" : ""}">
+        <div class="scenario-header">
+          <h3>${scenario.name}</h3>
+          <span class="pill ${rankTone}">${index === 0 ? "RECOMMENDED" : `#${index + 1}`}</span>
+        </div>
+        <p class="scenario-assumption">${scenario.assumptions}</p>
+        <div class="scenario-metrics">
+          <span>Traffic: +${Math.round(scenario.projectedTrafficLiftPct)}%</span>
+          <span>Revenue: +${Math.round(scenario.projectedRevenueLiftPct)}%</span>
+          <span>Risk: ${Math.round(scenario.riskScore)}</span>
+          <span>Payback: ${Math.round(scenario.paybackDays)}d</span>
+          <span>Confidence: ${Math.round(scenario.confidence)}%</span>
+          <span>Outcome Score: ${scenario.outcomeScore}</span>
+        </div>
+        <p class="scenario-rationale">${scenario.rationale}</p>
+      </article>`;
+    })
+    .join("");
 }
 
 function renderCommandPlan() {
@@ -1143,6 +1232,8 @@ async function pollExecutionStatus() {
     await loadAgentIntelligence(activeSiteId);
     await loadPredictiveSignals(activeSiteId);
     await loadStrategicGoals(activeSiteId);
+    await loadAutonomousGoals(activeSiteId);
+    await loadScenarioForecasts(activeSiteId);
     renderCollaborationFeed(execution.collaborations || []);
 
     if (execution.status === "running" || execution.status === "queued" || execution.status === "attention") {
@@ -1296,12 +1387,17 @@ function init() {
   loadAgentIntelligence(initialSite.id);
   loadPredictiveSignals(initialSite.id);
   loadStrategicGoals(initialSite.id);
+  loadAutonomousGoals(initialSite.id);
+  loadScenarioForecasts(initialSite.id);
   renderCollaborationFeed([]);
 
   elements.siteSelect.addEventListener("change", (event) => {
     renderSite(event.target.value);
     loadAgentIntelligence(event.target.value);
     loadStrategicGoals(event.target.value);
+    loadPredictiveSignals(event.target.value);
+    loadAutonomousGoals(event.target.value);
+    loadScenarioForecasts(event.target.value);
   });
 
   elements.commandSend.addEventListener("click", runMissionCommand);
