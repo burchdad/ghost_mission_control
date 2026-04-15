@@ -795,7 +795,7 @@ function restoreSubviewPreferences() {
   }
 }
 
-function setBadge(element, count, key) {
+function setBadge(element, count, key, text) {
   if (!element) {
     return;
   }
@@ -810,7 +810,7 @@ function setBadge(element, count, key) {
     return;
   }
 
-  element.textContent = String(count);
+  element.textContent = text || String(count);
   element.classList.add("visible");
 
   if (previousCount !== null && previousCount !== count) {
@@ -823,19 +823,67 @@ function setBadge(element, count, key) {
   badgeCounts[key] = count;
 }
 
-function updateNavBadges() {
-  const executionCount = (activeCommandPlan.execution?.actions || []).filter((action) =>
+function getExecutionBadgeMeta(actions) {
+  const activeActions = (actions || []).filter((action) =>
     ["queued", "running", "retrying", "attention"].includes(action.status)
-  ).length;
+  );
 
-  const degradedAgents = liveAgentIntelligence.filter((agent) => agent.trend === "Down" || agent.confidence < 75).length;
-  const intelligenceAlerts = livePredictiveSignals.length;
-  const autonomyGoals = liveAutonomousGoals.length;
+  const count = activeActions.length;
+  if (!count) {
+    return { count: 0, text: "" };
+  }
 
-  setBadge(elements.navBadgeExecution, executionCount, "execution");
-  setBadge(elements.navBadgeAgents, degradedAgents, "agents");
-  setBadge(elements.navBadgeIntelligence, intelligenceAlerts, "intelligence");
-  setBadge(elements.navBadgeAutonomy, autonomyGoals, "autonomy");
+  const hasUrgent = activeActions.some((action) => ["attention", "retrying", "failed"].includes(action.status));
+  const hasRunning = activeActions.some((action) => action.status === "running");
+
+  const text = hasUrgent ? `${count} !` : hasRunning ? `${count} >` : String(count);
+  return { count, text };
+}
+
+function getAgentsBadgeMeta(agents) {
+  const degradedAgents = (agents || []).filter((agent) => agent.trend === "Down" || agent.confidence < 75);
+  const count = degradedAgents.length;
+  if (!count) {
+    return { count: 0, text: "" };
+  }
+
+  const text = `${count} v`;
+  return { count, text };
+}
+
+function getIntelligenceBadgeMeta(signals) {
+  const activeSignals = signals || [];
+  const count = activeSignals.length;
+  if (!count) {
+    return { count: 0, text: "" };
+  }
+
+  const criticalCount = activeSignals.filter((signal) => signal.severity === "critical").length;
+  const text = criticalCount > 0 ? `${criticalCount} !` : `${count} *`;
+  return { count, text };
+}
+
+function getAutonomyBadgeMeta(goals) {
+  const count = (goals || []).length;
+  if (!count) {
+    return { count: 0, text: "" };
+  }
+
+  const p1Count = goals.filter((goal) => goal.priority === "P1").length;
+  const text = p1Count > 0 ? `${p1Count} !` : `${count} +`;
+  return { count, text };
+}
+
+function updateNavBadges() {
+  const execution = getExecutionBadgeMeta(activeCommandPlan.execution?.actions || []);
+  const agents = getAgentsBadgeMeta(liveAgentIntelligence);
+  const intelligence = getIntelligenceBadgeMeta(livePredictiveSignals);
+  const autonomy = getAutonomyBadgeMeta(liveAutonomousGoals);
+
+  setBadge(elements.navBadgeExecution, execution.count, "execution", execution.text);
+  setBadge(elements.navBadgeAgents, agents.count, "agents", agents.text);
+  setBadge(elements.navBadgeIntelligence, intelligence.count, "intelligence", intelligence.text);
+  setBadge(elements.navBadgeAutonomy, autonomy.count, "autonomy", autonomy.text);
 }
 
 function getExecutionStatusClass(status) {

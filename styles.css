@@ -123,9 +123,11 @@ body {
   display: none;
   align-items: center;
   justify-content: center;
+  padding: 0 0.26rem;
   font-size: 0.68rem;
   font-weight: 700;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .nav-badge.visible {
