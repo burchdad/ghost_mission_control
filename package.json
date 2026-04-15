@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "build:vercel": "node scripts/build-vercel.js",
     "start:8080": "PORT=8080 node server.js",
     "start:bg": "bash scripts/server-control.sh start",
     "stop:bg": "bash scripts/server-control.sh stop",

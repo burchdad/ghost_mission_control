@@ -497,6 +497,24 @@ const missionData = {
   ]
 };
 
+const runtimeApiBase = (() => {
+  const url = new URL(window.location.href);
+  const fromQuery = url.searchParams.get("apiBase");
+
+  if (fromQuery) {
+    localStorage.setItem("ghost_api_base_url", fromQuery);
+  }
+
+  const fromStorage = localStorage.getItem("ghost_api_base_url") || "";
+  const fromWindow = typeof window.GHOST_API_BASE_URL === "string" ? window.GHOST_API_BASE_URL : "";
+
+  return (fromQuery || fromStorage || fromWindow || "").trim().replace(/\/+$/, "");
+})();
+
+function apiUrl(path) {
+  return runtimeApiBase ? `${runtimeApiBase}${path}` : path;
+}
+
 const toneClass = {
   green: "tone-green",
   yellow: "tone-yellow",
@@ -889,7 +907,7 @@ function renderAgents(site) {
 
 async function loadAgentIntelligence(siteId = activeSiteId) {
   try {
-    const response = await fetch(`/mission/agents?siteId=${encodeURIComponent(siteId)}`);
+    const response = await fetch(apiUrl(`/mission/agents?siteId=${encodeURIComponent(siteId)}`));
     if (!response.ok) {
       return;
     }
@@ -905,7 +923,7 @@ async function loadAgentIntelligence(siteId = activeSiteId) {
 
 async function loadPredictiveSignals(siteId = activeSiteId) {
   try {
-    const response = await fetch(`/mission/predict?siteId=${encodeURIComponent(siteId)}`);
+    const response = await fetch(apiUrl(`/mission/predict?siteId=${encodeURIComponent(siteId)}`));
     if (!response.ok) {
       return;
     }
@@ -952,7 +970,7 @@ function renderPredictiveAlerts(signals) {
 
 async function loadStrategicGoals(siteId = activeSiteId) {
   try {
-    const response = await fetch(`/mission/strategy?siteId=${encodeURIComponent(siteId)}`);
+    const response = await fetch(apiUrl(`/mission/strategy?siteId=${encodeURIComponent(siteId)}`));
     if (!response.ok) {
       return;
     }
@@ -1061,7 +1079,7 @@ function renderStrategicGoals(strategy) {
 
 async function loadAutonomousGoals(siteId = activeSiteId) {
   try {
-    const response = await fetch(`/mission/autonomy?siteId=${encodeURIComponent(siteId)}`);
+    const response = await fetch(apiUrl(`/mission/autonomy?siteId=${encodeURIComponent(siteId)}`));
     if (!response.ok) {
       return;
     }
@@ -1111,7 +1129,7 @@ function renderAutonomousGoals(goals) {
 
 async function loadScenarioForecasts(siteId = activeSiteId) {
   try {
-    const response = await fetch(`/mission/simulate?siteId=${encodeURIComponent(siteId)}`);
+    const response = await fetch(apiUrl(`/mission/simulate?siteId=${encodeURIComponent(siteId)}`));
     if (!response.ok) {
       return;
     }
@@ -1199,7 +1217,7 @@ function renderCommandPlan() {
 
 async function loadCommandMemory() {
   try {
-    const response = await fetch("/mission/commands");
+    const response = await fetch(apiUrl("/mission/commands"));
     if (!response.ok) {
       return;
     }
@@ -1221,7 +1239,7 @@ async function pollExecutionStatus() {
   }
 
   try {
-    const response = await fetch(`/mission/execution/${encodeURIComponent(executionId)}`);
+    const response = await fetch(apiUrl(`/mission/execution/${encodeURIComponent(executionId)}`));
     if (!response.ok) {
       throw new Error(`Execution poll failed with status ${response.status}`);
     }
@@ -1323,7 +1341,7 @@ async function runMissionCommand() {
   elements.commandResponse.textContent = "Dispatching command to mission backend...";
 
   try {
-    const response = await fetch("/mission/command", {
+    const response = await fetch(apiUrl("/mission/command"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json"

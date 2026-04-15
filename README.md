@@ -81,6 +81,26 @@ ALLOWED_ORIGINS=https://<your-frontend-domain>
 
 Then point frontend API calls to your Railway backend domain.
 
+## Deploy Frontend On Vercel (Static)
+
+This repo now includes a static Vercel build path so Vercel does not try to run the Node backend.
+
+1. In Vercel project settings, set:
+
+```bash
+GHOST_API_BASE_URL=https://<your-railway-domain>
+```
+
+2. Keep Railway `ALLOWED_ORIGINS` aligned with your Vercel domain:
+
+```bash
+ALLOWED_ORIGINS=https://ghost-mission-control-three.vercel.app
+```
+
+3. Redeploy Vercel and Railway.
+
+The Vercel build runs `npm run build:vercel`, outputs static files into `dist`, and injects `GHOST_API_BASE_URL` into `index.html`.
+
 If your terminal session may terminate foreground processes, use background mode:
 
 ```bash
