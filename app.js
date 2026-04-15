@@ -525,6 +525,7 @@ const toneClass = {
 };
 
 const elements = {
+  body: document.body,
   topbarPanel: document.getElementById("topbarPanel"),
   missionStrip: document.getElementById("missionStrip"),
   siteSelect: document.getElementById("siteSelect"),
@@ -554,6 +555,13 @@ const elements = {
   navBadgeIntelligence: document.getElementById("navBadgeIntelligence"),
   navBadgeAutonomy: document.getElementById("navBadgeAutonomy"),
   navCorrelationHint: document.getElementById("navCorrelationHint"),
+  openPaletteButton: document.getElementById("openPaletteButton"),
+  commandPalette: document.getElementById("commandPalette"),
+  paletteInput: document.getElementById("paletteInput"),
+  paletteList: document.getElementById("paletteList"),
+  focusBanner: document.getElementById("focusBanner"),
+  focusTitle: document.getElementById("focusTitle"),
+  exitFocusButton: document.getElementById("exitFocusButton"),
   buildQueueColumns: document.getElementById("buildQueueColumns"),
   operationsPanel: document.getElementById("operationsPanel"),
   buildQueuePanel: document.getElementById("buildQueuePanel"),
@@ -622,6 +630,9 @@ let executionPollTimer = null;
 let activeView = "mission-control";
 let activeExecutionSubview = "overview";
 let activeAgentsSubview = "rankings";
+let isFocusMode = false;
+let paletteSelectionIndex = 0;
+let currentPaletteActions = [];
 const badgeCounts = {
   execution: null,
   agents: null,
@@ -631,7 +642,8 @@ const badgeCounts = {
 
 const storageKeys = {
   executionSubview: "ghostMissionControl.executionSubview",
-  agentsSubview: "ghostMissionControl.agentsSubview"
+  agentsSubview: "ghostMissionControl.agentsSubview",
+  focusMode: "ghostMissionControl.focusMode"
 };
 
 const executionSubviewVisibility = {
@@ -738,14 +750,26 @@ function setActiveView(view) {
   elements.agentsTabItems.forEach((item) => {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
+
+  renderFocusBanner();
 }
 
 function setupNavigation() {
   restoreSubviewPreferences();
 
+  const storedFocusMode = loadStoredValue(storageKeys.focusMode);
+  isFocusMode = storedFocusMode === "1";
+
   elements.navItems.forEach((item) => {
     item.addEventListener("click", () => {
-      setActiveView(item.dataset.view);
+      const selectedView = item.dataset.view;
+      setActiveView(selectedView);
+
+      if (selectedView === "mission-control") {
+        setFocusMode(false);
+      } else {
+        setFocusMode(true, selectedView);
+      }
     });
   });
 
@@ -765,7 +789,216 @@ function setupNavigation() {
     });
   });
 
+  if (elements.openPaletteButton) {
+    elements.openPaletteButton.addEventListener("click", () => {
+      openCommandPalette();
+    });
+  }
+
+  if (elements.exitFocusButton) {
+    elements.exitFocusButton.addEventListener("click", () => {
+      setFocusMode(false);
+    });
+  }
+
+  setupCommandPalette();
+
   setActiveView(activeView);
+
+  if (isFocusMode && activeView !== "mission-control") {
+    setFocusMode(true, activeView);
+  } else {
+    setFocusMode(false);
+  }
+}
+
+function getViewLabel(view) {
+  return String(view || "")
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function renderFocusBanner() {
+  if (!elements.focusBanner || !elements.focusTitle) {
+    return;
+  }
+
+  const shouldShow = isFocusMode && activeView !== "mission-control";
+  elements.focusBanner.classList.toggle("view-hidden", !shouldShow);
+  elements.focusTitle.textContent = shouldShow ? `${getViewLabel(activeView)} Focus Mode` : "Focus Mode";
+}
+
+function setFocusMode(enabled, targetView = activeView) {
+  isFocusMode = Boolean(enabled) && targetView !== "mission-control";
+  elements.body.classList.toggle("focus-mode", isFocusMode);
+  renderFocusBanner();
+  saveStoredValue(storageKeys.focusMode, isFocusMode ? "1" : "0");
+}
+
+function getPaletteActions() {
+  const setView = (view, focus = false) => ({
+    id: `view-${view}`,
+    label: `Open ${getViewLabel(view)} view`,
+    hint: focus ? "workspace takeover" : "view switch",
+    keywords: `${view} switch open`,
+    run: () => {
+      setActiveView(view);
+      setFocusMode(focus, view);
+    }
+  });
+
+  return [
+    setView("mission-control", false),
+    setView("execution", true),
+    setView("agents", true),
+    setView("intelligence", true),
+    setView("strategy", true),
+    setView("simulation", true),
+    setView("autonomy", true),
+    setView("build-queue", true),
+    {
+      id: "focus-toggle",
+      label: isFocusMode ? "Exit Focus Mode" : `Enter Focus Mode (${getViewLabel(activeView)})`,
+      hint: "layout",
+      keywords: "focus mode toggle",
+      run: () => {
+        setFocusMode(!isFocusMode, activeView);
+      }
+    },
+    {
+      id: "focus-execution",
+      label: "Take Over Execution Workspace",
+      hint: "fast path",
+      keywords: "execution focus critical",
+      run: () => {
+        setActiveView("execution");
+        setFocusMode(true, "execution");
+      }
+    }
+  ];
+}
+
+function renderPaletteActions(query = "") {
+  if (!elements.paletteList) {
+    return;
+  }
+
+  const normalized = query.trim().toLowerCase();
+  const allActions = getPaletteActions();
+  currentPaletteActions = allActions.filter((action) => {
+    if (!normalized) {
+      return true;
+    }
+
+    const haystack = `${action.label} ${action.keywords} ${action.hint}`.toLowerCase();
+    return haystack.includes(normalized);
+  });
+
+  paletteSelectionIndex = Math.min(paletteSelectionIndex, Math.max(currentPaletteActions.length - 1, 0));
+
+  elements.paletteList.innerHTML = currentPaletteActions
+    .map(
+      (action, index) => `<button class="palette-item ${index === paletteSelectionIndex ? "selected" : ""}" data-palette-index="${index}" type="button">
+        <span>${action.label}</span>
+        <span class="palette-item-hint">${action.hint}</span>
+      </button>`
+    )
+    .join("");
+
+  elements.paletteList.querySelectorAll("[data-palette-index]").forEach((item) => {
+    item.addEventListener("click", () => {
+      const index = Number(item.dataset.paletteIndex);
+      runPaletteAction(index);
+    });
+  });
+}
+
+function runPaletteAction(index) {
+  const action = currentPaletteActions[index];
+  if (!action) {
+    return;
+  }
+
+  action.run();
+  closeCommandPalette();
+}
+
+function openCommandPalette() {
+  if (!elements.commandPalette || !elements.paletteInput) {
+    return;
+  }
+
+  elements.commandPalette.classList.remove("view-hidden");
+  paletteSelectionIndex = 0;
+  renderPaletteActions("");
+  elements.paletteInput.value = "";
+  elements.paletteInput.focus();
+}
+
+function closeCommandPalette() {
+  if (!elements.commandPalette) {
+    return;
+  }
+
+  elements.commandPalette.classList.add("view-hidden");
+}
+
+function setupCommandPalette() {
+  if (!elements.commandPalette || !elements.paletteInput) {
+    return;
+  }
+
+  elements.paletteInput.addEventListener("input", (event) => {
+    paletteSelectionIndex = 0;
+    renderPaletteActions(event.target.value);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    const key = event.key.toLowerCase();
+
+    if ((event.metaKey || event.ctrlKey) && key === "k") {
+      event.preventDefault();
+      openCommandPalette();
+      return;
+    }
+
+    const paletteOpen = !elements.commandPalette.classList.contains("view-hidden");
+    if (!paletteOpen) {
+      if (key === "escape" && isFocusMode) {
+        setFocusMode(false);
+      }
+      return;
+    }
+
+    if (key === "escape") {
+      closeCommandPalette();
+      return;
+    }
+
+    if (key === "arrowdown") {
+      event.preventDefault();
+      if (currentPaletteActions.length > 0) {
+        paletteSelectionIndex = (paletteSelectionIndex + 1) % currentPaletteActions.length;
+        renderPaletteActions(elements.paletteInput.value);
+      }
+      return;
+    }
+
+    if (key === "arrowup") {
+      event.preventDefault();
+      if (currentPaletteActions.length > 0) {
+        paletteSelectionIndex = (paletteSelectionIndex - 1 + currentPaletteActions.length) % currentPaletteActions.length;
+        renderPaletteActions(elements.paletteInput.value);
+      }
+      return;
+    }
+
+    if (key === "enter") {
+      event.preventDefault();
+      runPaletteAction(paletteSelectionIndex);
+    }
+  });
 }
 
 function loadStoredValue(key) {
@@ -953,6 +1186,19 @@ function updateCorrelationHint(execution, agents, intelligence, autonomy) {
   elements.navCorrelationHint.classList.remove("view-hidden");
 }
 
+function updateContextualAwareness(execution, agents, intelligence, autonomy) {
+  const executionNav = elements.navItems.find((item) => item.dataset.view === "execution");
+  const systemCritical = execution.severity === "critical" || intelligence.severity === "critical";
+  const systemStable = execution.count === 0 && agents.count === 0 && intelligence.count === 0 && autonomy.count === 0;
+
+  if (executionNav) {
+    executionNav.classList.toggle("attention", systemCritical);
+  }
+
+  elements.body.classList.toggle("system-critical", systemCritical);
+  elements.body.classList.toggle("system-stable", systemStable);
+}
+
 function updateNavBadges() {
   const execution = getExecutionBadgeMeta(activeCommandPlan.execution?.actions || []);
   const agents = getAgentsBadgeMeta(liveAgentIntelligence);
@@ -964,6 +1210,7 @@ function updateNavBadges() {
   setBadge(elements.navBadgeIntelligence, "intelligence", intelligence);
   setBadge(elements.navBadgeAutonomy, "autonomy", autonomy);
   updateCorrelationHint(execution, agents, intelligence, autonomy);
+  updateContextualAwareness(execution, agents, intelligence, autonomy);
 }
 
 function getExecutionStatusClass(status) {

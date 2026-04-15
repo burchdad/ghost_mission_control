@@ -37,9 +37,14 @@
           </button>
           <button class="nav-item" type="button" data-view="build-queue">Build Queue</button>
           <div id="navCorrelationHint" class="nav-correlation view-hidden" aria-live="polite"></div>
+          <button id="openPaletteButton" class="nav-utility" type="button">Command Palette (Ctrl/Cmd + K)</button>
         </aside>
 
         <div class="workspace-main">
+      <div id="focusBanner" class="focus-banner view-hidden">
+        <p id="focusTitle">Focus Mode</p>
+        <button id="exitFocusButton" type="button">Exit Focus</button>
+      </div>
       <header class="topbar" id="topbarPanel">
         <div class="brand-block">
           <p class="eyebrow">Ghost Web Operations</p>
@@ -196,6 +201,15 @@
     <script>
       window.GHOST_API_BASE_URL = "__GHOST_API_BASE_URL__";
     </script>
+
+    <div id="commandPalette" class="command-palette view-hidden" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div class="palette-panel">
+        <input id="paletteInput" type="text" placeholder="Type a command..." aria-label="Command palette input" />
+        <div id="paletteList" class="palette-list"></div>
+        <p class="palette-hint">Enter to run • Esc to close</p>
+      </div>
+    </div>
+
     <script src="app.js" defer></script>
   </body>
 </html>
