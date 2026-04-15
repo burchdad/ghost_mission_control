@@ -547,6 +547,12 @@ const elements = {
   strategicGoals: document.getElementById("strategicGoals"),
   autonomousGoals: document.getElementById("autonomousGoals"),
   scenarioForecasts: document.getElementById("scenarioForecasts"),
+  executionTabs: document.getElementById("executionTabs"),
+  agentsTabs: document.getElementById("agentsTabs"),
+  navBadgeExecution: document.getElementById("navBadgeExecution"),
+  navBadgeAgents: document.getElementById("navBadgeAgents"),
+  navBadgeIntelligence: document.getElementById("navBadgeIntelligence"),
+  navBadgeAutonomy: document.getElementById("navBadgeAutonomy"),
   buildQueueColumns: document.getElementById("buildQueueColumns"),
   operationsPanel: document.getElementById("operationsPanel"),
   buildQueuePanel: document.getElementById("buildQueuePanel"),
@@ -561,7 +567,9 @@ const elements = {
   predictivePanel: document.getElementById("predictivePanel"),
   crossSystemPanel: document.getElementById("crossSystemPanel"),
   agentsPanel: document.getElementById("agentsPanel"),
-  navItems: [...document.querySelectorAll(".nav-item")]
+  navItems: [...document.querySelectorAll(".nav-item")],
+  executionTabItems: [...document.querySelectorAll("[data-exec-tab]")],
+  agentsTabItems: [...document.querySelectorAll("[data-agents-tab]")]
 };
 
 const priorityHeatOrder = {
@@ -601,6 +609,8 @@ let activeCommandPlan = {
 
 let commandMemory = [];
 let liveAgentIntelligence = [];
+let livePredictiveSignals = [];
+let liveAutonomousGoals = [];
 let activeSiteId = missionData.websites[0]?.id || "";
 
 function getActiveSite() {
@@ -609,6 +619,32 @@ function getActiveSite() {
 
 let executionPollTimer = null;
 let activeView = "mission-control";
+let activeExecutionSubview = "overview";
+let activeAgentsSubview = "rankings";
+const badgeCounts = {
+  execution: null,
+  agents: null,
+  intelligence: null,
+  autonomy: null
+};
+
+const storageKeys = {
+  executionSubview: "ghostMissionControl.executionSubview",
+  agentsSubview: "ghostMissionControl.agentsSubview"
+};
+
+const executionSubviewVisibility = {
+  overview: ["commandPlanPanel", "commandMemoryPanel", "activityPanel", "agentCollabPanel"],
+  active: ["commandPlanPanel", "agentCollabPanel"],
+  history: ["commandMemoryPanel", "activityPanel"],
+  failures: ["alertsPanel", "activityPanel", "commandPlanPanel"]
+};
+
+const agentsSubviewVisibility = {
+  rankings: ["agentsPanel"],
+  logs: ["activityPanel", "commandMemoryPanel"],
+  collaboration: ["agentsPanel", "agentCollabPanel"]
+};
 
 const viewVisibility = {
   "mission-control": [
@@ -634,7 +670,15 @@ const viewVisibility = {
 
 function setActiveView(view) {
   activeView = view;
-  const visiblePanels = new Set(viewVisibility[view] || []);
+  let visiblePanels = new Set(viewVisibility[view] || []);
+
+  if (view === "execution") {
+    visiblePanels = new Set(executionSubviewVisibility[activeExecutionSubview] || executionSubviewVisibility.overview);
+  }
+
+  if (view === "agents") {
+    visiblePanels = new Set(agentsSubviewVisibility[activeAgentsSubview] || agentsSubviewVisibility.rankings);
+  }
 
   const shellPanels = [
     "operationsPanel",
@@ -677,16 +721,121 @@ function setActiveView(view) {
   elements.navItems.forEach((item) => {
     item.classList.toggle("active", item.dataset.view === view);
   });
+
+  if (elements.executionTabs) {
+    elements.executionTabs.classList.toggle("view-hidden", view !== "execution");
+  }
+
+  if (elements.agentsTabs) {
+    elements.agentsTabs.classList.toggle("view-hidden", view !== "agents");
+  }
+
+  elements.executionTabItems.forEach((item) => {
+    item.classList.toggle("active", item.dataset.execTab === activeExecutionSubview);
+  });
+
+  elements.agentsTabItems.forEach((item) => {
+    item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
+  });
 }
 
 function setupNavigation() {
+  restoreSubviewPreferences();
+
   elements.navItems.forEach((item) => {
     item.addEventListener("click", () => {
       setActiveView(item.dataset.view);
     });
   });
 
+  elements.executionTabItems.forEach((item) => {
+    item.addEventListener("click", () => {
+      activeExecutionSubview = item.dataset.execTab;
+      saveStoredValue(storageKeys.executionSubview, activeExecutionSubview);
+      setActiveView("execution");
+    });
+  });
+
+  elements.agentsTabItems.forEach((item) => {
+    item.addEventListener("click", () => {
+      activeAgentsSubview = item.dataset.agentsTab;
+      saveStoredValue(storageKeys.agentsSubview, activeAgentsSubview);
+      setActiveView("agents");
+    });
+  });
+
   setActiveView(activeView);
+}
+
+function loadStoredValue(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredValue(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write failures (private mode or blocked storage).
+  }
+}
+
+function restoreSubviewPreferences() {
+  const storedExecutionSubview = loadStoredValue(storageKeys.executionSubview);
+  if (storedExecutionSubview && executionSubviewVisibility[storedExecutionSubview]) {
+    activeExecutionSubview = storedExecutionSubview;
+  }
+
+  const storedAgentsSubview = loadStoredValue(storageKeys.agentsSubview);
+  if (storedAgentsSubview && agentsSubviewVisibility[storedAgentsSubview]) {
+    activeAgentsSubview = storedAgentsSubview;
+  }
+}
+
+function setBadge(element, count, key) {
+  if (!element) {
+    return;
+  }
+
+  const previousCount = badgeCounts[key];
+
+  if (!count) {
+    element.textContent = "";
+    element.classList.remove("visible");
+    element.classList.remove("pulse");
+    badgeCounts[key] = 0;
+    return;
+  }
+
+  element.textContent = String(count);
+  element.classList.add("visible");
+
+  if (previousCount !== null && previousCount !== count) {
+    element.classList.remove("pulse");
+    requestAnimationFrame(() => {
+      element.classList.add("pulse");
+    });
+  }
+
+  badgeCounts[key] = count;
+}
+
+function updateNavBadges() {
+  const executionCount = (activeCommandPlan.execution?.actions || []).filter((action) =>
+    ["queued", "running", "retrying", "attention"].includes(action.status)
+  ).length;
+
+  const degradedAgents = liveAgentIntelligence.filter((agent) => agent.trend === "Down" || agent.confidence < 75).length;
+  const intelligenceAlerts = livePredictiveSignals.length;
+  const autonomyGoals = liveAutonomousGoals.length;
+
+  setBadge(elements.navBadgeExecution, executionCount, "execution");
+  setBadge(elements.navBadgeAgents, degradedAgents, "agents");
+  setBadge(elements.navBadgeIntelligence, intelligenceAlerts, "intelligence");
+  setBadge(elements.navBadgeAutonomy, autonomyGoals, "autonomy");
 }
 
 function getExecutionStatusClass(status) {
@@ -999,6 +1148,8 @@ function renderAgents(site) {
       </article>`
     )
     .join("");
+
+  updateNavBadges();
 }
 
 async function loadAgentIntelligence(siteId = activeSiteId) {
@@ -1037,14 +1188,18 @@ function renderPredictiveAlerts(signals) {
   }
 
   if (!signals || signals.length === 0) {
+    livePredictiveSignals = [];
     elements.predictiveAlerts.innerHTML = `
       <article class="pred-item pred-clear">
         <h3>No Signals Detected</h3>
         <p>System operating normally. No predictive risks identified.</p>
       </article>
     `;
+    updateNavBadges();
     return;
   }
+
+  livePredictiveSignals = [...signals];
 
   elements.predictiveAlerts.innerHTML = signals
     .sort((a, b) => (b.severity === "critical" ? 1 : 0) - (a.severity === "critical" ? 1 : 0))
@@ -1062,6 +1217,8 @@ function renderPredictiveAlerts(signals) {
       </article>`;
     })
     .join("");
+
+  updateNavBadges();
 }
 
 async function loadStrategicGoals(siteId = activeSiteId) {
@@ -1193,14 +1350,18 @@ function renderAutonomousGoals(goals) {
   }
 
   if (!goals || goals.length === 0) {
+    liveAutonomousGoals = [];
     elements.autonomousGoals.innerHTML = `
       <article class="autonomy-item autonomy-empty">
         <h3>No Autonomous Goals</h3>
         <p>System is stable. No self-directed intervention needed.</p>
       </article>
     `;
+    updateNavBadges();
     return;
   }
+
+  liveAutonomousGoals = [...goals];
 
   elements.autonomousGoals.innerHTML = goals
     .map((goal) => {
@@ -1221,6 +1382,8 @@ function renderAutonomousGoals(goals) {
       </article>`;
     })
     .join("");
+
+  updateNavBadges();
 }
 
 async function loadScenarioForecasts(siteId = activeSiteId) {
@@ -1309,6 +1472,8 @@ function renderCommandPlan() {
     </article>
     ${renderExecutionPanel()}
   `;
+
+  updateNavBadges();
 }
 
 async function loadCommandMemory() {
