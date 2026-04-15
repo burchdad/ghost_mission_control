@@ -17,7 +17,21 @@
     <div class="background-glow" aria-hidden="true"></div>
 
     <main class="app-shell">
-      <header class="topbar">
+      <div class="workspace-shell">
+        <aside class="nav-rail" aria-label="Primary navigation">
+          <p class="nav-title">Navigation</p>
+          <button class="nav-item active" type="button" data-view="mission-control">Mission Control</button>
+          <button class="nav-item" type="button" data-view="execution">Execution</button>
+          <button class="nav-item" type="button" data-view="agents">Agents</button>
+          <button class="nav-item" type="button" data-view="intelligence">Intelligence</button>
+          <button class="nav-item" type="button" data-view="strategy">Strategy</button>
+          <button class="nav-item" type="button" data-view="simulation">Simulation</button>
+          <button class="nav-item" type="button" data-view="autonomy">Autonomy</button>
+          <button class="nav-item" type="button" data-view="build-queue">Build Queue</button>
+        </aside>
+
+        <div class="workspace-main">
+      <header class="topbar" id="topbarPanel">
         <div class="brand-block">
           <p class="eyebrow">Ghost Web Operations</p>
           <h1>Ghost Mission Control</h1>
@@ -49,7 +63,7 @@
 
       <section class="kpi-section" id="kpiSection" aria-label="Executive KPI cards"></section>
 
-      <section class="mission-strip" aria-label="Mission status strip">
+      <section class="mission-strip" id="missionStrip" aria-label="Mission status strip">
         <div class="mission-strip__header">
           <h2>Mission Status Strip</h2>
           <p id="missionSummary">Evaluating global system health...</p>
@@ -59,7 +73,7 @@
 
       <section class="layout-grid">
         <div class="main-column">
-          <section class="module-panel" aria-label="Operational modules">
+          <section class="module-panel view-panel" id="operationsPanel" aria-label="Operational modules">
             <div class="panel-header">
               <h2>Operations Board</h2>
               <p>Live status of critical modules and command streams.</p>
@@ -67,7 +81,7 @@
             <div class="module-cards" id="moduleCards"></div>
           </section>
 
-          <section class="module-panel" aria-label="Build queue">
+          <section class="module-panel view-panel" id="buildQueuePanel" aria-label="Build queue">
             <div class="panel-header">
               <h2>Build Queue / Future Systems</h2>
               <p>Roadmap engine for systems not yet live.</p>
@@ -77,77 +91,77 @@
         </div>
 
         <aside class="side-column">
-          <section class="module-panel" aria-label="Alerts panel">
+          <section class="module-panel view-panel" id="alertsPanel" aria-label="Alerts panel">
             <div class="panel-header compact">
               <h2>Failures & Alerts</h2>
             </div>
             <div id="alertList" class="alert-list"></div>
           </section>
 
-          <section class="module-panel" aria-label="Activity feed">
+          <section class="module-panel view-panel" id="activityPanel" aria-label="Activity feed">
             <div class="panel-header compact">
               <h2>Mission Timeline</h2>
             </div>
             <div id="activityFeed" class="activity-feed"></div>
           </section>
 
-          <section class="module-panel" aria-label="Command action plan">
+          <section class="module-panel view-panel" id="commandPlanPanel" aria-label="Command action plan">
             <div class="panel-header compact">
               <h2>Command Action Plan</h2>
             </div>
             <div id="commandPlan" class="command-plan"></div>
           </section>
 
-          <section class="module-panel" aria-label="Command memory">
+          <section class="module-panel view-panel" id="commandMemoryPanel" aria-label="Command memory">
             <div class="panel-header compact">
               <h2>Command Memory</h2>
             </div>
             <div id="commandMemory" class="command-memory"></div>
           </section>
 
-          <section class="module-panel" aria-label="Agent collaboration channel">
+          <section class="module-panel view-panel" id="agentCollabPanel" aria-label="Agent collaboration channel">
             <div class="panel-header compact">
               <h2>Agent Collaboration</h2>
             </div>
             <div id="agentCollabFeed" class="agent-collab-feed"></div>
           </section>
 
-          <section class="module-panel" aria-label="Strategic goal recommendations">
+          <section class="module-panel view-panel" id="strategicPanel" aria-label="Strategic goal recommendations">
             <div class="panel-header compact">
               <h2>Strategic Goals</h2>
             </div>
             <div id="strategicGoals" class="strategic-goals"></div>
           </section>
 
-          <section class="module-panel" aria-label="Goal-based autonomy">
+          <section class="module-panel view-panel" id="autonomyPanel" aria-label="Goal-based autonomy">
             <div class="panel-header compact">
               <h2>Goal-Based Autonomy</h2>
             </div>
             <div id="autonomousGoals" class="autonomy-goals"></div>
           </section>
 
-          <section class="module-panel" aria-label="Scenario simulation engine">
+          <section class="module-panel view-panel" id="scenarioPanel" aria-label="Scenario simulation engine">
             <div class="panel-header compact">
               <h2>Scenario Engine</h2>
             </div>
             <div id="scenarioForecasts" class="scenario-forecasts"></div>
           </section>
 
-          <section class="module-panel" aria-label="Predictive intelligence signals">
+          <section class="module-panel view-panel" id="predictivePanel" aria-label="Predictive intelligence signals">
             <div class="panel-header compact">
               <h2>Predictive Intelligence</h2>
             </div>
             <div id="predictiveAlerts" class="predictive-alerts"></div>
           </section>
 
-          <section class="module-panel" aria-label="Cross system intelligence">
+          <section class="module-panel view-panel" id="crossSystemPanel" aria-label="Cross system intelligence">
             <div class="panel-header compact">
               <h2>Cross-System Intelligence</h2>
             </div>
             <div id="crossSystemInsights" class="cross-system-insights"></div>
           </section>
 
-          <section class="module-panel" aria-label="By agent snapshot">
+          <section class="module-panel view-panel" id="agentsPanel" aria-label="By agent snapshot">
             <div class="panel-header compact">
               <h2>Agents Snapshot</h2>
             </div>
@@ -155,6 +169,8 @@
           </section>
         </aside>
       </section>
+      </div>
+      </div>
     </main>
 
     <script>

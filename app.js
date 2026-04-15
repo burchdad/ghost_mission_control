@@ -525,6 +525,8 @@ const toneClass = {
 };
 
 const elements = {
+  topbarPanel: document.getElementById("topbarPanel"),
+  missionStrip: document.getElementById("missionStrip"),
   siteSelect: document.getElementById("siteSelect"),
   globalStatusBadge: document.getElementById("globalStatusBadge"),
   commandInput: document.getElementById("commandInput"),
@@ -545,7 +547,21 @@ const elements = {
   strategicGoals: document.getElementById("strategicGoals"),
   autonomousGoals: document.getElementById("autonomousGoals"),
   scenarioForecasts: document.getElementById("scenarioForecasts"),
-  buildQueueColumns: document.getElementById("buildQueueColumns")
+  buildQueueColumns: document.getElementById("buildQueueColumns"),
+  operationsPanel: document.getElementById("operationsPanel"),
+  buildQueuePanel: document.getElementById("buildQueuePanel"),
+  alertsPanel: document.getElementById("alertsPanel"),
+  activityPanel: document.getElementById("activityPanel"),
+  commandPlanPanel: document.getElementById("commandPlanPanel"),
+  commandMemoryPanel: document.getElementById("commandMemoryPanel"),
+  agentCollabPanel: document.getElementById("agentCollabPanel"),
+  strategicPanel: document.getElementById("strategicPanel"),
+  autonomyPanel: document.getElementById("autonomyPanel"),
+  scenarioPanel: document.getElementById("scenarioPanel"),
+  predictivePanel: document.getElementById("predictivePanel"),
+  crossSystemPanel: document.getElementById("crossSystemPanel"),
+  agentsPanel: document.getElementById("agentsPanel"),
+  navItems: [...document.querySelectorAll(".nav-item")]
 };
 
 const priorityHeatOrder = {
@@ -592,6 +608,86 @@ function getActiveSite() {
 }
 
 let executionPollTimer = null;
+let activeView = "mission-control";
+
+const viewVisibility = {
+  "mission-control": [
+    "operationsPanel",
+    "alertsPanel",
+    "predictivePanel",
+    "crossSystemPanel",
+    "activityPanel"
+  ],
+  execution: [
+    "commandPlanPanel",
+    "commandMemoryPanel",
+    "activityPanel",
+    "agentCollabPanel"
+  ],
+  agents: ["agentsPanel", "agentCollabPanel", "activityPanel"],
+  intelligence: ["predictivePanel", "crossSystemPanel", "alertsPanel", "activityPanel"],
+  strategy: ["strategicPanel", "commandPlanPanel", "commandMemoryPanel"],
+  simulation: ["scenarioPanel", "strategicPanel", "predictivePanel"],
+  autonomy: ["autonomyPanel", "scenarioPanel", "strategicPanel"],
+  "build-queue": ["buildQueuePanel", "operationsPanel"]
+};
+
+function setActiveView(view) {
+  activeView = view;
+  const visiblePanels = new Set(viewVisibility[view] || []);
+
+  const shellPanels = [
+    "operationsPanel",
+    "buildQueuePanel",
+    "alertsPanel",
+    "activityPanel",
+    "commandPlanPanel",
+    "commandMemoryPanel",
+    "agentCollabPanel",
+    "strategicPanel",
+    "autonomyPanel",
+    "scenarioPanel",
+    "predictivePanel",
+    "crossSystemPanel",
+    "agentsPanel"
+  ];
+
+  shellPanels.forEach((key) => {
+    const panel = elements[key];
+    if (!panel) {
+      return;
+    }
+
+    panel.classList.toggle("view-hidden", !visiblePanels.has(key));
+  });
+
+  const showMissionHeader = view === "mission-control";
+  if (elements.topbarPanel) {
+    elements.topbarPanel.classList.toggle("view-hidden", !showMissionHeader);
+  }
+
+  if (elements.kpiSection) {
+    elements.kpiSection.classList.toggle("view-hidden", !showMissionHeader);
+  }
+
+  if (elements.missionStrip) {
+    elements.missionStrip.classList.toggle("view-hidden", !showMissionHeader);
+  }
+
+  elements.navItems.forEach((item) => {
+    item.classList.toggle("active", item.dataset.view === view);
+  });
+}
+
+function setupNavigation() {
+  elements.navItems.forEach((item) => {
+    item.addEventListener("click", () => {
+      setActiveView(item.dataset.view);
+    });
+  });
+
+  setActiveView(activeView);
+}
 
 function getExecutionStatusClass(status) {
   if (status === "completed") {
@@ -1395,6 +1491,7 @@ async function runMissionCommand() {
 }
 
 function init() {
+  setupNavigation();
   renderWebsiteOptions();
 
   const initialSite = missionData.websites[0];
