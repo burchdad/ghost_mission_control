@@ -899,6 +899,229 @@ select:focus-visible {
   }
 }
 
+/* ============================================================================ */
+/* STRATEGIC GOALS STYLING (Layer 6) */
+/* ============================================================================ */
+
+.strategic-goals {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.strategy-item {
+  border-radius: 10px;
+  border: 1px solid rgba(145, 194, 220, 0.22);
+  background: rgba(10, 25, 44, 0.86);
+  padding: 1rem;
+}
+
+.strategy-primary {
+  border-color: rgba(0, 245, 158, 0.45);
+  background: rgba(0, 245, 158, 0.08);
+}
+
+.strategy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.strategy-header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.strategy-score {
+  display: inline-block;
+  background: rgba(0, 245, 158, 0.2);
+  color: var(--green);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.strategy-goal-name {
+  margin: 0.3rem 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.strategy-reasoning {
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.strategy-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.5rem;
+  margin: 0.8rem 0;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid rgba(145, 194, 220, 0.15);
+}
+
+.metric-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.metric-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.strategy-steps {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(145, 194, 220, 0.15);
+}
+
+.steps-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.step {
+  margin: 0.3rem 0;
+  padding-left: 1rem;
+  font-size: 0.8rem;
+  color: #a3d5ff;
+  position: relative;
+}
+
+.step::before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: var(--green);
+}
+
+.strategy-secondary {
+  background: rgba(55, 182, 255, 0.08);
+  border-color: rgba(55, 182, 255, 0.35);
+}
+
+.secondary-goals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.secondary-goal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  border: 1px solid rgba(55, 182, 255, 0.2);
+}
+
+.goal-name {
+  font-size: 0.85rem;
+  color: var(--text);
+  text-transform: capitalize;
+}
+
+.goal-score {
+  background: rgba(55, 182, 255, 0.2);
+  color: var(--blue);
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.strategy-allocation {
+  background: rgba(255, 209, 102, 0.08);
+  border-color: rgba(255, 209, 102, 0.35);
+}
+
+.allocation-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.allocation-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.allocation-item label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.allocation-bar {
+  height: 20px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 209, 102, 0.3);
+  overflow: hidden;
+}
+
+.allocation-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--yellow), rgba(255, 209, 102, 0.6));
+  transition: width 0.3s ease;
+}
+
+.allocation-item span {
+  font-size: 0.75rem;
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+}
+
+.strategy-rationale {
+  background: rgba(157, 125, 255, 0.08);
+  border-color: rgba(157, 125, 255, 0.35);
+}
+
+.rationale-item {
+  margin: 0.4rem 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.strategy-empty {
+  text-align: center;
+  padding: 2rem 1rem;
+  color: var(--muted);
+}
+
 @keyframes pulse {
   0%,
   100% {

@@ -550,6 +550,180 @@ function getOrCreatePredictiveSignals(siteId) {
   return fresh;
 }
 
+// ============================================================================
+// LAYER 6: STRATEGIC REASONING
+// ============================================================================
+// System analyzes multiple competing goals and recommends priority allocation
+// Factors: predicted risks, agent availability, resource constraints, goal urgency
+
+function analyzeStrategicGoals(siteId) {
+  // Collect current system state
+  const signals = predictiveSignals.filter((s) => s.siteId === siteId);
+  const agents = [...agentIntelligence.values()];
+  
+  // Define competing goals with metrics
+  const goalMetrics = {
+    seo_recovery: {
+      urgency: 8,  // Out of 10
+      estimatedDuration: 72, // hours
+      resourcesRequired: ["SEO Optimizer Agent", "Analytics Agent", "Content Scraper Agent"],
+      impactOnRevenue: "medium",  // leads → conversion → revenue
+      riskIfIgnored: "ranking erosion accelerates",
+      successProbability: 0.75
+    },
+    lead_funnel_optimization: {
+      urgency: 9,  // Higher - immediate ROI
+      estimatedDuration: 24, // hours
+      resourcesRequired: ["Funnel Monitor Agent", "Analytics Agent", "Lead Router Agent"],
+      impactOnRevenue: "high",  // direct leads
+      riskIfIgnored: "conversion rate decline continues",
+      successProbability: 0.85
+    },
+    content_expansion: {
+      urgency: 6,
+      estimatedDuration: 48, // hours
+      resourcesRequired: ["Content Scraper Agent", "Social Publisher Agent"],
+      impactOnRevenue: "low",  // indirect
+      riskIfIgnored: "content gap widens",
+      successProbability: 0.80
+    },
+    social_recovery: {
+      urgency: 5,
+      estimatedDuration: 12, // hours
+      resourcesRequired: ["Social Publisher Agent"],
+      impactOnRevenue: "low",  // brand awareness, not direct
+      riskIfIgnored: "engagement declines gradually",
+      successProbability: 0.90
+    }
+  };
+
+  // Score each goal considering: urgency, agent availability, risk signals, ROI
+  const scoredGoals = Object.entries(goalMetrics).map(([goalName, metrics]) => {
+    // Agent availability score (how many required agents are highly confident)
+    const availableAgents = metrics.resourcesRequired.filter((agentName) => {
+      const profile = [...agentIntelligence.values()].find((a) => a.name === agentName);
+      return profile && profile.confidence >= 80;
+    });
+    const agencyScore = (availableAgents.length / metrics.resourcesRequired.length) * 100;
+
+    // Risk mitigation score (how many predictive signals relate to this goal)
+    const relatedSignals = signals.filter((s) => {
+      const signalText = s.message.toLowerCase();
+      return signalText.includes(goalName.replace(/_/g, " ")) ||
+             (goalName.includes("seo") && (signalText.includes("seo") || signalText.includes("ranking"))) ||
+             (goalName.includes("funnel") && (signalText.includes("funnel") || signalText.includes("conversion"))) ||
+             (goalName.includes("content") && (signalText.includes("content") || signalText.includes("scraper"))) ||
+             (goalName.includes("social") && signalText.includes("social"));
+    });
+    const riskMitigationScore = relatedSignals.length * 15; // 15 points per signal
+
+    // ROI score (revenue impact + probability)
+    const revenueMultiplier = metrics.impactOnRevenue === "high" ? 1.5 : metrics.impactOnRevenue === "medium" ? 1.0 : 0.6;
+    const roiScore = (metrics.successProbability * 100) * revenueMultiplier;
+
+    // Time efficiency score (urgency vs duration - prefer quick wins)
+    const efficiencyScore = (metrics.urgency * 10) / (metrics.estimatedDuration / 24);
+
+    // Total score (weighted combination)
+    const totalScore = 
+      (agencyScore * 0.2) +
+      (riskMitigationScore * 0.3) +
+      (roiScore * 0.3) +
+      (efficiencyScore * 0.2);
+
+    return {
+      goal: goalName,
+      score: Math.round(totalScore),
+      urgency: metrics.urgency,
+      duration: metrics.estimatedDuration,
+      resources: metrics.resourcesRequired,
+      agencyScore: Math.round(agencyScore),
+      riskMitigationScore: Math.round(Math.min(riskMitigationScore, 100)),
+      roiScore: Math.round(roiScore),
+      efficiencyScore: Math.round(efficiencyScore),
+      successProbability: metrics.successProbability,
+      riskIfIgnored: metrics.riskIfIgnored,
+      nextSteps: generateNextSteps(goalName)
+    };
+  });
+
+  // Sort by score (highest priority first)
+  const sortedGoals = scoredGoals.sort((a, b) => b.score - a.score);
+
+  // Create strategic recommendation
+  const topGoal = sortedGoals[0];
+  const secondaryGoals = sortedGoals.slice(1);
+
+  return {
+    primaryGoal: topGoal.goal,
+    primaryReasoning: `Goal prioritized due to: ${topGoal.agencyScore}% agent availability, ${topGoal.riskMitigationScore}% risk coverage, ${topGoal.roiScore}% ROI potential`,
+    primaryScore: topGoal.score,
+    secondaryGoals: secondaryGoals.map((g) => ({ goal: g.goal, score: g.score })),
+    allGoals: sortedGoals,
+    recommendedAllocation: {
+      primary: 50,  // 50% resources to top goal
+      secondary: 30,  // 30% to second goal
+      contingency: 20  // 20% for emergencies
+    },
+    rationale: generateStrategicRationale(sortedGoals, signals),
+    generatedAt: new Date().toISOString(),
+    siteId
+  };
+}
+
+function generateNextSteps(goal) {
+  const stepMap = {
+    seo_recovery: [
+      "1. Run SEO breakpoint analysis (2h)",
+      "2. Apply critical schema patches (1h)",
+      "3. Generate recovery content for top 10 keywords (4h)",
+      "4. Monitor reindex signals (24h)",
+      "5. Track ranking recovery trend (48h)"
+    ],
+    lead_funnel_optimization: [
+      "1. Identify drop-off point in funnel (30m)",
+      "2. A/B test CTA variant on step 2 (4h)",
+      "3. Route high-intent leads through winning variant (1h)",
+      "4. Monitor conversion lift (24h)"
+    ],
+    content_expansion: [
+      "1. Identify content gaps by keyword cluster (1h)",
+      "2. Scrape competitor content for reference (2h)",
+      "3. Generate 5 target articles (8h)",
+      "4. Publish and distribute to social channels (2h)"
+    ],
+    social_recovery: [
+      "1. Audit posting schedule and engagement (1h)",
+      "2. Re-auth social API tokens (30m)",
+      "3. Resume posting on primary channels (ongoing)",
+      "4. Monitor engagement recovery (24h)"
+    ]
+  };
+  return stepMap[goal] || [];
+}
+
+function generateStrategicRationale(sortedGoals, signals) {
+  const top = sortedGoals[0];
+  const rationale = [];
+
+  if (signals.length > 0) {
+    rationale.push(`${signals.length} predictive risks detected. Prioritizing goals that mitigate most critical signals.`);
+  }
+
+  rationale.push(`"${top.goal}" chosen: ${top.urgency}/10 urgency, ${top.successProbability * 100}% success probability, ${top.riskIfIgnored}`);
+
+  if (top.agencyScore < 70) {
+    rationale.push(`⚠️  Only ${top.agencyScore}% agent availability for primary goal. May require escalation.`);
+  }
+
+  if (sortedGoals.length > 1) {
+    const secondary = sortedGoals[1];
+    rationale.push(`Secondary goal: "${secondary.goal}" (score: ${secondary.score}). Can execute in parallel if resources allow.`);
+  }
+
+  return rationale;
+}
+
 function getRankedAgents(siteId) {
   const ranked = [...agentIntelligence.values()]
     .map((profile) => ({
@@ -1280,6 +1454,13 @@ const server = http.createServer((request, response) => {
       generatedAt: new Date().toISOString(),
       signalCount: signals.length
     });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/strategy") {
+    const siteId = url.searchParams.get("siteId") || "unknown-site";
+    const strategy = analyzeStrategicGoals(siteId);
+    sendJson(response, 200, strategy);
     return;
   }
 

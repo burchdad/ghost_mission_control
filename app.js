@@ -524,6 +524,7 @@ const elements = {
   agentSnapshot: document.getElementById("agentSnapshot"),
   agentCollabFeed: document.getElementById("agentCollabFeed"),
   predictiveAlerts: document.getElementById("predictiveAlerts"),
+  strategicGoals: document.getElementById("strategicGoals"),
   buildQueueColumns: document.getElementById("buildQueueColumns")
 };
 
@@ -947,6 +948,115 @@ function renderPredictiveAlerts(signals) {
     .join("");
 }
 
+async function loadStrategicGoals(siteId = activeSiteId) {
+  try {
+    const response = await fetch(`/mission/strategy?siteId=${encodeURIComponent(siteId)}`);
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json();
+    renderStrategicGoals(payload);
+  } catch {
+    renderStrategicGoals(null);
+  }
+}
+
+function renderStrategicGoals(strategy) {
+  if (!elements.strategicGoals) {
+    return;
+  }
+
+  if (!strategy) {
+    elements.strategicGoals.innerHTML = `<article class="strategy-item strategy-empty"><h3>Unable to load strategy</h3></article>`;
+    return;
+  }
+
+  const primaryGoal = strategy.allGoals[0];
+  const allocation = strategy.recommendedAllocation;
+
+  elements.strategicGoals.innerHTML = `
+    <article class="strategy-primary">
+      <div class="strategy-header">
+        <h3>Primary Goal</h3>
+        <span class="strategy-score">${primaryGoal.score}</span>
+      </div>
+      <p class="strategy-goal-name">${primaryGoal.goal.replace(/_/g, " ").toUpperCase()}</p>
+      <p class="strategy-reasoning">${strategy.primaryReasoning}</p>
+      <div class="strategy-metrics">
+        <div class="metric">
+          <span class="metric-label">Urgency</span>
+          <span class="metric-value">${primaryGoal.urgency}/10</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Duration</span>
+          <span class="metric-value">${primaryGoal.duration}h</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Success</span>
+          <span class="metric-value">${Math.round(primaryGoal.successProbability * 100)}%</span>
+        </div>
+        <div class="metric">
+          <span class="metric-label">Risk if ignored</span>
+          <span class="metric-value">${primaryGoal.riskIfIgnored}</span>
+        </div>
+      </div>
+      <div class="strategy-steps">
+        <p class="steps-label">Next Steps:</p>
+        ${primaryGoal.nextSteps.map((step) => `<div class="step">${step}</div>`).join("")}
+      </div>
+    </article>
+
+    <article class="strategy-secondary">
+      <h3>Secondary Goals</h3>
+      <div class="secondary-goals-list">
+        ${strategy.secondaryGoals
+          .map(
+            (goal) => `
+          <div class="secondary-goal">
+            <span class="goal-name">${goal.goal.replace(/_/g, " ")}</span>
+            <span class="goal-score">${goal.score}</span>
+          </div>
+        `
+          )
+          .join("")}
+      </div>
+    </article>
+
+    <article class="strategy-allocation">
+      <h3>Resource Allocation</h3>
+      <div class="allocation-bars">
+        <div class="allocation-item">
+          <label>Primary Goal</label>
+          <div class="allocation-bar">
+            <div class="allocation-fill" style="width: ${allocation.primary}%"></div>
+          </div>
+          <span>${allocation.primary}%</span>
+        </div>
+        <div class="allocation-item">
+          <label>Secondary Goals</label>
+          <div class="allocation-bar">
+            <div class="allocation-fill" style="width: ${allocation.secondary}%"></div>
+          </div>
+          <span>${allocation.secondary}%</span>
+        </div>
+        <div class="allocation-item">
+          <label>Contingency</label>
+          <div class="allocation-bar">
+            <div class="allocation-fill" style="width: ${allocation.contingency}%"></div>
+          </div>
+          <span>${allocation.contingency}%</span>
+        </div>
+      </div>
+    </article>
+
+    <article class="strategy-rationale">
+      <h3>Strategic Rationale</h3>
+      ${strategy.rationale.map((reason) => `<p class="rationale-item">• ${reason}</p>`).join("")}
+    </article>
+  `;
+}
+
 async function loadAgentIntelligence(siteId = activeSiteId) {
   try {
     const response = await fetch(`/mission/agents?siteId=${encodeURIComponent(siteId)}`);
@@ -1032,6 +1142,7 @@ async function pollExecutionStatus() {
     await loadCommandMemory();
     await loadAgentIntelligence(activeSiteId);
     await loadPredictiveSignals(activeSiteId);
+    await loadStrategicGoals(activeSiteId);
     renderCollaborationFeed(execution.collaborations || []);
 
     if (execution.status === "running" || execution.status === "queued" || execution.status === "attention") {
@@ -1184,11 +1295,13 @@ function init() {
   loadCommandMemory();
   loadAgentIntelligence(initialSite.id);
   loadPredictiveSignals(initialSite.id);
+  loadStrategicGoals(initialSite.id);
   renderCollaborationFeed([]);
 
   elements.siteSelect.addEventListener("change", (event) => {
     renderSite(event.target.value);
     loadAgentIntelligence(event.target.value);
+    loadStrategicGoals(event.target.value);
   });
 
   elements.commandSend.addEventListener("click", runMissionCommand);
