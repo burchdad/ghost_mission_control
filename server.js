@@ -31,7 +31,61 @@ function sendHead(response, statusCode, headers = {}) {
 }
 
 const executionRuns = new Map();
+const commandHistory = [];
+const agentIntelligence = new Map();
+const MAX_COMMAND_HISTORY = 25;
 const EXECUTION_TTL_MS = 60 * 60 * 1000;
+
+const collabGraph = {
+  patch_schema_and_metadata: {
+    to: "Content Scraper Agent",
+    message: "Schema patches applied. Generate supporting content for the recovered keyword cluster."
+  },
+  generate_new_content_batch: {
+    to: "Social Publisher Agent",
+    message: "Content batch ready. Distribute across authority channels for maximum reach."
+  },
+  run_dropoff_diagnostics: {
+    to: "Funnel Monitor Agent",
+    message: "Drop-off analysis complete. Apply uplift recommendations to the weakest conversion step."
+  },
+  expand_campaign_reach: {
+    to: "Social Publisher Agent",
+    message: "Campaign expansion active. Align social content with new audience targeting signals."
+  },
+  launch_cta_experiment: {
+    to: "Lead Router Agent",
+    message: "CTA experiment is live. Pre-stage lead routing for incoming conversion events."
+  },
+  route_followup_automation: {
+    to: "Funnel Monitor Agent",
+    message: "Follow-up sequences dispatched. Monitor lead progression through the next funnel stage."
+  },
+  boost_top_campaign: {
+    to: "Analytics Agent",
+    message: "Budget shift executed. Track conversion lift across the priority audience cohort."
+  },
+  trigger_social_distribution: {
+    to: "Analytics Agent",
+    message: "Distribution activated. Monitor engagement and click-through quality signals."
+  },
+  monitor_rank_recovery: {
+    to: "SEO Optimizer Agent",
+    message: "Rank monitoring running. Flag any page that fails to recover within the 48-hour window."
+  },
+  stage_rollout_validation: {
+    to: "Automation Supervisor",
+    message: "Validation window active. Confirm baseline metrics before full deployment."
+  },
+  identify_seo_breakpoints: {
+    to: "Analytics Agent",
+    message: "SEO breakpoints identified. Begin ranking trend analysis for flagged pages."
+  },
+  guardrail_cost_efficiency: {
+    to: "Campaign Orchestrator",
+    message: "Efficiency guardrails set. Reallocate suppressed spend to top-performing segments."
+  }
+};
 
 function createRunId() {
   return `run_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -49,7 +103,229 @@ function normalizePriority(priority) {
   return "normal";
 }
 
-function buildDispatchActions(command, category, priority) {
+function getDecisionRationale(category) {
+  const reasons = {
+    lead: [
+      "Lead-flow command detected with conversion intent keywords.",
+      "Funnel and campaign modules are most directly tied to near-term pipeline output.",
+      "Follow-up latency controls are included to protect lead quality conversion."
+    ],
+    seo: [
+      "SEO recovery command matched ranking and metadata risk patterns.",
+      "Technical repair actions prioritized before new content expansion.",
+      "Recovery monitoring is required to validate reindex effectiveness."
+    ],
+    funnel: [
+      "Conversion drop-off command indicates mid-funnel friction.",
+      "Experiment-first path selected to avoid broad unvalidated changes.",
+      "Diagnostics and uplift validation are chained for fast learning loops."
+    ],
+    traffic: [
+      "Scale command maps to acquisition and distribution systems.",
+      "Traffic expansion uses quality guardrails to protect efficiency.",
+      "Channel reweighting included to reduce low-intent spend leakage."
+    ],
+    agent: [
+      "Deployment command maps to build queue and automation supervisor layer.",
+      "Observability is required before release to avoid blind automation.",
+      "Staged rollout chosen to reduce operational risk."
+    ],
+    general: [
+      "Command did not strongly match a single domain.",
+      "Dependency mapping executed before action dispatch.",
+      "Priority policy applied to avoid unsafe escalation."
+    ]
+  };
+
+  return reasons[category] || reasons.general;
+}
+
+function pushCommandHistory(entry) {
+  commandHistory.unshift(entry);
+  if (commandHistory.length > MAX_COMMAND_HISTORY) {
+    commandHistory.length = MAX_COMMAND_HISTORY;
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function ensureAgentProfile(agentName) {
+  const existing = agentIntelligence.get(agentName);
+  if (existing) {
+    return existing;
+  }
+
+  const created = {
+    name: agentName,
+    confidence: 82,
+    trend: "Steady",
+    successfulActions: 0,
+    failedActions: 0,
+    retriedActions: 0,
+    dispatches: 0,
+    lastDecision: "Awaiting command dispatch.",
+    lastOutcome: "No outcomes recorded.",
+    updatedAt: new Date().toISOString(),
+    siteCompletions: {}
+  };
+
+  agentIntelligence.set(agentName, created);
+  return created;
+}
+
+function setTrend(profile, previousConfidence) {
+  const delta = profile.confidence - previousConfidence;
+  if (delta > 0.2) {
+    profile.trend = "Up";
+    return;
+  }
+
+  if (delta < -0.2) {
+    profile.trend = "Down";
+    return;
+  }
+
+  profile.trend = "Steady";
+}
+
+function adjustConfidence(profile, delta) {
+  const previous = profile.confidence;
+  profile.confidence = clamp(Math.round((profile.confidence + delta) * 10) / 10, 45, 99);
+  setTrend(profile, previous);
+}
+
+function recordAgentEvent(action, eventType, run) {
+  const profile = ensureAgentProfile(action.agent);
+  const now = new Date().toISOString();
+
+  if (eventType === "running") {
+    profile.dispatches += 1;
+    profile.lastDecision = `${action.action} started on ${action.target}.`;
+  }
+
+  if (eventType === "failed") {
+    profile.failedActions += 1;
+    adjustConfidence(profile, -2.6);
+    profile.lastOutcome = `${action.action} hit a transient failure.`;
+  }
+
+  if (eventType === "retrying") {
+    profile.retriedActions += 1;
+    profile.lastDecision = `Retrying ${action.action} after transient failure.`;
+  }
+
+  if (eventType === "completed") {
+    profile.successfulActions += 1;
+    adjustConfidence(profile, action.attempts > 1 ? 0.8 : 1.4);
+    profile.lastOutcome = `${action.action} completed successfully.`;
+    profile.siteCompletions[run.siteId] = (profile.siteCompletions[run.siteId] || 0) + 1;
+  }
+
+  profile.updatedAt = now;
+}
+
+function triggerCollaboration(action, run) {
+  const collab = collabGraph[action.action];
+  if (!collab) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const entry = {
+    id: `collab_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    from: action.agent,
+    to: collab.to,
+    triggerAction: action.action,
+    message: collab.message,
+    timestamp: now,
+    status: "delivered"
+  };
+
+  run.collaborations.push(entry);
+  run.history.push(`${now}: [COLLAB] ${action.agent} \u2192 ${collab.to}: "${collab.message.slice(0, 75)}"\ `);
+
+  const toProfile = ensureAgentProfile(collab.to);
+  toProfile.lastDecision = `Task from ${action.agent}: ${collab.message.slice(0, 60)}`;
+  toProfile.updatedAt = now;
+}
+
+function getRankedAgents(siteId) {
+  const ranked = [...agentIntelligence.values()]
+    .map((profile) => ({
+      name: profile.name,
+      confidence: profile.confidence,
+      trend: profile.trend,
+      successfulActions: profile.successfulActions,
+      failedActions: profile.failedActions,
+      retriedActions: profile.retriedActions,
+      dispatches: profile.dispatches,
+      lastDecision: profile.lastDecision,
+      lastOutcome: profile.lastOutcome,
+      siteCompletions: profile.siteCompletions[siteId] || 0,
+      updatedAt: profile.updatedAt
+    }))
+    .sort((a, b) => {
+      if (b.confidence !== a.confidence) {
+        return b.confidence - a.confidence;
+      }
+
+      return b.successfulActions - a.successfulActions;
+    });
+
+  return ranked.map((entry, index) => ({
+    ...entry,
+    rank: index + 1
+  }));
+}
+
+function getFallbackAgent(agentName) {
+  const fallbackMap = {
+    "SEO Optimizer Agent": "Analytics Agent",
+    "Lead Router Agent": "Automation Supervisor",
+    "Social Publisher Agent": "Campaign Orchestrator",
+    "Content Scraper Agent": "Analytics Agent",
+    "Campaign Orchestrator": "Automation Supervisor",
+    "Funnel Monitor Agent": "Analytics Agent"
+  };
+
+  return fallbackMap[agentName] || "Automation Supervisor";
+}
+
+function getDispatchWeight(agentName, siteId) {
+  const profile = ensureAgentProfile(agentName);
+  const siteCompletions = profile.siteCompletions[siteId] || 0;
+  const siteBonus = Math.min(siteCompletions * 0.35, 4);
+  const weightedConfidence = clamp(profile.confidence + siteBonus, 45, 99);
+
+  if (weightedConfidence >= 90) {
+    return {
+      mode: "primary",
+      supervision: "Autonomous",
+      weightedConfidence,
+      fallbackAgent: null
+    };
+  }
+
+  if (weightedConfidence >= 76) {
+    return {
+      mode: "monitored",
+      supervision: "Guarded Monitoring",
+      weightedConfidence,
+      fallbackAgent: getFallbackAgent(agentName)
+    };
+  }
+
+  return {
+    mode: "fallback",
+    supervision: "Supervised Fallback",
+    weightedConfidence,
+    fallbackAgent: getFallbackAgent(agentName)
+  };
+}
+
+function buildDispatchActions(command, category, priority, siteId) {
   const normalizedPriority = normalizePriority(priority);
 
   const templates = {
@@ -213,14 +489,26 @@ function buildDispatchActions(command, category, priority) {
 
   const selected = templates[category] || templates.general;
 
-  return selected.map((entry, index) => ({
-    id: `a${index + 1}`,
-    priority: normalizedPriority,
-    status: "pending",
-    attempts: 0,
-    lastUpdate: new Date().toISOString(),
-    ...entry
-  }));
+  return selected.map((entry, index) => {
+    const weight = getDispatchWeight(entry.agent, siteId);
+    const routedAgent = weight.mode === "fallback" ? weight.fallbackAgent : entry.agent;
+
+    return {
+      id: `a${index + 1}`,
+      priority: normalizedPriority,
+      status: "pending",
+      attempts: 0,
+      lastUpdate: new Date().toISOString(),
+      ...entry,
+      agent: routedAgent,
+      plannedAgent: entry.agent,
+      dispatchMode: weight.mode,
+      supervision: weight.supervision,
+      weightedConfidence: weight.weightedConfidence,
+      fallbackAgent: weight.fallbackAgent,
+      detail: `${entry.detail} Dispatch: ${weight.mode} (${Math.round(weight.weightedConfidence)}% confidence).`
+    };
+  });
 }
 
 function shouldRetry(action, command) {
@@ -280,8 +568,10 @@ function stepExecution(run) {
     current.status = "running";
     current.attempts += 1;
     current.lastUpdate = now;
+    recordAgentEvent(current, "running", run);
     run.history.push(`${now}: ${current.action} started (attempt ${current.attempts}).`);
     updateRunStatus(run);
+    updateCommandHistoryFromRun(run);
     run.updatedAt = now;
     return;
   }
@@ -291,16 +581,21 @@ function stepExecution(run) {
       current.status = "failed";
       current.retrySimulated = true;
       current.lastUpdate = now;
+      recordAgentEvent(current, "failed", run);
       run.history.push(`${now}: ${current.action} failed transiently. Preparing retry.`);
       updateRunStatus(run);
+      updateCommandHistoryFromRun(run);
       run.updatedAt = now;
       return;
     }
 
     current.status = "completed";
     current.lastUpdate = now;
+    recordAgentEvent(current, "completed", run);
+    triggerCollaboration(current, run);
     run.history.push(`${now}: ${current.action} completed.`);
     updateRunStatus(run);
+    updateCommandHistoryFromRun(run);
     run.updatedAt = now;
     return;
   }
@@ -308,8 +603,10 @@ function stepExecution(run) {
   if (current.status === "failed") {
     current.status = "retrying";
     current.lastUpdate = now;
+    recordAgentEvent(current, "retrying", run);
     run.history.push(`${now}: ${current.action} retrying.`);
     updateRunStatus(run);
+    updateCommandHistoryFromRun(run);
     run.updatedAt = now;
     return;
   }
@@ -320,6 +617,7 @@ function stepExecution(run) {
     current.lastUpdate = now;
     run.history.push(`${now}: ${current.action} resumed (attempt ${current.attempts}).`);
     updateRunStatus(run);
+    updateCommandHistoryFromRun(run);
     run.updatedAt = now;
   }
 }
@@ -340,6 +638,20 @@ function startExecutionLoop(run) {
 }
 
 function createExecutionRun(command, siteId, plan) {
+  const historyEntry = {
+    id: `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    command,
+    siteId,
+    category: plan.category || "general",
+    priority: plan.priority,
+    summary: plan.summary,
+    createdAt: new Date().toISOString(),
+    status: "queued",
+    impact: "Execution in progress"
+  };
+
+  pushCommandHistory(historyEntry);
+
   const run = {
     id: createRunId(),
     command,
@@ -348,13 +660,41 @@ function createExecutionRun(command, siteId, plan) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     completedAt: null,
-    actions: buildDispatchActions(command, plan.category || "general", plan.priority),
-    history: []
+    actions: buildDispatchActions(command, plan.category || "general", plan.priority, siteId),
+    history: [],
+    collaborations: [],
+    historyEntryId: historyEntry.id
   };
+
+  run.actions.forEach((action) => {
+    ensureAgentProfile(action.agent);
+    if (action.plannedAgent && action.plannedAgent !== action.agent) {
+      ensureAgentProfile(action.plannedAgent);
+      run.history.push(
+        `${new Date().toISOString()}: ${action.action} delegated from ${action.plannedAgent} to ${action.agent} due to confidence weighting.`
+      );
+    }
+  });
 
   executionRuns.set(run.id, run);
   startExecutionLoop(run);
   return run;
+}
+
+function updateCommandHistoryFromRun(run) {
+  const entry = commandHistory.find((item) => item.id === run.historyEntryId);
+  if (!entry) {
+    return;
+  }
+
+  entry.status = run.status;
+  if (run.status === "completed") {
+    entry.impact = "Execution completed with dispatched actions resolved.";
+  } else if (run.status === "attention") {
+    entry.impact = "Execution required retry handling before progression.";
+  } else if (run.status === "running") {
+    entry.impact = "Execution actively dispatching action chain.";
+  }
 }
 
 function getCommandPlan(command, siteId) {
@@ -566,12 +906,14 @@ const server = http.createServer((request, response) => {
 
         const plan = getCommandPlan(command, siteId);
         const execution = createExecutionRun(command, siteId, plan);
+        const rationale = getDecisionRationale(plan.category || "general");
 
         sendJson(response, 200, {
           command,
           siteId,
           receivedAt: new Date().toISOString(),
           ...plan,
+          rationale,
           execution: {
             id: execution.id,
             status: execution.status,
@@ -579,7 +921,8 @@ const server = http.createServer((request, response) => {
             createdAt: execution.createdAt,
             updatedAt: execution.updatedAt,
             completedAt: execution.completedAt
-          }
+          },
+          memory: commandHistory.slice(0, 6)
         });
       } catch {
         sendJson(response, 400, { error: "Invalid JSON payload" });
@@ -604,10 +947,26 @@ const server = http.createServer((request, response) => {
       siteId: run.siteId,
       status: run.status,
       actions: run.actions,
-      history: run.history.slice(-8),
+      history: run.history.slice(-10),
+      collaborations: run.collaborations,
       createdAt: run.createdAt,
       updatedAt: run.updatedAt,
       completedAt: run.completedAt
+    });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/commands") {
+    sendJson(response, 200, {
+      commands: commandHistory.slice(0, 12)
+    });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/agents") {
+    const siteId = url.searchParams.get("siteId") || "unknown-site";
+    sendJson(response, 200, {
+      agents: getRankedAgents(siteId)
     });
     return;
   }

@@ -513,6 +513,7 @@ const elements = {
   commandSend: document.getElementById("commandSend"),
   commandResponse: document.getElementById("commandResponse"),
   commandPlan: document.getElementById("commandPlan"),
+  commandMemory: document.getElementById("commandMemory"),
   kpiSection: document.getElementById("kpiSection"),
   missionSummary: document.getElementById("missionSummary"),
   missionStatuses: document.getElementById("missionStatuses"),
@@ -521,6 +522,7 @@ const elements = {
   activityFeed: document.getElementById("activityFeed"),
   crossSystemInsights: document.getElementById("crossSystemInsights"),
   agentSnapshot: document.getElementById("agentSnapshot"),
+  agentCollabFeed: document.getElementById("agentCollabFeed"),
   buildQueueColumns: document.getElementById("buildQueueColumns")
 };
 
@@ -544,6 +546,10 @@ let activeCommandPlan = {
   category: "general",
   objective: "Dispatch a command to generate coordinated system actions.",
   owners: ["Automation Supervisor"],
+  rationale: [
+    "No directive has been evaluated yet.",
+    "Dispatch a mission command to generate explanation-aware actions."
+  ],
   systemActions: [
     "Analyze command intent.",
     "Map affected systems.",
@@ -554,6 +560,14 @@ let activeCommandPlan = {
   expectedImpact: "A live execution plan will appear here after command dispatch.",
   execution: null
 };
+
+let commandMemory = [];
+let liveAgentIntelligence = [];
+let activeSiteId = missionData.websites[0]?.id || "";
+
+function getActiveSite() {
+  return missionData.websites.find((entry) => entry.id === activeSiteId) ?? missionData.websites[0];
+}
 
 let executionPollTimer = null;
 
@@ -600,6 +614,12 @@ function renderExecutionPanel() {
       (action) => `<li>
         <span class="exec-status ${getExecutionStatusClass(action.status)}">${action.status}</span>
         ${action.action} -> ${action.target} | ${action.agent}
+        <div class="exec-detail">${action.detail || "No drilldown detail available."}</div>
+        <div class="exec-detail">Dispatch: ${action.dispatchMode || "primary"} | Supervision: ${action.supervision || "Autonomous"}</div>
+        ${action.plannedAgent && action.plannedAgent !== action.agent
+          ? `<div class="exec-detail">Delegated From: ${action.plannedAgent}</div>`
+          : ""}
+        <div class="exec-detail exec-outcome">Attempts: ${action.attempts}</div>
       </li>`
     )
     .join("");
@@ -626,6 +646,60 @@ function renderExecutionPanel() {
       </ul>
     </article>
   `;
+}
+
+function renderCollaborationFeed(collaborations) {
+  if (!elements.agentCollabFeed) {
+    return;
+  }
+
+  if (!collaborations || collaborations.length === 0) {
+    elements.agentCollabFeed.innerHTML = `
+      <article class="collab-item">
+        <p>No inter-agent messages yet. Collaboration events will appear here as agents hand off work during execution.</p>
+      </article>
+    `;
+    return;
+  }
+
+  elements.agentCollabFeed.innerHTML = [...collaborations]
+    .reverse()
+    .map(
+      (collab) => `<article class="collab-item">
+        <div class="collab-header">
+          <span class="collab-from">${collab.from}</span>
+          <span class="collab-arrow">&#8594;</span>
+          <span class="collab-to">${collab.to}</span>
+          <span class="exec-status exec-ok">${collab.status}</span>
+        </div>
+        <p class="collab-message">${collab.message}</p>
+        <p class="collab-meta">Triggered by: ${collab.triggerAction}</p>
+      </article>`
+    )
+    .join("");
+}
+
+function renderCommandMemory() {
+  if (!commandMemory.length) {
+    elements.commandMemory.innerHTML = `
+      <article class="command-memory-item">
+        <h3>No Commands Yet</h3>
+        <p>Dispatched commands and outcomes will appear here.</p>
+      </article>
+    `;
+    return;
+  }
+
+  elements.commandMemory.innerHTML = commandMemory
+    .map(
+      (entry) => `<article class="command-memory-item">
+        <h3>${entry.command}</h3>
+        <p>${entry.summary}</p>
+        <p>Status: ${entry.status} | Priority: ${entry.priority}</p>
+        <p>${entry.impact}</p>
+      </article>`
+    )
+    .join("");
 }
 
 function setStatusBadge(status) {
@@ -740,7 +814,49 @@ function renderActivity(site) {
 }
 
 function renderAgents(site) {
-  const rankedAgents = [...site.agents].sort((a, b) => a.rank - b.rank);
+  const byName = new Map(liveAgentIntelligence.map((entry) => [entry.name, entry]));
+  const mergedAgents = site.agents.map((agent) => {
+    const live = byName.get(agent.name);
+    if (!live) {
+      return {
+        ...agent,
+        dynamicConfidence: null,
+        dynamicOutcome: null,
+        rank: agent.rank,
+        trend: agent.trend,
+        efficiency: agent.efficiency
+      };
+    }
+
+    return {
+      ...agent,
+      rank: live.rank,
+      trend: live.trend,
+      efficiency: `${Math.round(live.confidence)}%`,
+      dynamicConfidence: `${Math.round(live.confidence)}%`,
+      dynamicOutcome: live.lastOutcome,
+      statline: `${live.successfulActions} success | ${live.failedActions} fail | ${live.retriedActions} retries`
+    };
+  });
+
+  const extraAgents = liveAgentIntelligence
+    .filter((entry) => !mergedAgents.some((agent) => agent.name === entry.name))
+    .filter((entry) => entry.siteCompletions > 0)
+    .map((entry) => ({
+      name: entry.name,
+      status: "Active",
+      tone: entry.trend === "Down" ? "yellow" : "blue",
+      statline: `${entry.successfulActions} success | ${entry.failedActions} fail | ${entry.retriedActions} retries`,
+      rank: entry.rank,
+      trend: entry.trend,
+      efficiency: `${Math.round(entry.confidence)}%`,
+      dynamicConfidence: `${Math.round(entry.confidence)}%`,
+      dynamicOutcome: entry.lastOutcome
+    }));
+
+  const rankedAgents = [...mergedAgents, ...extraAgents]
+    .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
+    .slice(0, 6);
 
   elements.agentSnapshot.innerHTML = rankedAgents
     .map(
@@ -748,6 +864,8 @@ function renderAgents(site) {
         <h3>${agent.name}</h3>
         <p class="pill ${toneClass[agent.tone] ?? "tone-gray"}">${agent.status}</p>
         <p class="statline">${agent.statline}</p>
+        ${agent.dynamicConfidence ? `<p class="statline">Confidence: ${agent.dynamicConfidence}</p>` : ""}
+        ${agent.dynamicOutcome ? `<p class="statline">Last Outcome: ${agent.dynamicOutcome}</p>` : ""}
         <div class="agent-rankline">
           <span>#${agent.rank} | Trend: ${agent.trend}</span>
           <span>Efficiency: ${agent.efficiency}</span>
@@ -755,6 +873,22 @@ function renderAgents(site) {
       </article>`
     )
     .join("");
+}
+
+async function loadAgentIntelligence(siteId = activeSiteId) {
+  try {
+    const response = await fetch(`/mission/agents?siteId=${encodeURIComponent(siteId)}`);
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json();
+    liveAgentIntelligence = payload.agents || [];
+    renderAgents(getActiveSite());
+  } catch {
+    liveAgentIntelligence = [];
+    renderAgents(getActiveSite());
+  }
 }
 
 function renderCommandPlan() {
@@ -782,8 +916,30 @@ function renderCommandPlan() {
       </ul>
       <p>${activeCommandPlan.expectedImpact}</p>
     </article>
+    <article class="command-plan-item">
+      <h3>Why This Action</h3>
+      <ul>
+        ${(activeCommandPlan.rationale || []).map((reason) => `<li>${reason}</li>`).join("")}
+      </ul>
+    </article>
     ${renderExecutionPanel()}
   `;
+}
+
+async function loadCommandMemory() {
+  try {
+    const response = await fetch("/mission/commands");
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json();
+    commandMemory = payload.commands || [];
+    renderCommandMemory();
+  } catch {
+    commandMemory = [];
+    renderCommandMemory();
+  }
 }
 
 async function pollExecutionStatus() {
@@ -801,6 +957,9 @@ async function pollExecutionStatus() {
 
     const execution = await response.json();
     activeCommandPlan.execution = execution;
+    await loadCommandMemory();
+    await loadAgentIntelligence(activeSiteId);
+    renderCollaborationFeed(execution.collaborations || []);
 
     if (execution.status === "running" || execution.status === "queued" || execution.status === "attention") {
       elements.commandResponse.textContent = `Execution ${execution.status}: ${activeCommandPlan.summary}`;
@@ -866,6 +1025,7 @@ function renderBuildQueue(site) {
 
 function renderSite(siteId) {
   const site = missionData.websites.find((entry) => entry.id === siteId) ?? missionData.websites[0];
+  activeSiteId = site.id;
   setStatusBadge(site.status);
   renderKpis(site);
   renderMissionStrip(site);
@@ -905,8 +1065,11 @@ async function runMissionCommand() {
 
     const plan = await response.json();
     activeCommandPlan = plan;
+    commandMemory = plan.memory || commandMemory;
     elements.commandResponse.textContent = plan.summary;
     renderCommandPlan();
+    renderCommandMemory();
+    renderCollaborationFeed([]);
     startExecutionPolling();
     pollExecutionStatus();
   } catch (error) {
@@ -919,6 +1082,10 @@ async function runMissionCommand() {
       category: "general",
       objective: "Restore backend command routing and retry the directive.",
       owners: ["Automation Supervisor"],
+      rationale: [
+        "Backend command route is currently unreachable.",
+        "Execution cannot be started until service connectivity is restored."
+      ],
       systemActions: [
         "Start the local mission server with npm start.",
         "Reload the dashboard from localhost:4173.",
@@ -941,9 +1108,13 @@ function init() {
   elements.siteSelect.value = initialSite.id;
   renderSite(initialSite.id);
   renderCommandPlan();
+  loadCommandMemory();
+  loadAgentIntelligence(initialSite.id);
+  renderCollaborationFeed([]);
 
   elements.siteSelect.addEventListener("change", (event) => {
     renderSite(event.target.value);
+    loadAgentIntelligence(event.target.value);
   });
 
   elements.commandSend.addEventListener("click", runMissionCommand);

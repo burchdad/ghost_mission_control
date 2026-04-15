@@ -126,6 +126,24 @@ Execution statuses include:
 - attention
 - completed
 
+Agent learning and confidence evolution endpoint:
+
+```bash
+curl "http://localhost:4173/mission/agents?siteId=ghost-ai-solutions"
+```
+
+Returned agent intelligence includes rank, confidence, trend, action outcomes, and site-specific completion counts.
+
+## Confidence-Weighted Dispatch
+
+Execution dispatch is now confidence-aware:
+
+- `primary`: high-confidence autonomous routing
+- `monitored`: guarded routing with fallback prepared
+- `fallback`: low-confidence supervised delegation to fallback agent
+
+Each execution action now includes dispatch metadata (`dispatchMode`, `supervision`, `plannedAgent`, `weightedConfidence`, and `fallbackAgent`) for risk-aware tracing.
+
 ## Data Model Direction (Next Step)
 
 The current UI uses seeded JavaScript objects in [app.js](app.js). For production, map the data to relational entities such as:

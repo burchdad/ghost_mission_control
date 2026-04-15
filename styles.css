@@ -403,7 +403,8 @@ select:focus-visible {
 .activity-feed,
 .agent-snapshot,
 .cross-system-insights,
-.command-plan {
+.command-plan,
+.command-memory {
   display: grid;
   gap: 0.55rem;
 }
@@ -442,6 +443,83 @@ select:focus-visible {
 .command-plan-item ul {
   margin: 0.5rem 0 0;
   padding-left: 1rem;
+}
+
+.command-memory-item {
+  border-radius: 10px;
+  border: 1px solid rgba(145, 194, 220, 0.22);
+  background: rgba(10, 25, 44, 0.86);
+  padding: 0.62rem;
+}
+
+.command-memory-item h3 {
+  margin: 0 0 0.2rem;
+  font-size: 0.85rem;
+}
+
+.command-memory-item p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.agent-collab-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.collab-item {
+  border-radius: 10px;
+  border: 1px solid rgba(145, 194, 220, 0.22);
+  background: rgba(10, 25, 44, 0.86);
+  padding: 0.62rem;
+}
+
+.collab-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+}
+
+.collab-from,
+.collab-to {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--blue);
+}
+
+.collab-from {
+  color: var(--violet);
+}
+
+.collab-arrow {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.collab-message {
+  margin: 0 0 0.22rem;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.collab-meta {
+  margin: 0;
+  font-size: 0.77rem;
+  color: var(--muted);
+}
+
+.exec-detail {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.exec-outcome {
+  color: #d6ecff;
 }
 
 .command-plan-meta {
