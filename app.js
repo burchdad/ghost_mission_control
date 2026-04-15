@@ -553,6 +553,7 @@ const elements = {
   navBadgeAgents: document.getElementById("navBadgeAgents"),
   navBadgeIntelligence: document.getElementById("navBadgeIntelligence"),
   navBadgeAutonomy: document.getElementById("navBadgeAutonomy"),
+  navCorrelationHint: document.getElementById("navCorrelationHint"),
   buildQueueColumns: document.getElementById("buildQueueColumns"),
   operationsPanel: document.getElementById("operationsPanel"),
   buildQueuePanel: document.getElementById("buildQueuePanel"),
@@ -795,23 +796,34 @@ function restoreSubviewPreferences() {
   }
 }
 
-function setBadge(element, count, key, text) {
+function setBadge(element, key, meta) {
   if (!element) {
     return;
   }
 
   const previousCount = badgeCounts[key];
+  const count = meta?.count || 0;
 
   if (!count) {
     element.textContent = "";
     element.classList.remove("visible");
     element.classList.remove("pulse");
+    element.classList.remove("critical", "warning", "active", "signal", "growth");
+    element.removeAttribute("title");
+    element.removeAttribute("aria-label");
     badgeCounts[key] = 0;
     return;
   }
 
-  element.textContent = text || String(count);
+  element.textContent = meta.text || String(count);
   element.classList.add("visible");
+  element.classList.toggle("critical", meta.severity === "critical");
+  element.classList.toggle("warning", meta.severity === "warning");
+  element.classList.toggle("active", meta.severity === "active");
+  element.classList.toggle("signal", meta.severity === "signal");
+  element.classList.toggle("growth", meta.severity === "growth");
+  element.title = meta.tooltip;
+  element.setAttribute("aria-label", meta.tooltip);
 
   if (previousCount !== null && previousCount !== count) {
     element.classList.remove("pulse");
@@ -830,48 +842,115 @@ function getExecutionBadgeMeta(actions) {
 
   const count = activeActions.length;
   if (!count) {
-    return { count: 0, text: "" };
+    return {
+      count: 0,
+      text: "",
+      severity: "none",
+      urgentCount: 0,
+      tooltip: "No active execution tasks."
+    };
   }
 
-  const hasUrgent = activeActions.some((action) => ["attention", "retrying", "failed"].includes(action.status));
+  const urgentCount = activeActions.filter((action) => ["attention", "retrying", "failed"].includes(action.status)).length;
+  const hasUrgent = urgentCount > 0;
   const hasRunning = activeActions.some((action) => action.status === "running");
 
   const text = hasUrgent ? `${count} !` : hasRunning ? `${count} >` : String(count);
-  return { count, text };
+  const tooltip = hasUrgent
+    ? `${count} active execution tasks, ${urgentCount} require immediate attention.`
+    : hasRunning
+      ? `${count} execution tasks are currently running.`
+      : `${count} execution tasks are queued.`;
+
+  const severity = hasUrgent ? "critical" : hasRunning ? "active" : "warning";
+  return { count, text, severity, urgentCount, tooltip };
 }
 
 function getAgentsBadgeMeta(agents) {
   const degradedAgents = (agents || []).filter((agent) => agent.trend === "Down" || agent.confidence < 75);
   const count = degradedAgents.length;
   if (!count) {
-    return { count: 0, text: "" };
+    return {
+      count: 0,
+      text: "",
+      severity: "none",
+      degradedCount: 0,
+      tooltip: "All agents are stable."
+    };
   }
 
   const text = `${count} v`;
-  return { count, text };
+  const severity = count >= 2 ? "critical" : "warning";
+  const tooltip = `${count} agents are degraded and need supervision.`;
+  return { count, text, severity, degradedCount: count, tooltip };
 }
 
 function getIntelligenceBadgeMeta(signals) {
   const activeSignals = signals || [];
   const count = activeSignals.length;
   if (!count) {
-    return { count: 0, text: "" };
+    return {
+      count: 0,
+      text: "",
+      severity: "none",
+      criticalCount: 0,
+      tooltip: "No predictive intelligence alerts."
+    };
   }
 
   const criticalCount = activeSignals.filter((signal) => signal.severity === "critical").length;
   const text = criticalCount > 0 ? `${criticalCount} !` : `${count} *`;
-  return { count, text };
+  const severity = criticalCount > 0 ? "critical" : "signal";
+  const tooltip = criticalCount > 0
+    ? `${criticalCount} critical intelligence alerts need review.`
+    : `${count} intelligence signals detected.`;
+  return { count, text, severity, criticalCount, tooltip };
 }
 
 function getAutonomyBadgeMeta(goals) {
   const count = (goals || []).length;
   if (!count) {
-    return { count: 0, text: "" };
+    return {
+      count: 0,
+      text: "",
+      severity: "none",
+      p1Count: 0,
+      tooltip: "No autonomous interventions are pending."
+    };
   }
 
   const p1Count = goals.filter((goal) => goal.priority === "P1").length;
   const text = p1Count > 0 ? `${p1Count} !` : `${count} +`;
-  return { count, text };
+  const severity = p1Count > 0 ? "critical" : "growth";
+  const tooltip = p1Count > 0
+    ? `${p1Count} P1 autonomous goals are ready to execute.`
+    : `${count} autonomous goals are proposed.`;
+  return { count, text, severity, p1Count, tooltip };
+}
+
+function updateCorrelationHint(execution, agents, intelligence, autonomy) {
+  if (!elements.navCorrelationHint) {
+    return;
+  }
+
+  let message = "";
+
+  if (execution.urgentCount > 0 && agents.degradedCount > 0) {
+    message = "Execution risk is likely linked to degraded agents.";
+  } else if (intelligence.criticalCount > 0 && autonomy.p1Count > 0) {
+    message = "Critical intelligence alerts are driving P1 autonomous goals.";
+  } else if (execution.count > 0 && intelligence.count > 0) {
+    message = "Execution and intelligence activity are rising together.";
+  }
+
+  if (!message) {
+    elements.navCorrelationHint.textContent = "";
+    elements.navCorrelationHint.classList.add("view-hidden");
+    return;
+  }
+
+  elements.navCorrelationHint.textContent = message;
+  elements.navCorrelationHint.classList.remove("view-hidden");
 }
 
 function updateNavBadges() {
@@ -880,10 +959,11 @@ function updateNavBadges() {
   const intelligence = getIntelligenceBadgeMeta(livePredictiveSignals);
   const autonomy = getAutonomyBadgeMeta(liveAutonomousGoals);
 
-  setBadge(elements.navBadgeExecution, execution.count, "execution", execution.text);
-  setBadge(elements.navBadgeAgents, agents.count, "agents", agents.text);
-  setBadge(elements.navBadgeIntelligence, intelligence.count, "intelligence", intelligence.text);
-  setBadge(elements.navBadgeAutonomy, autonomy.count, "autonomy", autonomy.text);
+  setBadge(elements.navBadgeExecution, "execution", execution);
+  setBadge(elements.navBadgeAgents, "agents", agents);
+  setBadge(elements.navBadgeIntelligence, "intelligence", intelligence);
+  setBadge(elements.navBadgeAutonomy, "autonomy", autonomy);
+  updateCorrelationHint(execution, agents, intelligence, autonomy);
 }
 
 function getExecutionStatusClass(status) {

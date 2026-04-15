@@ -21,13 +21,22 @@
         <aside class="nav-rail" aria-label="Primary navigation">
           <p class="nav-title">Navigation</p>
           <button class="nav-item active" type="button" data-view="mission-control">Mission Control</button>
-          <button class="nav-item" type="button" data-view="execution">Execution</button>
-          <button class="nav-item" type="button" data-view="agents">Agents</button>
-          <button class="nav-item" type="button" data-view="intelligence">Intelligence</button>
+          <button class="nav-item" type="button" data-view="execution">
+            <span>Execution</span><span id="navBadgeExecution" class="nav-badge"></span>
+          </button>
+          <button class="nav-item" type="button" data-view="agents">
+            <span>Agents</span><span id="navBadgeAgents" class="nav-badge"></span>
+          </button>
+          <button class="nav-item" type="button" data-view="intelligence">
+            <span>Intelligence</span><span id="navBadgeIntelligence" class="nav-badge"></span>
+          </button>
           <button class="nav-item" type="button" data-view="strategy">Strategy</button>
           <button class="nav-item" type="button" data-view="simulation">Simulation</button>
-          <button class="nav-item" type="button" data-view="autonomy">Autonomy</button>
+          <button class="nav-item" type="button" data-view="autonomy">
+            <span>Autonomy</span><span id="navBadgeAutonomy" class="nav-badge"></span>
+          </button>
           <button class="nav-item" type="button" data-view="build-queue">Build Queue</button>
+          <div id="navCorrelationHint" class="nav-correlation view-hidden" aria-live="polite"></div>
         </aside>
 
         <div class="workspace-main">
@@ -108,6 +117,12 @@
           <section class="module-panel view-panel" id="commandPlanPanel" aria-label="Command action plan">
             <div class="panel-header compact">
               <h2>Command Action Plan</h2>
+              <div id="executionTabs" class="subview-tabs view-hidden" aria-label="Execution sub views">
+                <button class="subview-tab active" type="button" data-exec-tab="overview">Overview</button>
+                <button class="subview-tab" type="button" data-exec-tab="active">Active Runs</button>
+                <button class="subview-tab" type="button" data-exec-tab="history">History</button>
+                <button class="subview-tab" type="button" data-exec-tab="failures">Failures</button>
+              </div>
             </div>
             <div id="commandPlan" class="command-plan"></div>
           </section>
@@ -164,6 +179,11 @@
           <section class="module-panel view-panel" id="agentsPanel" aria-label="By agent snapshot">
             <div class="panel-header compact">
               <h2>Agents Snapshot</h2>
+              <div id="agentsTabs" class="subview-tabs view-hidden" aria-label="Agents sub views">
+                <button class="subview-tab active" type="button" data-agents-tab="rankings">Rankings</button>
+                <button class="subview-tab" type="button" data-agents-tab="logs">Logs</button>
+                <button class="subview-tab" type="button" data-agents-tab="collaboration">Collaboration</button>
+              </div>
             </div>
             <div id="agentSnapshot" class="agent-snapshot"></div>
           </section>

@@ -134,6 +134,37 @@ body {
   display: inline-flex;
 }
 
+.nav-badge.critical {
+  border-color: rgba(255, 107, 129, 0.7);
+  background: rgba(255, 107, 129, 0.18);
+  color: #ffd8de;
+  box-shadow: 0 0 0 1px rgba(255, 107, 129, 0.25);
+}
+
+.nav-badge.warning {
+  border-color: rgba(255, 209, 102, 0.6);
+  background: rgba(255, 209, 102, 0.16);
+  color: #ffe9b4;
+}
+
+.nav-badge.active {
+  border-color: rgba(55, 182, 255, 0.62);
+  background: rgba(55, 182, 255, 0.16);
+  color: #c3ebff;
+}
+
+.nav-badge.signal {
+  border-color: rgba(189, 138, 255, 0.64);
+  background: rgba(189, 138, 255, 0.16);
+  color: #e8d8ff;
+}
+
+.nav-badge.growth {
+  border-color: rgba(74, 245, 168, 0.62);
+  background: rgba(74, 245, 168, 0.16);
+  color: #c9ffe8;
+}
+
 .nav-badge.pulse {
   animation: badge-pulse 0.55s ease-out;
 }
@@ -159,6 +190,17 @@ body {
   .nav-badge.pulse {
     animation: none;
   }
+}
+
+.nav-correlation {
+  margin-top: 0.45rem;
+  padding: 0.5rem 0.55rem;
+  border-radius: 10px;
+  border: 1px solid rgba(125, 166, 188, 0.28);
+  background: rgba(3, 16, 30, 0.72);
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .subview-tabs {
