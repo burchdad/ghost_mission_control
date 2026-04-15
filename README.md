@@ -57,6 +57,30 @@ npm start
 
 Then open `http://localhost:4173`.
 
+## Deploy Backend On Railway
+
+This app runs as a persistent Node service and is a good fit for Railway.
+
+1. Push this repo to GitHub.
+2. In Railway, create a new project from the GitHub repo.
+3. Railway will detect Node automatically and use `npm start`.
+4. Set environment variables:
+	- `PORT` is set automatically by Railway.
+	- Optional: `ALLOWED_ORIGINS` for frontend domains (comma-separated).
+5. After deploy, confirm health:
+
+```bash
+curl https://<your-railway-domain>/health
+```
+
+If your frontend is hosted separately (for example on Vercel), set:
+
+```bash
+ALLOWED_ORIGINS=https://<your-frontend-domain>
+```
+
+Then point frontend API calls to your Railway backend domain.
+
 If your terminal session may terminate foreground processes, use background mode:
 
 ```bash

@@ -18,15 +18,52 @@ const MIME_TYPES = {
   ".ico": "image/x-icon"
 };
 
-function sendJson(response, statusCode, data) {
-  response.writeHead(statusCode, {
-    "Content-Type": "application/json; charset=utf-8"
-  });
+const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+function getCorsOrigin(request) {
+  const requestOrigin = request.headers.origin;
+  if (!requestOrigin) {
+    return "*";
+  }
+
+  if (ALLOWED_ORIGINS.length === 0) {
+    return "*";
+  }
+
+  return ALLOWED_ORIGINS.includes(requestOrigin) ? requestOrigin : "";
+}
+
+function getDefaultHeaders(request, extra = {}) {
+  const corsOrigin = getCorsOrigin(request);
+  const headers = {
+    "Access-Control-Allow-Methods": "GET,POST,HEAD,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+    ...extra
+  };
+
+  if (corsOrigin) {
+    headers["Access-Control-Allow-Origin"] = corsOrigin;
+  }
+
+  return headers;
+}
+
+function sendJson(request, response, statusCode, data) {
+  response.writeHead(
+    statusCode,
+    getDefaultHeaders(request, {
+      "Content-Type": "application/json; charset=utf-8"
+    })
+  );
   response.end(JSON.stringify(data));
 }
 
-function sendHead(response, statusCode, headers = {}) {
-  response.writeHead(statusCode, headers);
+function sendHead(request, response, statusCode, headers = {}) {
+  response.writeHead(statusCode, getDefaultHeaders(request, headers));
   response.end();
 }
 
@@ -1545,34 +1582,34 @@ function getCommandPlan(command, siteId) {
   };
 }
 
-function serveStatic(requestPath, response, headOnly = false) {
+function serveStatic(request, requestPath, response, headOnly = false) {
   const normalizedPath = requestPath === "/" ? "/index.html" : requestPath;
   const safePath = path.normalize(normalizedPath).replace(/^([.][.][/\\])+/, "");
   const filePath = path.join(ROOT, safePath);
 
   if (!filePath.startsWith(ROOT)) {
-    sendJson(response, 403, { error: "Forbidden" });
+    sendJson(request, response, 403, { error: "Forbidden" });
     return;
   }
 
   fs.readFile(filePath, (error, content) => {
     if (error) {
       if (error.code === "ENOENT") {
-        sendJson(response, 404, { error: "Not Found" });
+        sendJson(request, response, 404, { error: "Not Found" });
         return;
       }
 
-      sendJson(response, 500, { error: "Unable to read requested file" });
+      sendJson(request, response, 500, { error: "Unable to read requested file" });
       return;
     }
 
     const ext = path.extname(filePath).toLowerCase();
-    const headers = {
+    const headers = getDefaultHeaders(request, {
       "Content-Type": MIME_TYPES[ext] || "application/octet-stream"
-    };
+    });
 
     if (headOnly) {
-      sendHead(response, 200, headers);
+      sendHead(request, response, 200, headers);
       return;
     }
 
@@ -1584,15 +1621,20 @@ function serveStatic(requestPath, response, headOnly = false) {
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
 
+  if (request.method === "OPTIONS") {
+    sendHead(request, response, 204);
+    return;
+  }
+
   if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/health") {
     if (request.method === "HEAD") {
-      sendHead(response, 200, {
+      sendHead(request, response, 200, {
         "Content-Type": "application/json; charset=utf-8"
       });
       return;
     }
 
-    sendJson(response, 200, { ok: true, service: "ghost-mission-control" });
+    sendJson(request, response, 200, { ok: true, service: "ghost-mission-control" });
     return;
   }
 
@@ -1613,7 +1655,7 @@ const server = http.createServer((request, response) => {
         const siteId = parsed.siteId || "unknown-site";
 
         if (!String(command).trim()) {
-          sendJson(response, 400, { error: "Command is required" });
+          sendJson(request, response, 400, { error: "Command is required" });
           return;
         }
 
@@ -1621,7 +1663,7 @@ const server = http.createServer((request, response) => {
         const execution = createExecutionRun(command, siteId, plan);
         const rationale = getDecisionRationale(plan.category || "general");
 
-        sendJson(response, 200, {
+        sendJson(request, response, 200, {
           command,
           siteId,
           receivedAt: new Date().toISOString(),
@@ -1638,7 +1680,7 @@ const server = http.createServer((request, response) => {
           memory: commandHistory.slice(0, 6)
         });
       } catch {
-        sendJson(response, 400, { error: "Invalid JSON payload" });
+        sendJson(request, response, 400, { error: "Invalid JSON payload" });
       }
     });
 
@@ -1650,11 +1692,11 @@ const server = http.createServer((request, response) => {
     const run = executionRuns.get(executionId);
 
     if (!run) {
-      sendJson(response, 404, { error: "Execution run not found" });
+      sendJson(request, response, 404, { error: "Execution run not found" });
       return;
     }
 
-    sendJson(response, 200, {
+    sendJson(request, response, 200, {
       id: run.id,
       command: run.command,
       siteId: run.siteId,
@@ -1670,7 +1712,7 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/commands") {
-    sendJson(response, 200, {
+    sendJson(request, response, 200, {
       commands: commandHistory.slice(0, 12)
     });
     return;
@@ -1678,7 +1720,7 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && url.pathname === "/mission/agents") {
     const siteId = url.searchParams.get("siteId") || "unknown-site";
-    sendJson(response, 200, {
+    sendJson(request, response, 200, {
       agents: getRankedAgents(siteId)
     });
     return;
@@ -1687,7 +1729,7 @@ const server = http.createServer((request, response) => {
   if (request.method === "GET" && url.pathname === "/mission/predict") {
     const siteId = url.searchParams.get("siteId") || "unknown-site";
     const signals = getOrCreatePredictiveSignals(siteId);
-    sendJson(response, 200, {
+    sendJson(request, response, 200, {
       siteId,
       signals,
       generatedAt: new Date().toISOString(),
@@ -1699,14 +1741,14 @@ const server = http.createServer((request, response) => {
   if (request.method === "GET" && url.pathname === "/mission/strategy") {
     const siteId = url.searchParams.get("siteId") || "unknown-site";
     const strategy = analyzeStrategicGoals(siteId);
-    sendJson(response, 200, strategy);
+    sendJson(request, response, 200, strategy);
     return;
   }
 
   if (request.method === "GET" && url.pathname === "/mission/autonomy") {
     const siteId = url.searchParams.get("siteId") || "unknown-site";
     const goals = getOrCreateAutonomousGoals(siteId);
-    sendJson(response, 200, {
+    sendJson(request, response, 200, {
       siteId,
       mode: "self-directed",
       goals,
@@ -1719,16 +1761,16 @@ const server = http.createServer((request, response) => {
   if (request.method === "GET" && url.pathname === "/mission/simulate") {
     const siteId = url.searchParams.get("siteId") || "unknown-site";
     const forecast = getOrCreateScenarioForecast(siteId);
-    sendJson(response, 200, forecast);
+    sendJson(request, response, 200, forecast);
     return;
   }
 
   if (request.method === "GET" || request.method === "HEAD") {
-    serveStatic(url.pathname, response, request.method === "HEAD");
+    serveStatic(request, url.pathname, response, request.method === "HEAD");
     return;
   }
 
-  sendJson(response, 405, { error: "Method Not Allowed" });
+  sendJson(request, response, 405, { error: "Method Not Allowed" });
 });
 
 function startServer(port, attemptsRemaining) {
