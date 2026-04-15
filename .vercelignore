@@ -1,0 +1,4 @@
+# Exclude backend runtime files from Vercel static frontend upload
+server.js
+scripts/server-control.sh
+.ghost-mission-control.log
