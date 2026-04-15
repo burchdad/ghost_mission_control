@@ -670,10 +670,13 @@ function renderCollaborationFeed(collaborations) {
           <span class="collab-from">${collab.from}</span>
           <span class="collab-arrow">&#8594;</span>
           <span class="collab-to">${collab.to}</span>
-          <span class="exec-status exec-ok">${collab.status}</span>
+          <span class="exec-status ${collab.status === "queued" ? "exec-pending" : "exec-ok"}">${collab.status}</span>
         </div>
         <p class="collab-message">${collab.message}</p>
-        <p class="collab-meta">Triggered by: ${collab.triggerAction}</p>
+        <div class="collab-meta-row">
+          <span class="collab-decision">${collab.decision || "standard"}</span>
+          <span class="collab-reason">${collab.reason || "No reason logged"}</span>
+        </div>
       </article>`
     )
     .join("");

@@ -512,6 +512,29 @@ select:focus-visible {
   color: var(--muted);
 }
 
+.collab-meta-row {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.collab-decision {
+  display: inline-block;
+  padding: 0.12rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(55, 182, 255, 0.15);
+  color: var(--blue);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.collab-reason {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .exec-detail {
   margin-top: 0.25rem;
   color: var(--muted);

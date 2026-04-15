@@ -226,29 +226,140 @@ function recordAgentEvent(action, eventType, run) {
   profile.updatedAt = now;
 }
 
-function triggerCollaboration(action, run) {
-  const collab = collabGraph[action.action];
-  if (!collab) {
-    return;
+function getCollaborationDecisions(action, run) {
+  const decisions = [];
+  const now = new Date().toISOString();
+
+  const actionProfile = ensureAgentProfile(action.agent);
+  const staticCollab = collabGraph[action.action];
+
+  const failureCount = run.actions.filter((a) => a.status === "failed" || a.status === "retrying").length;
+  const isHighConfidence = actionProfile.confidence >= 85;
+  const isLowConfidence = actionProfile.confidence < 70;
+
+  if (action.status === "completed") {
+    if (staticCollab) {
+      const recipientProfile = ensureAgentProfile(staticCollab.to);
+
+      if (isLowConfidence) {
+        decisions.push({
+          from: action.agent,
+          to: "Automation Supervisor",
+          triggerAction: action.action,
+          message: `Action completed but sender confidence is ${Math.round(
+            actionProfile.confidence
+          )}%. Review before downstream routing: ${staticCollab.message.slice(0, 60)}`,
+          reason: "Low confidence escalation",
+          decision: "routed_to_supervisor",
+          timestamp: now,
+          status: "delivered"
+        });
+      } else if (recipientProfile.confidence < 60) {
+        decisions.push({
+          from: action.agent,
+          to: "Analytics Agent",
+          triggerAction: action.action,
+          message: `Primary recipient (${staticCollab.to}) has low confidence. Routing to Analytics for validation: ${staticCollab.message.slice(
+            0,
+            60
+          )}`,
+          reason: "Recipient low confidence",
+          decision: "rerouted_via_analytics",
+          timestamp: now,
+          status: "delivered"
+        });
+      } else {
+        decisions.push({
+          from: action.agent,
+          to: staticCollab.to,
+          triggerAction: action.action,
+          message: staticCollab.message,
+          reason: "Standard handoff",
+          decision: "primary_routing",
+          timestamp: now,
+          status: "delivered"
+        });
+
+        if (isHighConfidence && action.attempts === 1) {
+          const followUp = getFollowUpCollab(action);
+          if (followUp) {
+            decisions.push({
+              from: action.agent,
+              to: followUp.agent,
+              triggerAction: action.action,
+              message: followUp.message,
+              reason: "High-confidence secondary chain",
+              decision: "chained_secondary",
+              timestamp: now,
+              status: "queued"
+            });
+          }
+        }
+      }
+    }
+  } else if (action.status === "failed" || action.status === "retrying") {
+    if (failureCount > 1) {
+      decisions.push({
+        from: action.agent,
+        to: "Automation Supervisor",
+        triggerAction: action.action,
+        message: `Multiple action failures detected (${failureCount} failures). Action "${action.action}" may need circuit-breaking or fallback delegation.`,
+        reason: "Cascade failure detected",
+        decision: "escalated_supervisor",
+        timestamp: now,
+        status: "delivered"
+      });
+    }
+
+    decisions.push({
+      from: action.agent,
+      to: "Analytics Agent",
+      triggerAction: action.action,
+      message: `Action "${action.action}" encountered ${action.status}. Investigate root cause and surface trend.`,
+      reason: "Failure investigation",
+      decision: "routed_to_analytics",
+      timestamp: now,
+      status: "delivered"
+    });
   }
 
-  const now = new Date().toISOString();
-  const entry = {
-    id: `collab_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    from: action.agent,
-    to: collab.to,
-    triggerAction: action.action,
-    message: collab.message,
-    timestamp: now,
-    status: "delivered"
+  decisions.forEach((decision) => {
+    run.collaborations.push(decision);
+    const toProfile = ensureAgentProfile(decision.to);
+    toProfile.lastDecision = `Task from ${decision.from}: ${decision.message.slice(0, 60)}`;
+    toProfile.updatedAt = now;
+  });
+
+  if (decisions.length > 0) {
+    run.history.push(
+      `${now}: [DYNAMICS] Collaboration decided: ${decisions.map((d) => `${d.decision}`).join(", ")}`
+    );
+  }
+
+  return decisions;
+}
+
+function getFollowUpCollab(action) {
+  const followUpMap = {
+    patch_schema_and_metadata: {
+      agent: "Funnel Monitor Agent",
+      message: "Schema patches applied with high confidence. Validate impact on funnel entry page conversions."
+    },
+    launch_cta_experiment: {
+      agent: "Analytics Agent",
+      message: "CTA experiment deployed with high confidence. Monitor statistical significance threshold."
+    },
+    boost_top_campaign: {
+      agent: "Analytics Agent",
+      message: "Campaign boost executed with high confidence. Track ROI lift vs. historical baseline."
+    },
+    expand_campaign_reach: {
+      agent: "Funnel Monitor Agent",
+      message: "Campaign reach expansion completed with high confidence. Monitor funnel conversion stability."
+    }
   };
 
-  run.collaborations.push(entry);
-  run.history.push(`${now}: [COLLAB] ${action.agent} \u2192 ${collab.to}: "${collab.message.slice(0, 75)}"\ `);
-
-  const toProfile = ensureAgentProfile(collab.to);
-  toProfile.lastDecision = `Task from ${action.agent}: ${collab.message.slice(0, 60)}`;
-  toProfile.updatedAt = now;
+  return followUpMap[action.action] || null;
 }
 
 function getRankedAgents(siteId) {
@@ -592,7 +703,7 @@ function stepExecution(run) {
     current.status = "completed";
     current.lastUpdate = now;
     recordAgentEvent(current, "completed", run);
-    triggerCollaboration(current, run);
+    getCollaborationDecisions(current, run);
     run.history.push(`${now}: ${current.action} completed.`);
     updateRunStatus(run);
     updateCommandHistoryFromRun(run);
@@ -604,6 +715,7 @@ function stepExecution(run) {
     current.status = "retrying";
     current.lastUpdate = now;
     recordAgentEvent(current, "retrying", run);
+    getCollaborationDecisions(current, run);
     run.history.push(`${now}: ${current.action} retrying.`);
     updateRunStatus(run);
     updateCommandHistoryFromRun(run);
