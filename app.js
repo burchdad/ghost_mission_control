@@ -523,6 +523,7 @@ const elements = {
   crossSystemInsights: document.getElementById("crossSystemInsights"),
   agentSnapshot: document.getElementById("agentSnapshot"),
   agentCollabFeed: document.getElementById("agentCollabFeed"),
+  predictiveAlerts: document.getElementById("predictiveAlerts"),
   buildQueueColumns: document.getElementById("buildQueueColumns")
 };
 
@@ -899,6 +900,69 @@ async function loadAgentIntelligence(siteId = activeSiteId) {
   }
 }
 
+async function loadPredictiveSignals(siteId = activeSiteId) {
+  try {
+    const response = await fetch(`/mission/predict?siteId=${encodeURIComponent(siteId)}`);
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json();
+    renderPredictiveAlerts(payload.signals || []);
+  } catch {
+    renderPredictiveAlerts([]);
+  }
+}
+
+function renderPredictiveAlerts(signals) {
+  if (!elements.predictiveAlerts) {
+    return;
+  }
+
+  if (!signals || signals.length === 0) {
+    elements.predictiveAlerts.innerHTML = `
+      <article class="pred-item pred-clear">
+        <h3>No Signals Detected</h3>
+        <p>System operating normally. No predictive risks identified.</p>
+      </article>
+    `;
+    return;
+  }
+
+  elements.predictiveAlerts.innerHTML = signals
+    .sort((a, b) => (b.severity === "critical" ? 1 : 0) - (a.severity === "critical" ? 1 : 0))
+    .map((signal) => {
+      const severityClass = signal.severity === "critical" ? "pred-critical" : "pred-warning";
+      return `<article class="pred-item ${severityClass}">
+        <div class="pred-header">
+          <span class="pred-type">${signal.type.replace(/_/g, " ")}</span>
+          <span class="pred-severity">${signal.severity.toUpperCase()}</span>
+          <span class="pred-confidence">${Math.round(signal.confidence)}% confidence</span>
+        </div>
+        <h3>${signal.message}</h3>
+        <p class="pred-outcome">${signal.predictedOutcome}</p>
+        <p class="pred-action">Suggested: ${signal.suggestedAction.replace(/_/g, " ")}</p>
+      </article>`;
+    })
+    .join("");
+}
+
+async function loadAgentIntelligence(siteId = activeSiteId) {
+  try {
+    const response = await fetch(`/mission/agents?siteId=${encodeURIComponent(siteId)}`);
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json();
+    liveAgentIntelligence = payload.agents || [];
+    renderAgents(getActiveSite());
+  } catch {
+    liveAgentIntelligence = [];
+    renderAgents(getActiveSite());
+  }
+}
+
 function renderCommandPlan() {
   elements.commandPlan.innerHTML = `
     <article class="command-plan-item">
@@ -967,6 +1031,7 @@ async function pollExecutionStatus() {
     activeCommandPlan.execution = execution;
     await loadCommandMemory();
     await loadAgentIntelligence(activeSiteId);
+    await loadPredictiveSignals(activeSiteId);
     renderCollaborationFeed(execution.collaborations || []);
 
     if (execution.status === "running" || execution.status === "queued" || execution.status === "attention") {
@@ -1118,6 +1183,7 @@ function init() {
   renderCommandPlan();
   loadCommandMemory();
   loadAgentIntelligence(initialSite.id);
+  loadPredictiveSignals(initialSite.id);
   renderCollaborationFeed([]);
 
   elements.siteSelect.addEventListener("change", (event) => {

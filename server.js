@@ -33,6 +33,7 @@ function sendHead(response, statusCode, headers = {}) {
 const executionRuns = new Map();
 const commandHistory = [];
 const agentIntelligence = new Map();
+const predictiveSignals = [];
 const MAX_COMMAND_HISTORY = 25;
 const EXECUTION_TTL_MS = 60 * 60 * 1000;
 
@@ -452,6 +453,101 @@ function getFollowUpCollab(action) {
   };
 
   return followUpMap[action.action] || null;
+}
+
+function analyzePredictiveSignals(siteId) {
+  const signals = [];
+  const now = new Date().toISOString();
+
+  for (const [agentName, profile] of agentIntelligence.entries()) {
+    const siteSpecific = profile.siteCompletions[siteId] || 0;
+    if (siteSpecific === 0) {
+      continue;
+    }
+
+    if (profile.trend === "Down" && profile.confidence < 75) {
+      const failureRate = profile.failedActions / Math.max(profile.successfulActions + profile.failedActions, 1);
+      signals.push({
+        id: `signal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        type: "confidence_decline",
+        severity: failureRate > 0.3 ? "critical" : "warning",
+        agent: agentName,
+        message: `${agentName} confidence declining (${Math.round(profile.confidence)}%) with ${Math.round(failureRate * 100)}% failure rate.`,
+        predictedOutcome: "Task failure risk increasing. Consider delegation or supervision.",
+        confidence: 85,
+        suggestedAction: failureRate > 0.3 ? "escalate_supervisor" : "add_monitoring",
+        timestamp: now,
+        siteId
+      });
+    }
+
+    if (profile.failedActions >= 3 && profile.trend !== "Up") {
+      const recentFailureRatio = profile.failedActions / Math.max(profile.dispatches, 1);
+      signals.push({
+        id: `signal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        type: "failure_pattern",
+        severity: recentFailureRatio > 0.4 ? "critical" : "warning",
+        agent: agentName,
+        message: `${agentName} showing failure pattern: ${profile.failedActions} failures / ${profile.dispatches} dispatches.`,
+        predictedOutcome: "High probability of continued failures on similar tasks.",
+        confidence: 80,
+        suggestedAction: recentFailureRatio > 0.4 ? "circuit_break" : "add_fallback",
+        timestamp: now,
+        siteId
+      });
+    }
+
+    if (profile.retriedActions >= 2 && profile.successfulActions < 3) {
+      signals.push({
+        id: `signal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        type: "retry_dependent",
+        severity: "warning",
+        agent: agentName,
+        message: `${agentName} heavily dependent on retries (${profile.retriedActions} retries, ${profile.successfulActions} clean successes).`,
+        predictedOutcome: "System resilience may be fragile on this agent. Plan for fallback.",
+        confidence: 75,
+        suggestedAction: "prepare_fallback_chain",
+        timestamp: now,
+        siteId
+      });
+    }
+  }
+
+  const recentExecutions = [...executionRuns.values()].slice(-10);
+  const failedChains = recentExecutions.filter((run) => run.status === "attention" || run.status === "failed").length;
+
+  if (failedChains >= 2) {
+    signals.push({
+      id: `signal_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type: "chain_fragility",
+      severity: "warning",
+      agent: "System",
+      message: `Recent executions showing ${failedChains} failures in last 10 runs. Coordination breakdowns detected.`,
+      predictedOutcome: "Multi-agent chains may be cascading into failures. Review decision logic.",
+      confidence: 78,
+      suggestedAction: "review_collaboration_rules",
+      timestamp: now,
+      siteId
+    });
+  }
+
+  return signals;
+}
+
+function getOrCreatePredictiveSignals(siteId) {
+  const existing = predictiveSignals.filter((s) => s.siteId === siteId);
+  if (existing.length > 0) {
+    return existing;
+  }
+
+  const fresh = analyzePredictiveSignals(siteId);
+  predictiveSignals.push(...fresh);
+
+  if (predictiveSignals.length > 100) {
+    predictiveSignals.splice(0, predictiveSignals.length - 100);
+  }
+
+  return fresh;
 }
 
 function getRankedAgents(siteId) {
@@ -1171,6 +1267,18 @@ const server = http.createServer((request, response) => {
     const siteId = url.searchParams.get("siteId") || "unknown-site";
     sendJson(response, 200, {
       agents: getRankedAgents(siteId)
+    });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/predict") {
+    const siteId = url.searchParams.get("siteId") || "unknown-site";
+    const signals = getOrCreatePredictiveSignals(siteId);
+    sendJson(response, 200, {
+      siteId,
+      signals,
+      generatedAt: new Date().toISOString(),
+      signalCount: signals.length
     });
     return;
   }
