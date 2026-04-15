@@ -345,6 +345,33 @@ body.focus-mode .nav-rail {
   display: none;
 }
 
+body.focus-mode .layout-grid {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+body.focus-mode .main-column,
+body.focus-mode .side-column {
+  width: min(1060px, 100%);
+  justify-self: center;
+}
+
+body.focus-mode .side-column {
+  width: min(760px, 100%);
+}
+
+body.focus-mode .module-panel {
+  width: 100%;
+}
+
+body.focus-mode.focus-side-only .main-column {
+  display: none;
+}
+
+body.focus-mode.focus-main-only .side-column {
+  display: none;
+}
+
 body.focus-mode .topbar,
 body.focus-mode .kpi-section,
 body.focus-mode .mission-strip {

@@ -751,6 +751,25 @@ function setActiveView(view) {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
 
+  const mainColumnPanels = ["operationsPanel", "buildQueuePanel"];
+  const sideColumnPanels = [
+    "alertsPanel",
+    "activityPanel",
+    "commandPlanPanel",
+    "commandMemoryPanel",
+    "agentCollabPanel",
+    "strategicPanel",
+    "autonomyPanel",
+    "scenarioPanel",
+    "predictivePanel",
+    "crossSystemPanel",
+    "agentsPanel"
+  ];
+  const hasMainPanels = mainColumnPanels.some((key) => visiblePanels.has(key));
+  const hasSidePanels = sideColumnPanels.some((key) => visiblePanels.has(key));
+  elements.body.classList.toggle("focus-side-only", isFocusMode && !hasMainPanels && hasSidePanels);
+  elements.body.classList.toggle("focus-main-only", isFocusMode && hasMainPanels && !hasSidePanels);
+
   renderFocusBanner();
 }
 
