@@ -757,6 +757,119 @@ select:focus-visible {
   gap: 0.55rem;
 }
 
+.perception-next,
+.trust-explanation {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.trust-explanation {
+  margin-top: 0.6rem;
+}
+
+.perception-card,
+.trust-card {
+  border-radius: 10px;
+  border: 1px solid rgba(145, 194, 220, 0.22);
+  background: rgba(10, 25, 44, 0.86);
+  padding: 0.62rem;
+}
+
+.perception-card h3,
+.trust-card h3 {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.perception-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.perception-title {
+  margin: 0.45rem 0 0;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.perception-metrics {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.perception-impact,
+.perception-support {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.79rem;
+}
+
+.perception-actions-row {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.perception-actions-row button {
+  border: 1px solid rgba(55, 182, 255, 0.45);
+  border-radius: 8px;
+  background: rgba(8, 37, 62, 0.9);
+  color: var(--text);
+  padding: 0.32rem 0.54rem;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.perception-actions-row .secondary {
+  border-color: rgba(125, 166, 188, 0.38);
+  background: rgba(6, 23, 41, 0.9);
+  color: var(--muted);
+}
+
+.perception-card.escalate {
+  border-color: rgba(255, 94, 120, 0.52);
+  background: rgba(255, 94, 120, 0.11);
+}
+
+.perception-card.caution {
+  border-color: rgba(255, 209, 102, 0.5);
+  background: rgba(255, 209, 102, 0.1);
+}
+
+.perception-card.recommend {
+  border-color: rgba(0, 245, 158, 0.42);
+  background: rgba(0, 245, 158, 0.09);
+}
+
+.trust-row {
+  margin-top: 0.45rem;
+  border-top: 1px solid rgba(145, 194, 220, 0.17);
+  padding-top: 0.4rem;
+}
+
+.trust-row span {
+  display: inline-block;
+  color: var(--blue);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.trust-row p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.79rem;
+}
+
 .alert-item,
 .feed-item,
 .agent-item,

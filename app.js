@@ -540,6 +540,9 @@ const elements = {
   missionStatuses: document.getElementById("missionStatuses"),
   moduleCards: document.getElementById("moduleCards"),
   alertList: document.getElementById("alertList"),
+  perceptionPanel: document.getElementById("perceptionPanel"),
+  nextBestAction: document.getElementById("nextBestAction"),
+  trustExplanation: document.getElementById("trustExplanation"),
   activityFeed: document.getElementById("activityFeed"),
   crossSystemInsights: document.getElementById("crossSystemInsights"),
   agentSnapshot: document.getElementById("agentSnapshot"),
@@ -633,6 +636,7 @@ let activeAgentsSubview = "rankings";
 let isFocusMode = false;
 let paletteSelectionIndex = 0;
 let currentPaletteActions = [];
+let deferredRecommendationId = null;
 const badgeCounts = {
   execution: null,
   agents: null,
@@ -643,7 +647,8 @@ const badgeCounts = {
 const storageKeys = {
   executionSubview: "ghostMissionControl.executionSubview",
   agentsSubview: "ghostMissionControl.agentsSubview",
-  focusMode: "ghostMissionControl.focusMode"
+  focusMode: "ghostMissionControl.focusMode",
+  deferredRecommendation: "ghostMissionControl.deferredRecommendation"
 };
 
 const executionSubviewVisibility = {
@@ -663,21 +668,23 @@ const viewVisibility = {
   "mission-control": [
     "operationsPanel",
     "alertsPanel",
+    "perceptionPanel",
     "predictivePanel",
     "crossSystemPanel",
     "activityPanel"
   ],
   execution: [
     "commandPlanPanel",
+    "perceptionPanel",
     "commandMemoryPanel",
     "activityPanel",
     "agentCollabPanel"
   ],
-  agents: ["agentsPanel", "agentCollabPanel", "activityPanel"],
-  intelligence: ["predictivePanel", "crossSystemPanel", "alertsPanel", "activityPanel"],
-  strategy: ["strategicPanel", "commandPlanPanel", "commandMemoryPanel"],
+  agents: ["agentsPanel", "agentCollabPanel", "perceptionPanel", "activityPanel"],
+  intelligence: ["predictivePanel", "crossSystemPanel", "perceptionPanel", "alertsPanel", "activityPanel"],
+  strategy: ["strategicPanel", "perceptionPanel", "commandPlanPanel", "commandMemoryPanel"],
   simulation: ["scenarioPanel", "strategicPanel", "predictivePanel"],
-  autonomy: ["autonomyPanel", "scenarioPanel", "strategicPanel"],
+  autonomy: ["autonomyPanel", "scenarioPanel", "strategicPanel", "perceptionPanel"],
   "build-queue": ["buildQueuePanel", "operationsPanel"]
 };
 
@@ -697,6 +704,7 @@ function setActiveView(view) {
     "operationsPanel",
     "buildQueuePanel",
     "alertsPanel",
+    "perceptionPanel",
     "activityPanel",
     "commandPlanPanel",
     "commandMemoryPanel",
@@ -778,6 +786,7 @@ function setupNavigation() {
 
   const storedFocusMode = loadStoredValue(storageKeys.focusMode);
   isFocusMode = storedFocusMode === "1";
+  deferredRecommendationId = loadStoredValue(storageKeys.deferredRecommendation);
 
   elements.navItems.forEach((item) => {
     item.addEventListener("click", () => {
@@ -829,6 +838,186 @@ function setupNavigation() {
   } else {
     setFocusMode(false);
   }
+}
+
+function getPersonalityLine(stance) {
+  if (stance === "escalate") {
+    return "Escalation mode: high-risk conditions detected, immediate intervention recommended.";
+  }
+
+  if (stance === "caution") {
+    return "Caution mode: system sees rising risk and recommends a guided correction.";
+  }
+
+  return "Recommend mode: stable conditions detected with a high-confidence optimization move.";
+}
+
+function buildPerceptionRecommendation(execution, agents, intelligence, autonomy) {
+  if (execution.urgentCount > 0 && agents.degradedCount > 0) {
+    return {
+      id: "execution-agent-recovery",
+      stance: "escalate",
+      title: "Stabilize execution by rerouting degraded agents",
+      command: "reroute execution workload from degraded agents and prioritize recovery actions",
+      urgency: "Immediate",
+      confidence: 91,
+      impact: "Reduce run failures and recover command completion speed.",
+      whyGoal: "Protect execution reliability before downstream systems degrade.",
+      whyAgent: "Degraded agents are the most likely failure source right now.",
+      whyAction: "Rerouting and recovery contain blast radius while preserving throughput."
+    };
+  }
+
+  if (intelligence.criticalCount > 0) {
+    return {
+      id: "critical-intelligence-mitigation",
+      stance: "escalate",
+      title: "Mitigate critical predictive risks",
+      command: "prioritize mitigation for critical predictive alerts and execute fastest safe fixes",
+      urgency: "High",
+      confidence: 88,
+      impact: "Prevent forecasted failures before they hit mission execution.",
+      whyGoal: "Critical predictive alerts represent the highest near-term operational risk.",
+      whyAgent: "Alerting and SEO agents have strongest context for fast mitigation.",
+      whyAction: "Preemptive intervention is cheaper than post-failure recovery."
+    };
+  }
+
+  if (autonomy.p1Count > 0) {
+    return {
+      id: "autonomy-p1-activation",
+      stance: "caution",
+      title: "Validate and activate P1 autonomous goals",
+      command: "review and activate top-priority autonomous goals with guided oversight",
+      urgency: "High",
+      confidence: 84,
+      impact: "Accelerate corrective action while preserving control.",
+      whyGoal: "P1 goals are already prioritized by impact and urgency scoring.",
+      whyAgent: "Autonomy supervisor has strongest coordination context across systems.",
+      whyAction: "Guided activation balances speed with human oversight."
+    };
+  }
+
+  if (agents.degradedCount > 0) {
+    return {
+      id: "agent-reliability-tune",
+      stance: "caution",
+      title: "Tune reliability for degraded agents",
+      command: "run reliability diagnostics for degraded agents and apply recovery playbook",
+      urgency: "Medium",
+      confidence: 81,
+      impact: "Improve confidence levels and prevent future escalations.",
+      whyGoal: "Agent drift lowers system confidence and can cascade into failures.",
+      whyAgent: "Low-confidence agents are measurable bottlenecks in current state.",
+      whyAction: "Targeted diagnostics restores performance without broad disruption."
+    };
+  }
+
+  return {
+    id: "stable-optimization",
+    stance: "recommend",
+    title: "Scale a low-risk growth optimization",
+    command: "identify highest-converting campaign path and scale allocation by 10 percent",
+    urgency: "Low",
+    confidence: 78,
+    impact: "Increase performance while the system is stable.",
+    whyGoal: "Stable windows are best used for compounding gains.",
+    whyAgent: "Campaign orchestrator has strongest signal-to-outcome fit for growth moves.",
+    whyAction: "Incremental scaling protects downside while testing upside."
+  };
+}
+
+function renderPerceptionLayer(execution, agents, intelligence, autonomy) {
+  if (!elements.nextBestAction || !elements.trustExplanation) {
+    return;
+  }
+
+  const recommendation = buildPerceptionRecommendation(execution, agents, intelligence, autonomy);
+  const isDeferred = deferredRecommendationId === recommendation.id;
+  const stanceLabel = recommendation.stance.toUpperCase();
+
+  if (isDeferred) {
+    elements.nextBestAction.innerHTML = `
+      <article class="perception-card ${recommendation.stance}">
+        <div class="perception-header">
+          <h3>Recommendation Deferred</h3>
+          <span class="pill tone-gray">Deferred</span>
+        </div>
+        <p>${recommendation.title}</p>
+        <p class="perception-support">${getPersonalityLine(recommendation.stance)}</p>
+        <div class="perception-actions-row">
+          <button type="button" id="restoreRecommendationBtn">Restore Recommendation</button>
+        </div>
+      </article>
+    `;
+
+    const restoreButton = document.getElementById("restoreRecommendationBtn");
+    if (restoreButton) {
+      restoreButton.addEventListener("click", () => {
+        deferredRecommendationId = null;
+        saveStoredValue(storageKeys.deferredRecommendation, "");
+        renderPerceptionLayer(execution, agents, intelligence, autonomy);
+      });
+    }
+  } else {
+    elements.nextBestAction.innerHTML = `
+      <article class="perception-card ${recommendation.stance}">
+        <div class="perception-header">
+          <h3>Next Best Action</h3>
+          <span class="pill tone-blue">${stanceLabel}</span>
+        </div>
+        <p class="perception-title">${recommendation.title}</p>
+        <div class="perception-metrics">
+          <span>Urgency: ${recommendation.urgency}</span>
+          <span>Confidence: ${recommendation.confidence}%</span>
+        </div>
+        <p class="perception-impact">${recommendation.impact}</p>
+        <p class="perception-support">${getPersonalityLine(recommendation.stance)}</p>
+        <div class="perception-actions-row">
+          <button type="button" id="applyRecommendationBtn">Apply Now</button>
+          <button type="button" id="deferRecommendationBtn" class="secondary">Defer</button>
+        </div>
+      </article>
+    `;
+
+    const applyButton = document.getElementById("applyRecommendationBtn");
+    if (applyButton) {
+      applyButton.addEventListener("click", () => {
+        elements.commandInput.value = recommendation.command;
+        elements.commandResponse.textContent = `${getPersonalityLine(recommendation.stance)} Applying: ${recommendation.title}`;
+        setActiveView("execution");
+        setFocusMode(true, "execution");
+        runMissionCommand();
+      });
+    }
+
+    const deferButton = document.getElementById("deferRecommendationBtn");
+    if (deferButton) {
+      deferButton.addEventListener("click", () => {
+        deferredRecommendationId = recommendation.id;
+        saveStoredValue(storageKeys.deferredRecommendation, recommendation.id);
+        renderPerceptionLayer(execution, agents, intelligence, autonomy);
+      });
+    }
+  }
+
+  elements.trustExplanation.innerHTML = `
+    <article class="trust-card">
+      <h3>Trust Layer</h3>
+      <div class="trust-row">
+        <span>Why this goal</span>
+        <p>${recommendation.whyGoal}</p>
+      </div>
+      <div class="trust-row">
+        <span>Why this agent</span>
+        <p>${recommendation.whyAgent}</p>
+      </div>
+      <div class="trust-row">
+        <span>Why this action</span>
+        <p>${recommendation.whyAction}</p>
+      </div>
+    </article>
+  `;
 }
 
 function getViewLabel(view) {
@@ -1230,6 +1419,7 @@ function updateNavBadges() {
   setBadge(elements.navBadgeAutonomy, "autonomy", autonomy);
   updateCorrelationHint(execution, agents, intelligence, autonomy);
   updateContextualAwareness(execution, agents, intelligence, autonomy);
+  renderPerceptionLayer(execution, agents, intelligence, autonomy);
 }
 
 function getExecutionStatusClass(status) {
