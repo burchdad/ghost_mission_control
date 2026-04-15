@@ -2,7 +2,7 @@
 
 ## System Overview
 
-Ghost Mission Control is a fully autonomous multi-agent orchestration system that manages web operations, SEO, content, funnels, social, and marketing automations. The system has evolved through 5 layers of sophistication, each building on the previous.
+Ghost Mission Control is a fully autonomous multi-agent orchestration system that manages web operations, SEO, content, funnels, social, and marketing automations. The system has evolved through 6 layers of sophistication, each building on the previous.
 
 ## Layer 1: Execution Engine (Commit `9666f1c`)
 
@@ -126,10 +126,86 @@ Ghost Mission Control is a fully autonomous multi-agent orchestration system tha
 
 ---
 
+## Layer 6: Strategic Reasoning (Commit `b8115cf`) ← NEW
+
+**Purpose**: Analyze multiple competing goals and recommend strategic prioritization based on system state, predicted risks, and ROI.
+
+**Components**:
+- `analyzeStrategicGoals(siteId)` - Evaluates 4 competing operational goals:
+  1. **seo_recovery** - Requires 3 agents, 72h duration, medium ROI, 75% success probability
+  2. **lead_funnel_optimization** - Requires 3 agents, 24h duration, high ROI, 85% success probability
+  3. **content_expansion** - Requires 2 agents, 48h duration, low ROI, 80% success probability
+  4. **social_recovery** - Requires 1 agent, 12h duration, low ROI, 90% success probability
+
+- **Scoring Algorithm**: Combines 4 weighted factors:
+  - Agent availability (20%): % of required agents with ≥80% confidence
+  - Risk mitigation (30%): # of predictive signals this goal addresses
+  - ROI potential (30%): success probability × revenue impact multiplier
+  - Time efficiency (20%): urgency score / (estimated duration)
+
+- `generateNextSteps(goal)` - Returns 3-5 actionable next steps for recommended goal
+- `generateStrategicRationale(goals, signals)` - Explains why specific goal was chosen
+
+- **Resource Allocation Strategy**:
+  - Primary goal: 50% of resources
+  - Secondary goals: 30% of resources
+  - Contingency: 20% for emergencies
+
+**API Endpoint**:
+- `GET /mission/strategy?siteId=` - Returns:
+  - `primaryGoal` - Highest scoring goal with score
+  - `primaryReasoning` - Why this goal won
+  - `secondaryGoals` - Array of other goals ranked by score
+  - `allGoals` - Complete goal analysis with metrics breakdown
+  - `recommendedAllocation` - Resource distribution percentages
+  - `rationale` - Strategic reasoning (array of explanations)
+
+**Frontend**:
+- `loadStrategicGoals(siteId)` - Fetches strategy from API (called every 1800ms)
+- `renderStrategicGoals(strategy)` - Renders goal cards with:
+  - Primary goal prominence (top card, green border)
+  - Secondary goals list (ranked by score)
+  - Resource allocation bars (visual distribution)
+  - Next steps with arrows (actionable instructions)
+  - Strategic rationale explanations
+
+**UI Panels**: "Strategic Goals" section shows:
+- **Primary Goal Card**: Urgency (1-10), duration (hours), success probability, risk if ignored
+- **Metrics Breakdown**: Agent availability score, risk mitigation score, ROI score, efficiency score
+- **Next Steps**: Sequence of 3-5 actions to execute the primary goal
+- **Secondary Goals**: Quick view of competing priorities ranked
+- **Resource Allocation**: Visual bars showing 50/30/20 distribution
+- **Strategic Rationale**: Explanations for why this strategy was chosen
+
+**Example Output**:
+```
+Primary Goal: lead_funnel_optimization (Score: 76)
+Reasoning: 2 predictive signals detected on funnel conversion.
+  High agent availability (100%). 85% success probability.
+  Secondary Goal: seo_recovery (Score: 64)
+  Can execute in parallel if resources allow.
+
+Resource Allocation: 50% Funnel | 30% SEO | 20% Contingency
+Next Steps:
+  1. Identify drop-off point in funnel (30m)
+  2. A/B test CTA variant on step 2 (4h)
+  3. Route high-intent leads through winning variant (1h)
+  4. Monitor conversion lift (24h)
+```
+
+**Autonomy Impact**: System now decides WHAT to do, not just HOW to do it. Moves beyond execution and prediction into strategic planning.
+
+---
+
 ## Complete Architecture Stack
 
 ```
 ┌─────────────────────────────────────────────────────┐
+│      STRATEGIC REASONING (Layer 6) ← NEW            │
+│   Goal prioritization based on system state         │
+└──────────────────┬──────────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────────┐
 │         PREDICTIVE INTELLIGENCE (Layer 5)           │
 │   Forward-looking risk signals with suggestions     │
 └──────────────────┬──────────────────────────────────┘
@@ -203,6 +279,9 @@ curl http://localhost:4173/mission/execution/{run_id}
 # Check predictive signals
 curl 'http://localhost:4173/mission/predict?siteId=ghost-ai-solutions'
 
+# Check strategic goals and recommendations
+curl 'http://localhost:4173/mission/strategy?siteId=ghost-ai-solutions'
+
 # List agents ranked by confidence
 curl 'http://localhost:4173/mission/agents?siteId=ghost-ai-solutions'
 ```
@@ -231,21 +310,18 @@ This system was built incrementally:
 3. **Intelligence** (Layer 3) - Handoffs decided dynamically based on state
 4. **Orchestration** (Layer 4) - Multi-step workflows executed automatically
 5. **Prediction** (Layer 5) - System predicts and prevents problems
+6. **Strategy** (Layer 6) - System decides WHAT to do, not just how to do it
 
 Each layer maintains backward compatibility while adding new autonomy.
 
----
 
 ## Future Enhancements
 
-- Persistence layer (database instead of in-memory)
-- Webhooks for external system integration
-- Real-time WebSocket updates (instead of polling)
-- ML-based signal analysis
-- SaaS deployment with multi-tenant support
-- Audit logging for compliance
-- API rate limiting and authentication
+ 
+**Scenario Simulation** - "What if we increase posting 20%? Expected ROI = X"
+**Self-Optimization** - Automatic tuning of confidence thresholds and weights
+**Goal-Based Autonomy** - System pursues goals without explicit commands
 
 ---
 
-**Status**: All 5 layers complete, tested, and deployed. System is fully autonomous.
+**Status**: All 6 layers complete, tested, and deployed. System is fully autonomous with strategic reasoning.
