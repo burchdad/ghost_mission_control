@@ -11,6 +11,16 @@ const DISCOVERY_CACHE_TTL_MS = Number(process.env.DISCOVERY_CACHE_TTL_MS || 3000
 const MAX_DISCOVERED_PAGES = Number(process.env.MAX_DISCOVERED_PAGES || 250);
 const DISCOVERY_MAX_DEPTH = Number(process.env.DISCOVERY_MAX_DEPTH || 2);
 const AUTO_DISCOVER_PAGES_DEFAULT = String(process.env.AUTO_DISCOVER_PAGES || "true").toLowerCase() !== "false";
+const AI_REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT_MS || 12000);
+const AI_PROVIDER = String(process.env.AI_PROVIDER || "auto").toLowerCase();
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || "").trim();
+const OPENAI_MODEL = String(process.env.OPENAI_MODEL || "gpt-4.1-mini").trim();
+const ANTHROPIC_API_KEY = String(process.env.ANTHROPIC_API_KEY || "").trim();
+const ANTHROPIC_MODEL = String(process.env.ANTHROPIC_MODEL || "claude-3-5-haiku-latest").trim();
+const OPENROUTER_API_KEY = String(process.env.OPENROUTER_API_KEY || "").trim();
+const OPENROUTER_MODEL = String(process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini").trim();
+const OPENROUTER_HTTP_REFERER = String(process.env.OPENROUTER_HTTP_REFERER || "").trim();
+const OPENROUTER_APP_NAME = String(process.env.OPENROUTER_APP_NAME || "Ghost Mission Control").trim();
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -613,6 +623,264 @@ function sendJson(request, response, statusCode, data) {
 function sendHead(request, response, statusCode, headers = {}) {
   response.writeHead(statusCode, getDefaultHeaders(request, headers));
   response.end();
+}
+
+function hasAiProviderConfigured(provider) {
+  if (provider === "openai") {
+    return Boolean(OPENAI_API_KEY);
+  }
+
+  if (provider === "anthropic") {
+    return Boolean(ANTHROPIC_API_KEY);
+  }
+
+  if (provider === "openrouter") {
+    return Boolean(OPENROUTER_API_KEY);
+  }
+
+  return false;
+}
+
+function getConfiguredAiProviders() {
+  const providers = [];
+  if (hasAiProviderConfigured("openai")) {
+    providers.push("openai");
+  }
+
+  if (hasAiProviderConfigured("anthropic")) {
+    providers.push("anthropic");
+  }
+
+  if (hasAiProviderConfigured("openrouter")) {
+    providers.push("openrouter");
+  }
+
+  return providers;
+}
+
+function withAiTimeout(ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timer)
+  };
+}
+
+function sanitizeAiGuidance(raw) {
+  const fallback = {
+    rationaleAdditions: [],
+    autoActionsAdditions: [],
+    growthOpportunities: [],
+    confidenceNote: "AI guidance unavailable. Using deterministic mission planning.",
+    provider: "none"
+  };
+
+  if (!raw || typeof raw !== "object") {
+    return fallback;
+  }
+
+  const takeList = (value) =>
+    (Array.isArray(value) ? value : [])
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .slice(0, 3);
+
+  return {
+    rationaleAdditions: takeList(raw.rationaleAdditions),
+    autoActionsAdditions: takeList(raw.autoActionsAdditions),
+    growthOpportunities: takeList(raw.growthOpportunities),
+    confidenceNote: String(raw.confidenceNote || fallback.confidenceNote).trim(),
+    provider: String(raw.provider || fallback.provider)
+  };
+}
+
+async function callOpenAiGuidance(payload) {
+  const timeout = withAiTimeout(AI_REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      signal: timeout.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are Ghost Mission Control AI copilot. Return only valid JSON with keys: rationaleAdditions (array of strings), autoActionsAdditions (array of strings), growthOpportunities (array of strings), confidenceNote (string). Keep concise and production-safe."
+          },
+          {
+            role: "user",
+            content: JSON.stringify(payload)
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI request failed (${response.status})`);
+    }
+
+    const completion = await response.json();
+    const content = completion?.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content);
+    return sanitizeAiGuidance({ ...parsed, provider: "openai" });
+  } finally {
+    timeout.clear();
+  }
+}
+
+async function callAnthropicGuidance(payload) {
+  const timeout = withAiTimeout(AI_REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: timeout.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 500,
+        temperature: 0.2,
+        system:
+          "You are Ghost Mission Control AI copilot. Return only valid JSON with keys: rationaleAdditions (array of strings), autoActionsAdditions (array of strings), growthOpportunities (array of strings), confidenceNote (string).",
+        messages: [
+          {
+            role: "user",
+            content: JSON.stringify(payload)
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Anthropic request failed (${response.status})`);
+    }
+
+    const completion = await response.json();
+    const text = (completion?.content || [])
+      .filter((item) => item?.type === "text")
+      .map((item) => item.text)
+      .join("\n");
+    const parsed = JSON.parse(text || "{}");
+    return sanitizeAiGuidance({ ...parsed, provider: "anthropic" });
+  } finally {
+    timeout.clear();
+  }
+}
+
+async function callOpenRouterGuidance(payload) {
+  const timeout = withAiTimeout(AI_REQUEST_TIMEOUT_MS);
+
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "X-Title": OPENROUTER_APP_NAME
+    };
+
+    if (OPENROUTER_HTTP_REFERER) {
+      headers["HTTP-Referer"] = OPENROUTER_HTTP_REFERER;
+    }
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: timeout.signal,
+      headers,
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are Ghost Mission Control AI copilot. Return only valid JSON with keys: rationaleAdditions (array of strings), autoActionsAdditions (array of strings), growthOpportunities (array of strings), confidenceNote (string). Keep concise and production-safe."
+          },
+          {
+            role: "user",
+            content: JSON.stringify(payload)
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter request failed (${response.status})`);
+    }
+
+    const completion = await response.json();
+    const content = completion?.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(content);
+    return sanitizeAiGuidance({ ...parsed, provider: "openrouter" });
+  } finally {
+    timeout.clear();
+  }
+}
+
+async function getAiGuidance(command, siteId, plan) {
+  const providers = getConfiguredAiProviders();
+  if (!providers.length) {
+    return sanitizeAiGuidance(null);
+  }
+
+  const requestedOrder =
+    AI_PROVIDER === "openai" || AI_PROVIDER === "anthropic" || AI_PROVIDER === "openrouter"
+      ? [AI_PROVIDER]
+      : providers;
+  const providerOrder = [...requestedOrder, ...providers.filter((provider) => !requestedOrder.includes(provider))];
+
+  const promptPayload = {
+    command,
+    siteId,
+    plan: {
+      category: plan.category,
+      summary: plan.summary,
+      objective: plan.objective,
+      priority: plan.priority,
+      owners: plan.owners,
+      systemActions: plan.systemActions
+    },
+    constraints: {
+      maxRationaleAdditions: 3,
+      maxAutoActionsAdditions: 3,
+      maxGrowthOpportunities: 3
+    }
+  };
+
+  let lastError = null;
+
+  for (const provider of providerOrder) {
+    try {
+      if (provider === "openai" && hasAiProviderConfigured("openai")) {
+        return await callOpenAiGuidance(promptPayload);
+      }
+
+      if (provider === "anthropic" && hasAiProviderConfigured("anthropic")) {
+        return await callAnthropicGuidance(promptPayload);
+      }
+
+      if (provider === "openrouter" && hasAiProviderConfigured("openrouter")) {
+        return await callOpenRouterGuidance(promptPayload);
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  return sanitizeAiGuidance({
+    confidenceNote: `AI guidance unavailable (${String(lastError?.message || "provider error")}). Using deterministic mission planning.`
+  });
 }
 
 const executionRuns = new Map();
@@ -2190,6 +2458,21 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/mission/ai/status") {
+    const providers = getConfiguredAiProviders();
+    sendJson(request, response, 200, {
+      enabled: providers.length > 0,
+      preferredProvider: AI_PROVIDER,
+      configuredProviders: providers,
+      models: {
+        openai: OPENAI_MODEL,
+        anthropic: ANTHROPIC_MODEL,
+        openrouter: OPENROUTER_MODEL
+      }
+    });
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/mission/sites") {
     getMissionSnapshot(url.searchParams.get("refresh") === "true")
       .then((snapshot) => {
@@ -2240,7 +2523,7 @@ const server = http.createServer((request, response) => {
       }
     });
 
-    request.on("end", () => {
+    request.on("end", async () => {
       try {
         const parsed = body ? JSON.parse(body) : {};
         const command = parsed.command || "";
@@ -2253,14 +2536,24 @@ const server = http.createServer((request, response) => {
 
         const plan = getCommandPlan(command, siteId);
         const execution = createExecutionRun(command, siteId, plan);
-        const rationale = getDecisionRationale(plan.category || "general");
+        const baseRationale = getDecisionRationale(plan.category || "general");
+        const aiGuidance = await getAiGuidance(command, siteId, plan);
+        const rationale = [...baseRationale, ...aiGuidance.rationaleAdditions];
+        const autoActions = [...(plan.autoActions || []), ...aiGuidance.autoActionsAdditions];
+        const expectedImpact =
+          aiGuidance.growthOpportunities.length > 0
+            ? `${plan.expectedImpact} Growth opportunities: ${aiGuidance.growthOpportunities.join(" | ")}`
+            : plan.expectedImpact;
 
         sendJson(request, response, 200, {
           command,
           siteId,
           receivedAt: new Date().toISOString(),
           ...plan,
+          autoActions,
+          expectedImpact,
           rationale,
+          aiCopilot: aiGuidance,
           execution: {
             id: execution.id,
             status: execution.status,

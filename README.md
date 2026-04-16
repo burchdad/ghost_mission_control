@@ -173,6 +173,33 @@ GET /mission/sites
 GET /mission/snapshot
 ```
 
+## AI Provider Integration (OpenAI + Anthropic + OpenRouter)
+
+Mission Command now supports optional AI copilot guidance from OpenAI, Anthropic, and OpenRouter with automatic fallback.
+
+Set any provider keys on the backend:
+
+```bash
+AI_PROVIDER=auto
+OPENAI_API_KEY=<your-openai-key>
+OPENAI_MODEL=gpt-4.1-mini
+ANTHROPIC_API_KEY=<your-anthropic-key>
+ANTHROPIC_MODEL=claude-3-5-haiku-latest
+OPENROUTER_API_KEY=<your-openrouter-key>
+OPENROUTER_MODEL=openai/gpt-4o-mini
+OPENROUTER_HTTP_REFERER=https://your-frontend-domain.vercel.app
+OPENROUTER_APP_NAME=Ghost Mission Control
+AI_REQUEST_TIMEOUT_MS=12000
+```
+
+When enabled, `/mission/command` responses include `aiCopilot` guidance and enrich rationale/auto-actions.
+
+Provider status endpoint:
+
+```bash
+GET /mission/ai/status
+```
+
 ## Mission Command API
 
 The dashboard now supports backend command routing.
