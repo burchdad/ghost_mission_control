@@ -811,6 +811,43 @@ select:focus-visible {
   font-size: 0.79rem;
 }
 
+.confidence-calibration {
+  margin-top: 0.45rem;
+  border-top: 1px solid rgba(145, 194, 220, 0.17);
+  padding-top: 0.45rem;
+}
+
+.confidence-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.confidence-columns {
+  margin-top: 0.35rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.confidence-label {
+  color: var(--blue);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.confidence-columns ul {
+  margin: 0.25rem 0 0;
+  padding-left: 1rem;
+}
+
+.confidence-columns li {
+  color: var(--muted);
+  font-size: 0.77rem;
+  margin: 0.15rem 0;
+}
+
 .perception-actions-row {
   margin-top: 0.5rem;
   display: flex;

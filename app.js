@@ -852,6 +852,18 @@ function getPersonalityLine(stance) {
   return "Recommend mode: stable conditions detected with a high-confidence optimization move.";
 }
 
+function getConfidenceBand(score) {
+  if (score >= 88) {
+    return "High";
+  }
+
+  if (score >= 78) {
+    return "Medium";
+  }
+
+  return "Low";
+}
+
 function buildPerceptionRecommendation(execution, agents, intelligence, autonomy) {
   if (execution.urgentCount > 0 && agents.degradedCount > 0) {
     return {
@@ -861,6 +873,14 @@ function buildPerceptionRecommendation(execution, agents, intelligence, autonomy
       command: "reroute execution workload from degraded agents and prioritize recovery actions",
       urgency: "Immediate",
       confidence: 91,
+      confidenceWhy: [
+        "Execution urgency and degraded-agent correlation is strong across current signals.",
+        "Recent failure patterns match known recovery playbooks with high success rates."
+      ],
+      confidenceLift: [
+        "Capture one successful rerouted run outcome in this session.",
+        "Confirm degraded agents recover above 75% confidence after remediation."
+      ],
       impact: "Reduce run failures and recover command completion speed.",
       whyGoal: "Protect execution reliability before downstream systems degrade.",
       whyAgent: "Degraded agents are the most likely failure source right now.",
@@ -876,6 +896,14 @@ function buildPerceptionRecommendation(execution, agents, intelligence, autonomy
       command: "prioritize mitigation for critical predictive alerts and execute fastest safe fixes",
       urgency: "High",
       confidence: 88,
+      confidenceWhy: [
+        "Multiple critical predictive alerts agree on near-term risk escalation.",
+        "Mitigation actions are low-latency and historically reduce incident rate."
+      ],
+      confidenceLift: [
+        "Increase confidence by validating one high-risk signal with real-time telemetry.",
+        "Confirm mitigation reduces active critical alerts within one polling cycle."
+      ],
       impact: "Prevent forecasted failures before they hit mission execution.",
       whyGoal: "Critical predictive alerts represent the highest near-term operational risk.",
       whyAgent: "Alerting and SEO agents have strongest context for fast mitigation.",
@@ -891,6 +919,14 @@ function buildPerceptionRecommendation(execution, agents, intelligence, autonomy
       command: "review and activate top-priority autonomous goals with guided oversight",
       urgency: "High",
       confidence: 84,
+      confidenceWhy: [
+        "P1 autonomous goals are pre-scored for urgency and expected impact.",
+        "Guided oversight lowers execution risk while preserving response speed."
+      ],
+      confidenceLift: [
+        "Raise confidence by validating top goal assumptions against latest site metrics.",
+        "Track one completed P1 goal with expected impact met."
+      ],
       impact: "Accelerate corrective action while preserving control.",
       whyGoal: "P1 goals are already prioritized by impact and urgency scoring.",
       whyAgent: "Autonomy supervisor has strongest coordination context across systems.",
@@ -906,6 +942,14 @@ function buildPerceptionRecommendation(execution, agents, intelligence, autonomy
       command: "run reliability diagnostics for degraded agents and apply recovery playbook",
       urgency: "Medium",
       confidence: 81,
+      confidenceWhy: [
+        "Degraded agent trend is measurable and linked to execution instability.",
+        "Recovery diagnostics are targeted rather than system-wide, limiting side effects."
+      ],
+      confidenceLift: [
+        "Increase confidence after diagnostic output confirms root-cause category.",
+        "Verify confidence rebound in at least one degraded agent after fix."
+      ],
       impact: "Improve confidence levels and prevent future escalations.",
       whyGoal: "Agent drift lowers system confidence and can cascade into failures.",
       whyAgent: "Low-confidence agents are measurable bottlenecks in current state.",
@@ -920,6 +964,14 @@ function buildPerceptionRecommendation(execution, agents, intelligence, autonomy
     command: "identify highest-converting campaign path and scale allocation by 10 percent",
     urgency: "Low",
     confidence: 78,
+    confidenceWhy: [
+      "System is stable, but optimization payoff depends on external traffic response.",
+      "Growth move is incremental, so downside risk is controlled but outcome variance remains."
+    ],
+    confidenceLift: [
+      "Increase confidence by validating uplift in CTR or conversion within first test window.",
+      "Confirm campaign path continues to outperform baseline after budget shift."
+    ],
     impact: "Increase performance while the system is stable.",
     whyGoal: "Stable windows are best used for compounding gains.",
     whyAgent: "Campaign orchestrator has strongest signal-to-outcome fit for growth moves.",
@@ -935,6 +987,7 @@ function renderPerceptionLayer(execution, agents, intelligence, autonomy) {
   const recommendation = buildPerceptionRecommendation(execution, agents, intelligence, autonomy);
   const isDeferred = deferredRecommendationId === recommendation.id;
   const stanceLabel = recommendation.stance.toUpperCase();
+  const confidenceBand = getConfidenceBand(recommendation.confidence);
 
   if (isDeferred) {
     elements.nextBestAction.innerHTML = `
@@ -970,8 +1023,26 @@ function renderPerceptionLayer(execution, agents, intelligence, autonomy) {
         <div class="perception-metrics">
           <span>Urgency: ${recommendation.urgency}</span>
           <span>Confidence: ${recommendation.confidence}%</span>
+          <span>Band: ${confidenceBand}</span>
         </div>
         <p class="perception-impact">${recommendation.impact}</p>
+        <div class="confidence-calibration">
+          <p class="confidence-title">Confidence Calibration</p>
+          <div class="confidence-columns">
+            <div>
+              <span class="confidence-label">Why confidence is ${confidenceBand.toLowerCase()}</span>
+              <ul>
+                ${recommendation.confidenceWhy.map((item) => `<li>${item}</li>`).join("")}
+              </ul>
+            </div>
+            <div>
+              <span class="confidence-label">What increases confidence</span>
+              <ul>
+                ${recommendation.confidenceLift.map((item) => `<li>${item}</li>`).join("")}
+              </ul>
+            </div>
+          </div>
+        </div>
         <p class="perception-support">${getPersonalityLine(recommendation.stance)}</p>
         <div class="perception-actions-row">
           <button type="button" id="applyRecommendationBtn">Apply Now</button>
