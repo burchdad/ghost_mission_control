@@ -54,7 +54,11 @@ const discoveryCache = new Map();
 const vercelSiteCache = {
   generatedAt: 0,
   sites: [],
-  pending: null
+  pending: null,
+  lastAttemptAt: 0,
+  lastSuccessAt: 0,
+  lastError: "",
+  lastProjectCount: 0
 };
 
 function parseBool(value, fallback = false) {
@@ -311,7 +315,7 @@ async function fetchLatestVercelDeploymentUrl(projectId) {
 
 async function fetchVercelMonitoredSites() {
   if (!hasVercelIntegrationConfigured()) {
-    return [];
+    return { sites: [], projectCount: 0 };
   }
 
   const payload = await fetchVercelJson("/v9/projects", {
@@ -352,7 +356,44 @@ async function fetchVercelMonitoredSites() {
     })
   );
 
-  return sites.filter(Boolean);
+  return {
+    sites: sites.filter(Boolean),
+    projectCount: projects.length
+  };
+}
+
+function toIsoOrNull(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  return new Date(timestamp).toISOString();
+}
+
+function getVercelIntegrationStatus() {
+  const now = Date.now();
+  const cacheAgeMs = vercelSiteCache.generatedAt ? now - vercelSiteCache.generatedAt : null;
+  return {
+    autoImportEnabled: VERCEL_AUTO_IMPORT_PROJECTS,
+    tokenConfigured: Boolean(VERCEL_TOKEN),
+    teamScopeConfigured: Boolean(VERCEL_TEAM_ID),
+    configured: hasVercelIntegrationConfigured(),
+    cache: {
+      ttlMs: VERCEL_SYNC_CACHE_TTL_MS,
+      ageMs: cacheAgeMs,
+      importedSites: vercelSiteCache.sites.length,
+      sourceProjects: vercelSiteCache.lastProjectCount
+    },
+    limits: {
+      maxProjects: Math.max(1, Math.min(VERCEL_MAX_PROJECTS, 100))
+    },
+    sync: {
+      lastAttemptAt: toIsoOrNull(vercelSiteCache.lastAttemptAt),
+      lastSuccessAt: toIsoOrNull(vercelSiteCache.lastSuccessAt),
+      lastError: vercelSiteCache.lastError || null,
+      inFlight: Boolean(vercelSiteCache.pending)
+    }
+  };
 }
 
 async function getVercelMonitoredSites(forceRefresh = false) {
@@ -369,16 +410,22 @@ async function getVercelMonitoredSites(forceRefresh = false) {
     return vercelSiteCache.pending;
   }
 
+  vercelSiteCache.lastAttemptAt = Date.now();
   vercelSiteCache.pending = fetchVercelMonitoredSites()
-    .then((sites) => {
+    .then((result) => {
+      const sites = result?.sites || [];
       vercelSiteCache.sites = sites;
       vercelSiteCache.generatedAt = Date.now();
+      vercelSiteCache.lastSuccessAt = vercelSiteCache.generatedAt;
+      vercelSiteCache.lastProjectCount = Number(result?.projectCount || 0);
+      vercelSiteCache.lastError = "";
       vercelSiteCache.pending = null;
       return sites;
     })
     .catch((error) => {
       vercelSiteCache.pending = null;
-      console.warn(`Unable to sync Vercel monitored projects: ${String(error?.message || error)}`);
+      vercelSiteCache.lastError = String(error?.message || error || "unknown error");
+      console.warn(`Unable to sync Vercel monitored projects: ${vercelSiteCache.lastError}`);
       return vercelSiteCache.sites;
     });
 
@@ -2704,6 +2751,21 @@ const server = http.createServer((request, response) => {
         openrouter: OPENROUTER_MODEL
       }
     });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/integrations/vercel") {
+    const forceRefresh = url.searchParams.get("refresh") === "true";
+    getVercelMonitoredSites(forceRefresh)
+      .then(() => {
+        sendJson(request, response, 200, getVercelIntegrationStatus());
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to load Vercel integration status",
+          detail: String(error?.message || error)
+        });
+      });
     return;
   }
 
