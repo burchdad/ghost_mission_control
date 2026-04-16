@@ -144,14 +144,26 @@ Set one of these on the backend host (Railway recommended):
 Example:
 
 ```bash
-MONITORED_SITES=[{"id":"ghost-ai-solutions","name":"Ghost AI Solutions","domain":"ghostai.solutions","pages":[{"label":"Homepage","url":"https://ghostai.solutions/"},{"label":"Services","url":"https://ghostai.solutions/services"}]}]
+MONITORED_SITES=[{"id":"ghost-ai-solutions","name":"Ghost AI Solutions","domain":"ghostai.solutions","rootUrl":"https://ghostai.solutions","autoDiscoverPages":true,"pages":[{"label":"Homepage","url":"https://ghostai.solutions/"}]}]
 ```
+
+When `autoDiscoverPages` is enabled, Mission Control automatically ingests page URLs from:
+
+- `https://<site>/sitemap.xml`
+- `robots.txt` sitemap entries
+- nested sitemap indexes (depth-limited)
+
+This is the recommended path for Vercel-hosted properties so you do not have to list every page manually.
 
 Optional tuning:
 
 ```bash
 PAGE_TIMEOUT_MS=8000
 MONITOR_CACHE_TTL_MS=60000
+AUTO_DISCOVER_PAGES=true
+DISCOVERY_CACHE_TTL_MS=300000
+MAX_DISCOVERED_PAGES=250
+DISCOVERY_MAX_DEPTH=2
 ```
 
 New live monitoring endpoints:

@@ -7,6 +7,10 @@ const MAX_PORT_ATTEMPTS = 10;
 const ROOT = __dirname;
 const PAGE_TIMEOUT_MS = Number(process.env.PAGE_TIMEOUT_MS || 8000);
 const MONITOR_CACHE_TTL_MS = Number(process.env.MONITOR_CACHE_TTL_MS || 60000);
+const DISCOVERY_CACHE_TTL_MS = Number(process.env.DISCOVERY_CACHE_TTL_MS || 300000);
+const MAX_DISCOVERED_PAGES = Number(process.env.MAX_DISCOVERED_PAGES || 250);
+const DISCOVERY_MAX_DEPTH = Number(process.env.DISCOVERY_MAX_DEPTH || 2);
+const AUTO_DISCOVER_PAGES_DEFAULT = String(process.env.AUTO_DISCOVER_PAGES || "true").toLowerCase() !== "false";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -30,6 +34,27 @@ const monitoringCache = {
   snapshot: null,
   pending: null
 };
+
+const discoveryCache = new Map();
+
+function parseBool(value, fallback = false) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) {
+      return true;
+    }
+
+    if (["0", "false", "no", "off"].includes(normalized)) {
+      return false;
+    }
+  }
+
+  return fallback;
+}
 
 function slugify(value) {
   return String(value || "")
@@ -67,7 +92,9 @@ function parseMonitoredSites() {
           return {
             name: parsed.hostname,
             domain: parsed.hostname,
-            pages: [urlString]
+            rootUrl: parsed.origin,
+            pages: [urlString],
+            autoDiscoverPages: true
           };
         } catch {
           return null;
@@ -97,13 +124,38 @@ function parseMonitoredSites() {
             .filter(Boolean)
         : [];
 
-      if (!pages.length) {
+      let rootUrl = site.rootUrl || site.baseUrl || site.url || "";
+      if (!rootUrl && pages.length) {
+        try {
+          rootUrl = new URL(pages[0].url).origin;
+        } catch {
+          rootUrl = "";
+        }
+      }
+
+      if (rootUrl) {
+        try {
+          rootUrl = new URL(rootUrl).origin;
+        } catch {
+          rootUrl = "";
+        }
+      }
+
+      if (!pages.length && !rootUrl) {
         return null;
       }
 
       const domain = site.domain || (() => {
         try {
-          return new URL(pages[0].url).hostname;
+          if (pages.length) {
+            return new URL(pages[0].url).hostname;
+          }
+
+          if (rootUrl) {
+            return new URL(rootUrl).hostname;
+          }
+
+          return `site-${index + 1}`;
         } catch {
           return `site-${index + 1}`;
         }
@@ -114,13 +166,143 @@ function parseMonitoredSites() {
         id,
         name: site.name || domain,
         domain,
-        pages
+        rootUrl,
+        pages,
+        autoDiscoverPages: parseBool(site.autoDiscoverPages, AUTO_DISCOVER_PAGES_DEFAULT)
       };
     })
     .filter(Boolean);
 }
 
 const monitoredSites = parseMonitoredSites();
+
+function parseXmlLocTags(xml) {
+  const locMatches = [...String(xml || "").matchAll(/<loc>([^<]+)<\/loc>/gi)];
+  return locMatches
+    .map((match) => String(match[1] || "").trim())
+    .filter(Boolean);
+}
+
+async function fetchText(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "GhostMissionControl/1.0 (+discovery)"
+      }
+    });
+
+    if (!response.ok) {
+      return "";
+    }
+
+    return await response.text();
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function parseSitemapsFromRobots(robotsText) {
+  return String(robotsText || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^sitemap:/i.test(line))
+    .map((line) => line.replace(/^sitemap:/i, "").trim())
+    .filter(Boolean);
+}
+
+async function discoverFromSitemapUrl(sitemapUrl, depth, visited, pageUrls) {
+  if (!sitemapUrl || visited.has(sitemapUrl) || depth > DISCOVERY_MAX_DEPTH || pageUrls.size >= MAX_DISCOVERED_PAGES) {
+    return;
+  }
+
+  visited.add(sitemapUrl);
+
+  const xml = await fetchText(sitemapUrl);
+  if (!xml) {
+    return;
+  }
+
+  const locs = parseXmlLocTags(xml);
+  if (!locs.length) {
+    return;
+  }
+
+  const isIndex = /<sitemapindex[\s>]/i.test(xml);
+  if (isIndex) {
+    for (const loc of locs) {
+      await discoverFromSitemapUrl(loc, depth + 1, visited, pageUrls);
+      if (pageUrls.size >= MAX_DISCOVERED_PAGES) {
+        break;
+      }
+    }
+    return;
+  }
+
+  for (const loc of locs) {
+    if (pageUrls.size >= MAX_DISCOVERED_PAGES) {
+      break;
+    }
+
+    pageUrls.add(loc);
+  }
+}
+
+async function discoverSitePages(site) {
+  const cached = discoveryCache.get(site.id);
+  const now = Date.now();
+  if (cached && now - cached.generatedAt < DISCOVERY_CACHE_TTL_MS) {
+    return cached.pages;
+  }
+
+  const discovered = new Map();
+  for (const page of site.pages || []) {
+    discovered.set(page.url, {
+      label: page.label || "",
+      url: page.url
+    });
+  }
+
+  if (site.rootUrl && site.autoDiscoverPages) {
+    const sitemapCandidates = [`${site.rootUrl}/sitemap.xml`];
+    const robotsText = await fetchText(`${site.rootUrl}/robots.txt`);
+    sitemapCandidates.push(...parseSitemapsFromRobots(robotsText));
+
+    const pageUrls = new Set();
+    const visited = new Set();
+    for (const sitemapUrl of sitemapCandidates) {
+      await discoverFromSitemapUrl(sitemapUrl, 0, visited, pageUrls);
+      if (pageUrls.size >= MAX_DISCOVERED_PAGES) {
+        break;
+      }
+    }
+
+    for (const url of pageUrls) {
+      if (!discovered.has(url)) {
+        discovered.set(url, { label: "", url });
+      }
+    }
+  }
+
+  if (!discovered.size && site.rootUrl) {
+    discovered.set(site.rootUrl, { label: "Homepage", url: site.rootUrl });
+  }
+
+  const pages = [...discovered.values()].slice(0, MAX_DISCOVERED_PAGES);
+  discoveryCache.set(site.id, {
+    generatedAt: Date.now(),
+    pages
+  });
+
+  return pages;
+}
 
 async function probePage(page) {
   const start = Date.now();
@@ -352,7 +534,8 @@ async function computeMissionSnapshot() {
   const websites = [];
 
   for (const site of monitoredSites) {
-    const checks = await Promise.all(site.pages.map((page) => probePage(page)));
+    const resolvedPages = await discoverSitePages(site);
+    const checks = await Promise.all(resolvedPages.map((page) => probePage(page)));
     websites.push(buildSiteSnapshot(site, checks, monitoredSites.length));
   }
 
