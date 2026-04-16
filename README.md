@@ -155,6 +155,27 @@ When `autoDiscoverPages` is enabled, Mission Control automatically ingests page 
 
 This is the recommended path for Vercel-hosted properties so you do not have to list every page manually.
 
+### Auto-Import All Vercel Projects
+
+If your properties are hosted on Vercel, Mission Control can auto-import project production URLs from your Vercel account and include them in monitoring automatically.
+
+Set on backend (Railway):
+
+```bash
+VERCEL_AUTO_IMPORT_PROJECTS=true
+VERCEL_TOKEN=<your-vercel-api-token>
+VERCEL_TEAM_ID=<optional-team-id>
+VERCEL_SYNC_CACHE_TTL_MS=300000
+VERCEL_MAX_PROJECTS=100
+```
+
+Notes:
+
+- `VERCEL_TOKEN` is required for API access.
+- `VERCEL_TEAM_ID` is optional and only needed for team-scoped projects.
+- Vercel-imported sites are merged with `MONITORED_SITES` and deduplicated by domain/root URL.
+- Use `GET /mission/snapshot?refresh=true` to force an immediate re-sync.
+
 Optional tuning:
 
 ```bash

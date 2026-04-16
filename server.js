@@ -21,6 +21,11 @@ const OPENROUTER_API_KEY = String(process.env.OPENROUTER_API_KEY || "").trim();
 const OPENROUTER_MODEL = String(process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini").trim();
 const OPENROUTER_HTTP_REFERER = String(process.env.OPENROUTER_HTTP_REFERER || "").trim();
 const OPENROUTER_APP_NAME = String(process.env.OPENROUTER_APP_NAME || "Ghost Mission Control").trim();
+const VERCEL_TOKEN = String(process.env.VERCEL_TOKEN || "").trim();
+const VERCEL_TEAM_ID = String(process.env.VERCEL_TEAM_ID || "").trim();
+const VERCEL_AUTO_IMPORT_PROJECTS = String(process.env.VERCEL_AUTO_IMPORT_PROJECTS || "true").toLowerCase() !== "false";
+const VERCEL_SYNC_CACHE_TTL_MS = Number(process.env.VERCEL_SYNC_CACHE_TTL_MS || 300000);
+const VERCEL_MAX_PROJECTS = Number(process.env.VERCEL_MAX_PROJECTS || 100);
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -46,6 +51,11 @@ const monitoringCache = {
 };
 
 const discoveryCache = new Map();
+const vercelSiteCache = {
+  generatedAt: 0,
+  sites: [],
+  pending: null
+};
 
 function parseBool(value, fallback = false) {
   if (typeof value === "boolean") {
@@ -72,6 +82,40 @@ function slugify(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || `site-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeDomain(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return new URL(trimmed).hostname;
+    }
+  } catch {
+    return "";
+  }
+
+  return trimmed.replace(/\/+$/, "").toLowerCase();
+}
+
+function ensureHttpsUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return new URL(trimmed).origin;
+    }
+
+    return new URL(`https://${trimmed}`).origin;
+  } catch {
+    return "";
+  }
 }
 
 function parseMonitoredSites() {
@@ -184,7 +228,196 @@ function parseMonitoredSites() {
     .filter(Boolean);
 }
 
-const monitoredSites = parseMonitoredSites();
+const staticMonitoredSites = parseMonitoredSites();
+
+function hasVercelIntegrationConfigured() {
+  return Boolean(VERCEL_TOKEN) && VERCEL_AUTO_IMPORT_PROJECTS;
+}
+
+function getVercelApiUrl(pathname, query = {}) {
+  const base = new URL(`https://api.vercel.com${pathname}`);
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== null && value !== undefined && String(value).trim() !== "") {
+      base.searchParams.set(key, String(value));
+    }
+  }
+
+  if (VERCEL_TEAM_ID) {
+    base.searchParams.set("teamId", VERCEL_TEAM_ID);
+  }
+
+  return base.toString();
+}
+
+async function fetchVercelJson(pathname, query = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(getVercelApiUrl(pathname, query), {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${VERCEL_TOKEN}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Vercel API request failed (${response.status})`);
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchVercelProjectDomains(projectId, fallbackDomains = []) {
+  try {
+    const payload = await fetchVercelJson(`/v9/projects/${encodeURIComponent(projectId)}/domains`, {
+      limit: 100
+    });
+
+    const apiDomains = (Array.isArray(payload?.domains) ? payload.domains : [])
+      .map((item) => normalizeDomain(item?.name || item?.domain || item))
+      .filter(Boolean);
+
+    const combined = [...fallbackDomains, ...apiDomains];
+    return [...new Set(combined)];
+  } catch {
+    return [...new Set(fallbackDomains)];
+  }
+}
+
+async function fetchLatestVercelDeploymentUrl(projectId) {
+  try {
+    const payload = await fetchVercelJson("/v13/deployments", {
+      projectId,
+      target: "production",
+      state: "READY",
+      limit: 1
+    });
+
+    const deployment = Array.isArray(payload?.deployments) ? payload.deployments[0] : null;
+    if (!deployment?.url) {
+      return "";
+    }
+
+    return ensureHttpsUrl(deployment.url);
+  } catch {
+    return "";
+  }
+}
+
+async function fetchVercelMonitoredSites() {
+  if (!hasVercelIntegrationConfigured()) {
+    return [];
+  }
+
+  const payload = await fetchVercelJson("/v9/projects", {
+    limit: Math.max(1, Math.min(VERCEL_MAX_PROJECTS, 100))
+  });
+  const projects = Array.isArray(payload?.projects) ? payload.projects : [];
+
+  const sites = await Promise.all(
+    projects.map(async (project, index) => {
+      const projectId = String(project?.id || "").trim();
+      const projectName = String(project?.name || projectId || `vercel-project-${index + 1}`).trim();
+      if (!projectId) {
+        return null;
+      }
+
+      const fallbackDomains = (Array.isArray(project?.domains) ? project.domains : [])
+        .map((item) => normalizeDomain(item?.name || item?.domain || item))
+        .filter(Boolean);
+
+      const domains = await fetchVercelProjectDomains(projectId, fallbackDomains);
+      const rootFromDomain = domains.length ? ensureHttpsUrl(domains[0]) : "";
+      const rootFromDeployment = await fetchLatestVercelDeploymentUrl(projectId);
+      const rootUrl = rootFromDomain || rootFromDeployment;
+      const domain = normalizeDomain(rootUrl) || domains[0] || "";
+
+      if (!rootUrl && !domain) {
+        return null;
+      }
+
+      return {
+        id: `vercel-${slugify(projectName)}`,
+        name: projectName,
+        domain: domain || `${slugify(projectName)}.vercel.app`,
+        rootUrl,
+        pages: rootUrl ? [{ label: "Homepage", url: rootUrl }] : [],
+        autoDiscoverPages: true
+      };
+    })
+  );
+
+  return sites.filter(Boolean);
+}
+
+async function getVercelMonitoredSites(forceRefresh = false) {
+  if (!hasVercelIntegrationConfigured()) {
+    return [];
+  }
+
+  const now = Date.now();
+  if (!forceRefresh && vercelSiteCache.sites.length && now - vercelSiteCache.generatedAt < VERCEL_SYNC_CACHE_TTL_MS) {
+    return vercelSiteCache.sites;
+  }
+
+  if (!forceRefresh && vercelSiteCache.pending) {
+    return vercelSiteCache.pending;
+  }
+
+  vercelSiteCache.pending = fetchVercelMonitoredSites()
+    .then((sites) => {
+      vercelSiteCache.sites = sites;
+      vercelSiteCache.generatedAt = Date.now();
+      vercelSiteCache.pending = null;
+      return sites;
+    })
+    .catch((error) => {
+      vercelSiteCache.pending = null;
+      console.warn(`Unable to sync Vercel monitored projects: ${String(error?.message || error)}`);
+      return vercelSiteCache.sites;
+    });
+
+  return vercelSiteCache.pending;
+}
+
+async function getResolvedMonitoredSites(forceRefresh = false) {
+  const vercelSites = await getVercelMonitoredSites(forceRefresh);
+  if (!vercelSites.length) {
+    return staticMonitoredSites;
+  }
+
+  const domainSet = new Set(staticMonitoredSites.map((site) => normalizeDomain(site.domain)).filter(Boolean));
+  const rootSet = new Set(staticMonitoredSites.map((site) => ensureHttpsUrl(site.rootUrl)).filter(Boolean));
+  const merged = [...staticMonitoredSites];
+
+  for (const site of vercelSites) {
+    const domain = normalizeDomain(site.domain);
+    const root = ensureHttpsUrl(site.rootUrl);
+    if ((domain && domainSet.has(domain)) || (root && rootSet.has(root))) {
+      continue;
+    }
+
+    merged.push(site);
+    if (domain) {
+      domainSet.add(domain);
+    }
+
+    if (root) {
+      rootSet.add(root);
+    }
+  }
+
+  return merged;
+}
+
+function getDefaultSiteId() {
+  return monitoringCache.snapshot?.websites?.[0]?.id || staticMonitoredSites[0]?.id || "unknown-site";
+}
 
 function parseXmlLocTags(xml) {
   const locMatches = [...String(xml || "").matchAll(/<loc>([^<]+)<\/loc>/gi)];
@@ -540,18 +773,19 @@ function buildSiteSnapshot(site, checks, totalSites) {
   };
 }
 
-async function computeMissionSnapshot() {
+async function computeMissionSnapshot(forceRefresh = false) {
+  const resolvedSites = await getResolvedMonitoredSites(forceRefresh);
   const websites = [];
 
-  for (const site of monitoredSites) {
+  for (const site of resolvedSites) {
     const resolvedPages = await discoverSitePages(site);
     const checks = await Promise.all(resolvedPages.map((page) => probePage(page)));
-    websites.push(buildSiteSnapshot(site, checks, monitoredSites.length));
+    websites.push(buildSiteSnapshot(site, checks, resolvedSites.length));
   }
 
   return {
     generatedAt: new Date().toISOString(),
-    configuredSites: monitoredSites.length,
+    configuredSites: resolvedSites.length,
     websites
   };
 }
@@ -566,7 +800,7 @@ async function getMissionSnapshot(forceRefresh = false) {
     return monitoringCache.pending;
   }
 
-  monitoringCache.pending = computeMissionSnapshot()
+  monitoringCache.pending = computeMissionSnapshot(forceRefresh)
     .then((snapshot) => {
       monitoringCache.snapshot = snapshot;
       monitoringCache.generatedAt = Date.now();
@@ -2453,7 +2687,7 @@ const server = http.createServer((request, response) => {
     sendJson(request, response, 200, {
       ok: true,
       service: "ghost-mission-control",
-      monitoredSites: monitoredSites.length
+      monitoredSites: monitoringCache.snapshot?.configuredSites || staticMonitoredSites.length
     });
     return;
   }
@@ -2527,7 +2761,7 @@ const server = http.createServer((request, response) => {
       try {
         const parsed = body ? JSON.parse(body) : {};
         const command = parsed.command || "";
-        const siteId = parsed.siteId || monitoredSites[0]?.id || "unknown-site";
+        const siteId = parsed.siteId || getDefaultSiteId();
 
         if (!String(command).trim()) {
           sendJson(request, response, 400, { error: "Command is required" });
@@ -2604,7 +2838,7 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/agents") {
-    const siteId = url.searchParams.get("siteId") || monitoredSites[0]?.id || "unknown-site";
+    const siteId = url.searchParams.get("siteId") || getDefaultSiteId();
     sendJson(request, response, 200, {
       agents: getRankedAgents(siteId)
     });
@@ -2612,7 +2846,7 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/predict") {
-    const siteId = url.searchParams.get("siteId") || monitoredSites[0]?.id || "unknown-site";
+    const siteId = url.searchParams.get("siteId") || getDefaultSiteId();
     const signals = getOrCreatePredictiveSignals(siteId);
     sendJson(request, response, 200, {
       siteId,
@@ -2624,14 +2858,14 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/strategy") {
-    const siteId = url.searchParams.get("siteId") || monitoredSites[0]?.id || "unknown-site";
+    const siteId = url.searchParams.get("siteId") || getDefaultSiteId();
     const strategy = analyzeStrategicGoals(siteId);
     sendJson(request, response, 200, strategy);
     return;
   }
 
   if (request.method === "GET" && url.pathname === "/mission/autonomy") {
-    const siteId = url.searchParams.get("siteId") || monitoredSites[0]?.id || "unknown-site";
+    const siteId = url.searchParams.get("siteId") || getDefaultSiteId();
     const goals = getOrCreateAutonomousGoals(siteId);
     sendJson(request, response, 200, {
       siteId,
@@ -2644,7 +2878,7 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/simulate") {
-    const siteId = url.searchParams.get("siteId") || monitoredSites[0]?.id || "unknown-site";
+    const siteId = url.searchParams.get("siteId") || getDefaultSiteId();
     const forecast = getOrCreateScenarioForecast(siteId);
     sendJson(request, response, 200, forecast);
     return;
