@@ -21,8 +21,8 @@ Ghost Mission Control is the command center that monitors, manages, and scales t
 
 - [index.html](index.html): App shell and dashboard layout
 - [styles.css](styles.css): Mission-control visual system and responsive styling
-- [app.js](app.js): Seeded operational data and UI rendering logic
-- [server.js](server.js): Local Node server for static hosting and mission command API routing
+- [app.js](app.js): Live API-driven UI rendering logic
+- [server.js](server.js): Local Node server for static hosting, mission command API routing, and monitored page checks
 
 ## MVP Features Implemented
 
@@ -132,6 +132,35 @@ npm run start:8080
 
 Then open `http://localhost:8080`.
 
+## Live Monitoring Configuration
+
+Mission Control now loads websites/pages from backend environment configuration (no in-frontend seeded site mock data).
+
+Set one of these on the backend host (Railway recommended):
+
+1. `MONITORED_SITES` (JSON array, recommended)
+2. `MONITORED_SITE_URLS` (comma-separated URLs, quick start)
+
+Example:
+
+```bash
+MONITORED_SITES=[{"id":"ghost-ai-solutions","name":"Ghost AI Solutions","domain":"ghostai.solutions","pages":[{"label":"Homepage","url":"https://ghostai.solutions/"},{"label":"Services","url":"https://ghostai.solutions/services"}]}]
+```
+
+Optional tuning:
+
+```bash
+PAGE_TIMEOUT_MS=8000
+MONITOR_CACHE_TTL_MS=60000
+```
+
+New live monitoring endpoints:
+
+```bash
+GET /mission/sites
+GET /mission/snapshot
+```
+
 ## Mission Command API
 
 The dashboard now supports backend command routing.
@@ -190,7 +219,7 @@ Each execution action now includes dispatch metadata (`dispatchMode`, `supervisi
 
 ## Data Model Direction (Next Step)
 
-The current UI uses seeded JavaScript objects in [app.js](app.js). For production, map the data to relational entities such as:
+The current UI now consumes live backend snapshot data. For deeper production persistence, map telemetry and command history to relational entities such as:
 
 - Websites
 - Agents

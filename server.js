@@ -5,6 +5,8 @@ const path = require("path");
 const BASE_PORT = Number(process.env.PORT || 4173);
 const MAX_PORT_ATTEMPTS = 10;
 const ROOT = __dirname;
+const PAGE_TIMEOUT_MS = Number(process.env.PAGE_TIMEOUT_MS || 8000);
+const MONITOR_CACHE_TTL_MS = Number(process.env.MONITOR_CACHE_TTL_MS || 60000);
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -22,6 +24,369 @@ const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+const monitoringCache = {
+  generatedAt: 0,
+  snapshot: null,
+  pending: null
+};
+
+function slugify(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || `site-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function parseMonitoredSites() {
+  const rawJson = process.env.MONITORED_SITES || process.env.MONITORED_SITES_JSON || "";
+  const quickUrls = String(process.env.MONITORED_SITE_URLS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  let sites = [];
+
+  if (rawJson) {
+    try {
+      const parsed = JSON.parse(rawJson);
+      if (Array.isArray(parsed)) {
+        sites = parsed;
+      }
+    } catch {
+      console.warn("Unable to parse MONITORED_SITES JSON. Falling back to MONITORED_SITE_URLS if provided.");
+    }
+  }
+
+  if (!sites.length && quickUrls.length) {
+    sites = quickUrls
+      .map((urlString) => {
+        try {
+          const parsed = new URL(urlString);
+          return {
+            name: parsed.hostname,
+            domain: parsed.hostname,
+            pages: [urlString]
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  }
+
+  return sites
+    .map((site, index) => {
+      const pages = Array.isArray(site.pages)
+        ? site.pages
+            .map((page) => {
+              if (typeof page === "string") {
+                return { url: page };
+              }
+
+              if (page && typeof page.url === "string") {
+                return {
+                  label: page.label || "",
+                  url: page.url
+                };
+              }
+
+              return null;
+            })
+            .filter(Boolean)
+        : [];
+
+      if (!pages.length) {
+        return null;
+      }
+
+      const domain = site.domain || (() => {
+        try {
+          return new URL(pages[0].url).hostname;
+        } catch {
+          return `site-${index + 1}`;
+        }
+      })();
+
+      const id = site.id || slugify(site.name || domain);
+      return {
+        id,
+        name: site.name || domain,
+        domain,
+        pages
+      };
+    })
+    .filter(Boolean);
+}
+
+const monitoredSites = parseMonitoredSites();
+
+async function probePage(page) {
+  const start = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(page.url, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "GhostMissionControl/1.0 (+monitoring)"
+      }
+    });
+
+    clearTimeout(timer);
+
+    return {
+      label: page.label || "",
+      url: page.url,
+      ok: response.ok,
+      statusCode: response.status,
+      latencyMs: Date.now() - start,
+      error: null,
+      checkedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    clearTimeout(timer);
+    return {
+      label: page.label || "",
+      url: page.url,
+      ok: false,
+      statusCode: 0,
+      latencyMs: Date.now() - start,
+      error: String(error?.message || error || "request failed"),
+      checkedAt: new Date().toISOString()
+    };
+  }
+}
+
+function formatDuration(ms) {
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
+function toneFromStatus(status) {
+  if (status === "Action Needed") {
+    return "red";
+  }
+
+  if (status === "Minor Warnings") {
+    return "yellow";
+  }
+
+  return "green";
+}
+
+function buildSiteSnapshot(site, checks, totalSites) {
+  const failed = checks.filter((item) => !item.ok);
+  const slow = checks.filter((item) => item.ok && item.latencyMs >= 1500);
+  const healthy = checks.filter((item) => item.ok && item.latencyMs < 1500);
+
+  const status = failed.length > 0 ? "Action Needed" : slow.length > 0 ? "Minor Warnings" : "All Systems Green";
+
+  const recommendation = failed.length
+    ? "Investigate failed pages and recover reachability."
+    : slow.length
+      ? "Optimize page latency and CDN behavior for warning pages."
+      : "System stable. Scale monitoring coverage or add deeper page checks.";
+
+  const topSlow = [...slow].sort((a, b) => b.latencyMs - a.latencyMs)[0];
+
+  const alerts = [
+    ...failed.map((item) => ({
+      title: `Page unreachable (${item.statusCode || "error"})`,
+      detail: `${item.url}${item.error ? ` - ${item.error}` : ""}`,
+      tone: "red"
+    })),
+    ...slow.map((item) => ({
+      title: "High latency detected",
+      detail: `${item.url} responded in ${formatDuration(item.latencyMs)}`,
+      tone: "yellow"
+    }))
+  ].slice(0, 6);
+
+  const activityFeed = checks
+    .slice()
+    .sort((a, b) => b.latencyMs - a.latencyMs)
+    .map((item) => ({
+      title: item.ok ? "Page check completed" : "Page check failed",
+      detail: `${item.url} | status ${item.statusCode || "error"} | ${formatDuration(item.latencyMs)}`,
+      time: item.checkedAt
+    }))
+    .slice(0, 8);
+
+  const rankedAgents = getRankedAgents(site.id).slice(0, 4).map((entry) => ({
+    name: entry.name,
+    status: entry.trend === "Down" ? "Error" : "Active",
+    tone: entry.trend === "Down" ? "red" : "blue",
+    statline: `${entry.successfulActions} success | ${entry.failedActions} fail | ${entry.retriedActions} retries`,
+    rank: entry.rank,
+    trend: entry.trend,
+    efficiency: `${Math.round(entry.confidence)}%`
+  }));
+
+  const generatedAt = new Date().toISOString();
+
+  return {
+    id: site.id,
+    name: site.name,
+    domain: site.domain,
+    status,
+    pages: checks,
+    kpis: [
+      { label: "Websites Monitored", value: totalSites, delta: "Live configuration" },
+      { label: "Pages Monitored", value: checks.length, delta: `${healthy.length} healthy` },
+      { label: "Failed Pages", value: failed.length, delta: failed.length ? "requires action" : "none" },
+      { label: "Slow Pages", value: slow.length, delta: slow.length ? "latency warning" : "within target" }
+    ],
+    missionStrip: {
+      summary: `${status}. ${recommendation}`,
+      statuses: [
+        { label: "All Systems Green", tone: "green" },
+        { label: "Minor Warnings", tone: "yellow" },
+        { label: "Action Needed", tone: "red" }
+      ]
+    },
+    modules: [
+      {
+        name: "Uptime Monitor",
+        status,
+        tone: toneFromStatus(status),
+        priority: failed.length ? "P1 Critical" : slow.length ? "P2 High Value" : "P3 Important",
+        priorityHeat: failed.length ? "critical" : slow.length ? "high" : "monitor",
+        owner: "Monitoring Agent",
+        metrics: {
+          "Pages Healthy": String(healthy.length),
+          "Pages Failed": String(failed.length),
+          "Checks Run": String(checks.length),
+          "Last Sync": generatedAt
+        },
+        revenue: {
+          influenced: "n/a",
+          generated: "n/a",
+          pipeline: "n/a"
+        },
+        ownership: {
+          confidence: `${failed.length ? 70 : slow.length ? 82 : 95}%`,
+          autonomy: "Guided",
+          lastDecision: recommendation,
+          needsHuman: failed.length ? "Yes" : "No"
+        },
+        autoAction: {
+          enabled: true,
+          lastFix: failed.length ? "Prepared remediation recommendation" : "No corrective action required",
+          escalation: failed.length ? "Required" : "Not Required"
+        }
+      },
+      {
+        name: "Performance Guardrail",
+        status: slow.length ? "Optimizing" : "Stable",
+        tone: slow.length ? "yellow" : "green",
+        priority: slow.length ? "P2 High Value" : "P4 Nice to Improve",
+        priorityHeat: slow.length ? "high" : "monitor",
+        owner: "Performance Agent",
+        metrics: {
+          "Average Latency": `${Math.round(checks.reduce((sum, item) => sum + item.latencyMs, 0) / Math.max(checks.length, 1))}ms`,
+          "Slow Pages": String(slow.length),
+          "Top Slow URL": topSlow ? topSlow.url : "none",
+          "Latency Threshold": "1500ms"
+        },
+        revenue: {
+          influenced: "n/a",
+          generated: "n/a",
+          pipeline: "n/a"
+        },
+        ownership: {
+          confidence: `${slow.length ? 80 : 92}%`,
+          autonomy: "Guided",
+          lastDecision: slow.length ? "Flagged latency hotspots for optimization" : "Latency within acceptable range",
+          needsHuman: "No"
+        },
+        autoAction: {
+          enabled: true,
+          lastFix: slow.length ? "Queued performance investigation" : "No optimization action required",
+          escalation: slow.length ? "Review Suggested" : "Not Required"
+        }
+      }
+    ],
+    crossInsights: [
+      {
+        title: "Coverage summary",
+        detail: `${checks.length} monitored pages checked for ${site.domain}.`
+      },
+      {
+        title: "Stability insight",
+        detail: failed.length
+          ? `${failed.length} page(s) are unreachable and likely impacting visibility.`
+          : "No unreachable pages detected in current monitoring cycle."
+      },
+      {
+        title: "Performance insight",
+        detail: slow.length
+          ? `${slow.length} page(s) exceeded latency threshold and should be optimized.`
+          : "All reachable pages are within latency thresholds."
+      }
+    ],
+    alerts,
+    activityFeed,
+    agents: rankedAgents,
+    buildQueue: {
+      "Idea Backlog": failed.length ? [] : ["Add deeper synthetic checks"],
+      Researching: slow.length ? ["Analyze slow endpoint dependency chain"] : [],
+      "Ready to Build": failed.length ? ["Create outage auto-remediation workflow"] : [],
+      Building: [],
+      Testing: [],
+      "Ready to Deploy": [],
+      Live: ["Live website/page monitoring"],
+      Archived: []
+    }
+  };
+}
+
+async function computeMissionSnapshot() {
+  const websites = [];
+
+  for (const site of monitoredSites) {
+    const checks = await Promise.all(site.pages.map((page) => probePage(page)));
+    websites.push(buildSiteSnapshot(site, checks, monitoredSites.length));
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    configuredSites: monitoredSites.length,
+    websites
+  };
+}
+
+async function getMissionSnapshot(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && monitoringCache.snapshot && now - monitoringCache.generatedAt < MONITOR_CACHE_TTL_MS) {
+    return monitoringCache.snapshot;
+  }
+
+  if (!forceRefresh && monitoringCache.pending) {
+    return monitoringCache.pending;
+  }
+
+  monitoringCache.pending = computeMissionSnapshot()
+    .then((snapshot) => {
+      monitoringCache.snapshot = snapshot;
+      monitoringCache.generatedAt = Date.now();
+      monitoringCache.pending = null;
+      return snapshot;
+    })
+    .catch((error) => {
+      monitoringCache.pending = null;
+      throw error;
+    });
+
+  return monitoringCache.pending;
+}
 
 function getCorsOrigin(request) {
   const requestOrigin = request.headers.origin;
@@ -1634,7 +1999,51 @@ const server = http.createServer((request, response) => {
       return;
     }
 
-    sendJson(request, response, 200, { ok: true, service: "ghost-mission-control" });
+    sendJson(request, response, 200, {
+      ok: true,
+      service: "ghost-mission-control",
+      monitoredSites: monitoredSites.length
+    });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/sites") {
+    getMissionSnapshot(url.searchParams.get("refresh") === "true")
+      .then((snapshot) => {
+        sendJson(request, response, 200, {
+          generatedAt: snapshot.generatedAt,
+          configuredSites: snapshot.configuredSites,
+          websites: snapshot.websites.map((site) => ({
+            id: site.id,
+            name: site.name,
+            domain: site.domain,
+            status: site.status,
+            pageCount: site.pages.length
+          }))
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to generate monitored site list",
+          detail: String(error?.message || error)
+        });
+      });
+
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/snapshot") {
+    getMissionSnapshot(url.searchParams.get("refresh") === "true")
+      .then((snapshot) => {
+        sendJson(request, response, 200, snapshot);
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to generate mission snapshot",
+          detail: String(error?.message || error)
+        });
+      });
+
     return;
   }
 
@@ -1652,7 +2061,7 @@ const server = http.createServer((request, response) => {
       try {
         const parsed = body ? JSON.parse(body) : {};
         const command = parsed.command || "";
-        const siteId = parsed.siteId || "unknown-site";
+        const siteId = parsed.siteId || monitoredSites[0]?.id || "unknown-site";
 
         if (!String(command).trim()) {
           sendJson(request, response, 400, { error: "Command is required" });
@@ -1719,7 +2128,7 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/agents") {
-    const siteId = url.searchParams.get("siteId") || "unknown-site";
+    const siteId = url.searchParams.get("siteId") || monitoredSites[0]?.id || "unknown-site";
     sendJson(request, response, 200, {
       agents: getRankedAgents(siteId)
     });
@@ -1727,7 +2136,7 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/predict") {
-    const siteId = url.searchParams.get("siteId") || "unknown-site";
+    const siteId = url.searchParams.get("siteId") || monitoredSites[0]?.id || "unknown-site";
     const signals = getOrCreatePredictiveSignals(siteId);
     sendJson(request, response, 200, {
       siteId,
@@ -1739,14 +2148,14 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/strategy") {
-    const siteId = url.searchParams.get("siteId") || "unknown-site";
+    const siteId = url.searchParams.get("siteId") || monitoredSites[0]?.id || "unknown-site";
     const strategy = analyzeStrategicGoals(siteId);
     sendJson(request, response, 200, strategy);
     return;
   }
 
   if (request.method === "GET" && url.pathname === "/mission/autonomy") {
-    const siteId = url.searchParams.get("siteId") || "unknown-site";
+    const siteId = url.searchParams.get("siteId") || monitoredSites[0]?.id || "unknown-site";
     const goals = getOrCreateAutonomousGoals(siteId);
     sendJson(request, response, 200, {
       siteId,
@@ -1759,7 +2168,7 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/simulate") {
-    const siteId = url.searchParams.get("siteId") || "unknown-site";
+    const siteId = url.searchParams.get("siteId") || monitoredSites[0]?.id || "unknown-site";
     const forecast = getOrCreateScenarioForecast(siteId);
     sendJson(request, response, 200, forecast);
     return;

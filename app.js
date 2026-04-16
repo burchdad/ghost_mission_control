@@ -1,520 +1,4 @@
-const missionData = {
-  websites: [
-    {
-      id: "ghost-ai-solutions",
-      name: "Ghost AI Solutions",
-      domain: "ghostai.solutions",
-      status: "Action Needed",
-      kpis: [
-        { label: "Websites Monitored", value: 12, delta: "+2 this month" },
-        { label: "Active Funnels", value: 9, delta: "2 under optimization" },
-        { label: "Scrapers Running", value: 7, delta: "1 source degraded" },
-        { label: "Posts Published Today", value: 18, delta: "+12% vs baseline" },
-        { label: "Leads Captured Today", value: 23, delta: "4 high-intent" },
-        { label: "SEO Issues Open", value: 14, delta: "3 critical" },
-        { label: "Failed Jobs", value: 5, delta: "2 retries pending" },
-        { label: "AI Agents Active", value: 11, delta: "2 idle unexpectedly" }
-      ],
-      missionStrip: {
-        summary: "Minor warning trend detected in social API health and lead routing.",
-        statuses: [
-          { label: "All Systems Green", tone: "green" },
-          { label: "Minor Warnings", tone: "yellow" },
-          { label: "Action Needed", tone: "red" },
-          { label: "Growth Opportunity Detected", tone: "blue" }
-        ]
-      },
-      modules: [
-        {
-          name: "SEO Command",
-          status: "At Risk",
-          tone: "red",
-          priority: "P1 Critical",
-          priorityHeat: "critical",
-          owner: "SEO Optimizer Agent",
-          metrics: {
-            "Pages Indexed": "314",
-            "Issues Open": "14",
-            "Keywords Dropping": "9",
-            "Missing Metadata": "22"
-          },
-          revenue: {
-            influenced: "$2,920",
-            generated: "$980",
-            pipeline: "$4,600"
-          },
-          ownership: {
-            confidence: "88%",
-            autonomy: "Guided",
-            lastDecision: "Escalated missing schema pages for same-day patch",
-            needsHuman: "Yes"
-          },
-          autoAction: {
-            enabled: true,
-            lastFix: "Generated fix task batch for 6 pages",
-            escalation: "Required"
-          }
-        },
-        {
-          name: "AI Agents & Automations",
-          status: "Active",
-          tone: "violet",
-          priority: "P1 Critical",
-          priorityHeat: "critical",
-          owner: "Automation Supervisor",
-          metrics: {
-            "Agents Active": "11",
-            "Jobs Today": "142",
-            "Success Rate": "96.2%",
-            "Escalations": "4"
-          },
-          revenue: {
-            influenced: "$7,800",
-            generated: "$2,100",
-            pipeline: "$12,400"
-          },
-          ownership: {
-            confidence: "93%",
-            autonomy: "Full",
-            lastDecision: "Rerouted failed lead sync through backup webhook",
-            needsHuman: "No"
-          },
-          autoAction: {
-            enabled: true,
-            lastFix: "Recovered CRM handoff via fallback queue",
-            escalation: "Not Required"
-          }
-        },
-        {
-          name: "Lead Funnel Command",
-          status: "Optimizing",
-          tone: "yellow",
-          priority: "P2 High Value",
-          priorityHeat: "high",
-          owner: "Funnel Monitor Agent",
-          metrics: {
-            "Live Funnels": "9",
-            "Leads Today": "23",
-            "Conversion Rate": "4.8%",
-            "Drop-Off": "Step 2 CTA"
-          },
-          revenue: {
-            influenced: "$3,640",
-            generated: "$1,420",
-            pipeline: "$9,200"
-          },
-          ownership: {
-            confidence: "91%",
-            autonomy: "Guided",
-            lastDecision: "Activated CTA variant B for low-performing funnel step",
-            needsHuman: "No"
-          },
-          autoAction: {
-            enabled: true,
-            lastFix: "Triggered A/B test on step 2 call-to-action",
-            escalation: "Not Required"
-          }
-        },
-        {
-          name: "Content Scraping Command",
-          status: "Scraping",
-          tone: "blue",
-          priority: "P2 High Value",
-          priorityHeat: "high",
-          owner: "Content Scraper Agent",
-          metrics: {
-            "Sources Active": "11",
-            "Scraped Today": "36",
-            "Failed Scrapes": "3",
-            "Quality Score": "84/100"
-          },
-          revenue: {
-            influenced: "$1,260",
-            generated: "$320",
-            pipeline: "$2,980"
-          },
-          ownership: {
-            confidence: "92%",
-            autonomy: "Full",
-            lastDecision: "Rejected low-quality source cluster B",
-            needsHuman: "No"
-          },
-          autoAction: {
-            enabled: true,
-            lastFix: "Auto-switched from timeout source to backup feed",
-            escalation: "Not Required"
-          }
-        },
-        {
-          name: "Marketing Command",
-          status: "Optimizing",
-          tone: "yellow",
-          priority: "P2 High Value",
-          priorityHeat: "growth",
-          owner: "Campaign Orchestrator",
-          metrics: {
-            "Active Campaigns": "6",
-            "Top Offer": "AI Website Audit",
-            "Acquisition Cost": "$21.60",
-            "Revenue Influenced": "$6,420"
-          },
-          revenue: {
-            influenced: "$6,420",
-            generated: "$2,870",
-            pipeline: "$11,200"
-          },
-          ownership: {
-            confidence: "86%",
-            autonomy: "Guided",
-            lastDecision: "Paused underperforming ad group and reallocated budget",
-            needsHuman: "Yes"
-          },
-          autoAction: {
-            enabled: true,
-            lastFix: "Shifted 15% spend toward highest converting campaign",
-            escalation: "Review Suggested"
-          }
-        },
-        {
-          name: "Social Posting Command",
-          status: "Scheduled",
-          tone: "green",
-          priority: "P3 Important",
-          priorityHeat: "monitor",
-          owner: "Social Publisher Agent",
-          metrics: {
-            "Posts Today": "18",
-            "Failed Publishes": "2",
-            "Engagement Rate": "3.9%",
-            "Queue Size": "27"
-          },
-          revenue: {
-            influenced: "$1,880",
-            generated: "$540",
-            pipeline: "$3,120"
-          },
-          ownership: {
-            confidence: "90%",
-            autonomy: "Guided",
-            lastDecision: "Rescheduled two posts after token refresh failure",
-            needsHuman: "No"
-          },
-          autoAction: {
-            enabled: true,
-            lastFix: "Retried LinkedIn publish after auth refresh",
-            escalation: "Not Required"
-          }
-        }
-      ],
-      crossInsights: [
-        {
-          title: "SEO drag impacting funnel traffic",
-          detail: "Ranking losses on two service pages correlate with a 14% visit drop at funnel entry."
-        },
-        {
-          title: "Top content driving lead quality",
-          detail: "One AI automation article generated 60% of high-intent form completions today."
-        },
-        {
-          title: "Campaign tuning improved scrape relevance",
-          detail: "Audience shift toward operations terms increased useful content match score by 11%."
-        }
-      ],
-      alerts: [
-        {
-          title: "Social API token expired",
-          detail: "LinkedIn publisher failed twice in 30 minutes.",
-          tone: "red"
-        },
-        {
-          title: "Lead routing warning",
-          detail: "3 form submissions did not sync to CRM.",
-          tone: "yellow"
-        },
-        {
-          title: "SEO ranking dip",
-          detail: "Target page dropped 4 positions for primary keyword.",
-          tone: "yellow"
-        },
-        {
-          title: "Scraper retries in progress",
-          detail: "Source cluster B had 3 timeout failures.",
-          tone: "blue"
-        }
-      ],
-      activityFeed: [
-        {
-          title: "Content Summarizer completed",
-          detail: "14 source articles summarized and tagged for review.",
-          time: "12 minutes ago"
-        },
-        {
-          title: "Funnel test variant launched",
-          detail: "New CTA copy activated for audit funnel step 2.",
-          time: "24 minutes ago"
-        },
-        {
-          title: "SEO issue escalated",
-          detail: "Missing schema on /services/ai-automation marked P1.",
-          time: "38 minutes ago"
-        },
-        {
-          title: "Campaign click anomaly",
-          detail: "CTR down 11% on one paid source cohort.",
-          time: "1 hour ago"
-        }
-      ],
-      agents: [
-        {
-          name: "Content Scraper Agent",
-          status: "Active",
-          tone: "green",
-          statline: "98% success rate | 36 tasks today",
-          rank: 1,
-          trend: "Up",
-          efficiency: "94%"
-        },
-        {
-          name: "SEO Optimizer Agent",
-          status: "Active",
-          tone: "violet",
-          statline: "9 recommendations generated",
-          rank: 2,
-          trend: "Steady",
-          efficiency: "89%"
-        },
-        {
-          name: "Alerting Agent",
-          status: "Active",
-          tone: "blue",
-          statline: "12 alerts triaged in last 2 hours",
-          rank: 3,
-          trend: "Up",
-          efficiency: "87%"
-        },
-        {
-          name: "Lead Router Agent",
-          status: "Error",
-          tone: "red",
-          statline: "3 failed handoffs | escalation flagged",
-          rank: 4,
-          trend: "Down",
-          efficiency: "62%"
-        }
-      ],
-      buildQueue: {
-        "Idea Backlog": [
-          "Competitor intelligence scanner",
-          "Reputation management module"
-        ],
-        "Ready to Build": [
-          "Lead recovery agent",
-          "Backlink prospecting engine"
-        ],
-        Building: ["Local SEO heatmap module"],
-        Testing: ["Content repurposing engine"],
-        Live: ["LinkedIn social publisher"],
-        Archived: ["Legacy feed parser"]
-      }
-    },
-    {
-      id: "client-alpha",
-      name: "Client Alpha Retail",
-      domain: "alpha-retail.com",
-      status: "Minor Warnings",
-      kpis: [
-        { label: "Websites Monitored", value: 1, delta: "Single domain profile" },
-        { label: "Active Funnels", value: 3, delta: "1 in testing" },
-        { label: "Scrapers Running", value: 2, delta: "Healthy" },
-        { label: "Posts Published Today", value: 6, delta: "On schedule" },
-        { label: "Leads Captured Today", value: 12, delta: "+8% vs weekly average" },
-        { label: "SEO Issues Open", value: 4, delta: "No critical issues" },
-        { label: "Failed Jobs", value: 1, delta: "Auto-retry enabled" },
-        { label: "AI Agents Active", value: 5, delta: "All expected agents online" }
-      ],
-      missionStrip: {
-        summary: "Healthy operation with mild caution in campaign cost efficiency.",
-        statuses: [
-          { label: "All Systems Green", tone: "green" },
-          { label: "Minor Warnings", tone: "yellow" },
-          { label: "Growth Opportunity Detected", tone: "blue" }
-        ]
-      },
-      modules: [
-        {
-          name: "Lead Funnel Command",
-          status: "Live",
-          tone: "green",
-          priority: "P2 High Value",
-          priorityHeat: "high",
-          owner: "Funnel Monitor Agent",
-          metrics: {
-            "Live Funnels": "3",
-            "Leads Today": "12",
-            "Conversion Rate": "6.1%",
-            "Appointments": "5"
-          },
-          revenue: {
-            influenced: "$2,140",
-            generated: "$1,120",
-            pipeline: "$3,780"
-          },
-          ownership: {
-            confidence: "94%",
-            autonomy: "Full",
-            lastDecision: "Promoted top funnel to primary traffic route",
-            needsHuman: "No"
-          },
-          autoAction: {
-            enabled: true,
-            lastFix: "Adjusted follow-up timing after drop-off signal",
-            escalation: "Not Required"
-          }
-        },
-        {
-          name: "SEO Command",
-          status: "Needs Optimization",
-          tone: "yellow",
-          priority: "P3 Important",
-          priorityHeat: "growth",
-          owner: "SEO Optimizer Agent",
-          metrics: {
-            "Pages Indexed": "94",
-            "Issues Open": "4",
-            "Improving Keywords": "15",
-            "Dropping Keywords": "2"
-          },
-          revenue: {
-            influenced: "$1,280",
-            generated: "$430",
-            pipeline: "$2,260"
-          },
-          ownership: {
-            confidence: "87%",
-            autonomy: "Guided",
-            lastDecision: "Scheduled metadata refresh for product pages",
-            needsHuman: "No"
-          },
-          autoAction: {
-            enabled: true,
-            lastFix: "Generated optimization checklist from page audit",
-            escalation: "Not Required"
-          }
-        },
-        {
-          name: "Social Posting Command",
-          status: "Posted",
-          tone: "green",
-          priority: "P3 Important",
-          priorityHeat: "monitor",
-          owner: "Social Publisher Agent",
-          metrics: {
-            "Posts Today": "6",
-            "Queue Size": "8",
-            Engagement: "4.2%",
-            Failed: "0"
-          },
-          revenue: {
-            influenced: "$920",
-            generated: "$210",
-            pipeline: "$1,640"
-          },
-          ownership: {
-            confidence: "92%",
-            autonomy: "Full",
-            lastDecision: "Prioritized testimonial content for evening post window",
-            needsHuman: "No"
-          },
-          autoAction: {
-            enabled: true,
-            lastFix: "Auto-rescheduled one post to highest engagement slot",
-            escalation: "Not Required"
-          }
-        }
-      ],
-      crossInsights: [
-        {
-          title: "Funnel momentum from social proof posts",
-          detail: "Testimonial sequence lifted landing page conversions by 0.9 points."
-        },
-        {
-          title: "SEO improvements reinforcing remarketing",
-          detail: "Metadata cleanup improved quality score for branded campaigns."
-        }
-      ],
-      alerts: [
-        {
-          title: "Campaign CPL drift",
-          detail: "Acquisition cost rose 9% in last 48 hours.",
-          tone: "yellow"
-        },
-        {
-          title: "Webhook retry",
-          detail: "One lead webhook retried successfully.",
-          tone: "blue"
-        }
-      ],
-      activityFeed: [
-        {
-          title: "Offer test published",
-          detail: "Spring campaign variation B went live.",
-          time: "31 minutes ago"
-        },
-        {
-          title: "SEO metadata patched",
-          detail: "Updated titles on 6 high-traffic pages.",
-          time: "2 hours ago"
-        }
-      ],
-      agents: [
-        {
-          name: "Funnel Monitor Agent",
-          status: "Active",
-          tone: "green",
-          statline: "3 funnels tracked | no outages",
-          rank: 1,
-          trend: "Up",
-          efficiency: "93%"
-        },
-        {
-          name: "CRM Sync Agent",
-          status: "Active",
-          tone: "blue",
-          statline: "100% sync for last 24h",
-          rank: 2,
-          trend: "Steady",
-          efficiency: "91%"
-        }
-      ],
-      buildQueue: {
-        "Idea Backlog": ["Conversion anomaly detector"],
-        "Ready to Build": ["Review sentiment parser"],
-        Building: ["Cart abandonment agent"],
-        Testing: [],
-        Live: ["Email follow-up chain"]
-      }
-    }
-  ]
-};
-
-const runtimeApiBase = (() => {
-  const url = new URL(window.location.href);
-  const fromQuery = url.searchParams.get("apiBase");
-
-  if (fromQuery) {
-    localStorage.setItem("ghost_api_base_url", fromQuery);
-  }
-
-  const fromStorage = localStorage.getItem("ghost_api_base_url") || "";
-  const fromWindow = typeof window.GHOST_API_BASE_URL === "string" ? window.GHOST_API_BASE_URL : "";
-
-  return (fromQuery || fromStorage || fromWindow || "").trim().replace(/\/+$/, "");
-})();
-
-function apiUrl(path) {
-  return runtimeApiBase ? `${runtimeApiBase}${path}` : path;
-}
-
+let missionData = { websites: [] };
 const toneClass = {
   green: "tone-green",
   yellow: "tone-yellow",
@@ -623,10 +107,78 @@ let commandMemory = [];
 let liveAgentIntelligence = [];
 let livePredictiveSignals = [];
 let liveAutonomousGoals = [];
-let activeSiteId = missionData.websites[0]?.id || "";
+let activeSiteId = "";
 
 function getActiveSite() {
-  return missionData.websites.find((entry) => entry.id === activeSiteId) ?? missionData.websites[0];
+  return missionData.websites.find((entry) => entry.id === activeSiteId) ?? missionData.websites[0] ?? null;
+}
+
+function getEmptySiteState() {
+  return {
+    id: "no-site",
+    name: "No monitored sites configured",
+    domain: "n/a",
+    status: "Action Needed",
+    kpis: [
+      { label: "Websites Monitored", value: 0, delta: "Set MONITORED_SITES" },
+      { label: "Pages Monitored", value: 0, delta: "No targets loaded" }
+    ],
+    missionStrip: {
+      summary: "No monitored websites/pages configured. Add MONITORED_SITES in backend environment variables.",
+      statuses: [
+        { label: "Action Needed", tone: "red" }
+      ]
+    },
+    modules: [],
+    crossInsights: [
+      {
+        title: "Configuration required",
+        detail: "Set MONITORED_SITES or MONITORED_SITE_URLS so Mission Control can load live website/page checks."
+      }
+    ],
+    alerts: [
+      {
+        title: "No monitored targets",
+        detail: "Backend has no website/page configuration for monitoring.",
+        tone: "red"
+      }
+    ],
+    activityFeed: [
+      {
+        title: "Waiting for monitored site configuration",
+        detail: "Set MONITORED_SITES and redeploy backend.",
+        time: new Date().toISOString()
+      }
+    ],
+    agents: [],
+    buildQueue: {
+      "Idea Backlog": ["Configure monitored sites/pages"],
+      Researching: [],
+      "Ready to Build": [],
+      Building: [],
+      Testing: [],
+      "Ready to Deploy": [],
+      Live: [],
+      Archived: []
+    }
+  };
+}
+
+async function loadMissionSnapshot(forceRefresh = false) {
+  try {
+    const refreshParam = forceRefresh ? "?refresh=true" : "";
+    const response = await fetch(apiUrl(`/mission/snapshot${refreshParam}`));
+    if (!response.ok) {
+      throw new Error(`Snapshot request failed with status ${response.status}`);
+    }
+
+    const payload = await response.json();
+    missionData = {
+      websites: payload.websites || []
+    };
+  } catch {
+    missionData = { websites: [] };
+  }
 }
 
 let executionPollTimer = null;
@@ -1647,6 +1199,13 @@ function setStatusBadge(status) {
 }
 
 function renderWebsiteOptions() {
+  if (!missionData.websites.length) {
+    elements.siteSelect.innerHTML = `<option value="">No monitored sites configured</option>`;
+    elements.siteSelect.disabled = true;
+    return;
+  }
+
+  elements.siteSelect.disabled = false;
   elements.siteSelect.innerHTML = missionData.websites
     .map((site) => `<option value="${site.id}">${site.name} (${site.domain})</option>`)
     .join("");
@@ -1675,6 +1234,19 @@ function renderMissionStrip(site) {
 }
 
 function renderModules(site) {
+  if (!site.modules || site.modules.length === 0) {
+    elements.moduleCards.innerHTML = `
+      <article class="module-card">
+        <div class="module-head">
+          <h3>No live modules yet</h3>
+          <span class="pill tone-gray">Waiting</span>
+        </div>
+        <p>Configure monitored websites/pages to populate live module telemetry.</p>
+      </article>
+    `;
+    return;
+  }
+
   const sortedModules = [...site.modules].sort(
     (a, b) => (priorityHeatOrder[a.priorityHeat] ?? 99) - (priorityHeatOrder[b.priorityHeat] ?? 99)
   );
@@ -1721,6 +1293,16 @@ function renderModules(site) {
 }
 
 function renderAlerts(site) {
+  if (!site.alerts || site.alerts.length === 0) {
+    elements.alertList.innerHTML = `
+      <article class="alert-item tone-green">
+        <h3>No active alerts</h3>
+        <p>All monitored pages are currently healthy.</p>
+      </article>
+    `;
+    return;
+  }
+
   elements.alertList.innerHTML = site.alerts
     .map(
       (alert) => `<article class="alert-item ${toneClass[alert.tone] ?? "tone-gray"}">
@@ -1732,6 +1314,16 @@ function renderAlerts(site) {
 }
 
 function renderActivity(site) {
+  if (!site.activityFeed || site.activityFeed.length === 0) {
+    elements.activityFeed.innerHTML = `
+      <article class="feed-item">
+        <h3>No activity yet</h3>
+        <p>Monitoring events will appear here after the first check cycle.</p>
+      </article>
+    `;
+    return;
+  }
+
   elements.activityFeed.innerHTML = site.activityFeed
     .map(
       (item) => `<article class="feed-item">
@@ -1744,8 +1336,9 @@ function renderActivity(site) {
 }
 
 function renderAgents(site) {
+  const baseAgents = site.agents || [];
   const byName = new Map(liveAgentIntelligence.map((entry) => [entry.name, entry]));
-  const mergedAgents = site.agents.map((agent) => {
+  const mergedAgents = baseAgents.map((agent) => {
     const live = byName.get(agent.name);
     if (!live) {
       return {
@@ -1787,6 +1380,17 @@ function renderAgents(site) {
   const rankedAgents = [...mergedAgents, ...extraAgents]
     .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
     .slice(0, 6);
+
+  if (!rankedAgents.length) {
+    elements.agentSnapshot.innerHTML = `
+      <article class="agent-item">
+        <h3>No active agent telemetry</h3>
+        <p class="statline">Agents will populate after live command execution and monitoring cycles.</p>
+      </article>
+    `;
+    updateNavBadges();
+    return;
+  }
 
   elements.agentSnapshot.innerHTML = rankedAgents
     .map(
@@ -2190,6 +1794,16 @@ function startExecutionPolling() {
 }
 
 function renderCrossSystemInsights(site) {
+  if (!site.crossInsights || site.crossInsights.length === 0) {
+    elements.crossSystemInsights.innerHTML = `
+      <article class="insight-item">
+        <h3>No cross-system insights yet</h3>
+        <p>Insights will appear as more live monitoring data is collected.</p>
+      </article>
+    `;
+    return;
+  }
+
   elements.crossSystemInsights.innerHTML = site.crossInsights
     .map(
       (insight) => `<article class="insight-item">
@@ -2212,13 +1826,24 @@ function renderBuildQueue(site) {
     "Archived"
   ];
 
+  const buildQueue = site.buildQueue || {};
   const columns = preferredOrder.filter((name) =>
-    Object.prototype.hasOwnProperty.call(site.buildQueue, name)
+    Object.prototype.hasOwnProperty.call(buildQueue, name)
   );
+
+  if (!columns.length) {
+    elements.buildQueueColumns.innerHTML = `
+      <section class="queue-column">
+        <h3>No Build Queue Data</h3>
+        <div class="queue-item tone-gray">Live queue data unavailable.</div>
+      </section>
+    `;
+    return;
+  }
 
   elements.buildQueueColumns.innerHTML = columns
     .map((name) => {
-      const items = site.buildQueue[name];
+      const items = buildQueue[name];
       const content =
         items.length > 0
           ? items.map((item) => `<div class="queue-item">${item}</div>`).join("")
@@ -2233,7 +1858,7 @@ function renderBuildQueue(site) {
 }
 
 function renderSite(siteId) {
-  const site = missionData.websites.find((entry) => entry.id === siteId) ?? missionData.websites[0];
+  const site = missionData.websites.find((entry) => entry.id === siteId) ?? missionData.websites[0] ?? getEmptySiteState();
   activeSiteId = site.id;
   setStatusBadge(site.status);
   renderKpis(site);
@@ -2310,20 +1935,23 @@ async function runMissionCommand() {
   }
 }
 
-function init() {
+async function init() {
   setupNavigation();
+  await loadMissionSnapshot();
   renderWebsiteOptions();
 
-  const initialSite = missionData.websites[0];
-  elements.siteSelect.value = initialSite.id;
+  const initialSite = missionData.websites[0] || getEmptySiteState();
+  elements.siteSelect.value = initialSite.id || "";
   renderSite(initialSite.id);
   renderCommandPlan();
   loadCommandMemory();
-  loadAgentIntelligence(initialSite.id);
-  loadPredictiveSignals(initialSite.id);
-  loadStrategicGoals(initialSite.id);
-  loadAutonomousGoals(initialSite.id);
-  loadScenarioForecasts(initialSite.id);
+  if (initialSite.id && initialSite.id !== "no-site") {
+    loadAgentIntelligence(initialSite.id);
+    loadPredictiveSignals(initialSite.id);
+    loadStrategicGoals(initialSite.id);
+    loadAutonomousGoals(initialSite.id);
+    loadScenarioForecasts(initialSite.id);
+  }
   renderCollaborationFeed([]);
 
   elements.siteSelect.addEventListener("change", (event) => {
@@ -2341,6 +1969,16 @@ function init() {
       runMissionCommand();
     }
   });
+
+  setInterval(async () => {
+    const previousSiteId = activeSiteId;
+    await loadMissionSnapshot();
+    renderWebsiteOptions();
+
+    const nextSite = missionData.websites.find((site) => site.id === previousSiteId) || missionData.websites[0] || getEmptySiteState();
+    elements.siteSelect.value = nextSite.id || "";
+    renderSite(nextSite.id);
+  }, 60_000);
 }
 
 init();
