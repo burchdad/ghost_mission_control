@@ -1900,7 +1900,8 @@ async function runMissionCommand() {
     const plan = await response.json();
     activeCommandPlan = plan;
     commandMemory = plan.memory || commandMemory;
-    elements.commandResponse.textContent = plan.summary;
+    const aiNote = plan.aiCopilot?.confidenceNote ? ` ${plan.aiCopilot.confidenceNote}` : "";
+    elements.commandResponse.textContent = `${plan.summary}${aiNote}`;
     renderCommandPlan();
     renderCommandMemory();
     renderCollaborationFeed([]);
