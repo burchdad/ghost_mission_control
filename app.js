@@ -656,6 +656,16 @@ function renderPerceptionLayer(execution, agents, intelligence, autonomy) {
 }
 
 function getViewLabel(view) {
+  const labels = {
+    "mission-control": "Overview",
+    "web-helpers": "Web Helpers",
+    "build-queue": "Build Queue"
+  };
+
+  if (labels[view]) {
+    return labels[view];
+  }
+
   return String(view || "")
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -680,9 +690,14 @@ function setFocusMode(enabled, targetView = activeView) {
 }
 
 function getPaletteActions() {
+  const viewLabels = {
+    "mission-control": "Overview",
+    "web-helpers": "Web Helpers",
+    "build-queue": "Build Queue"
+  };
   const setView = (view, focus = false) => ({
     id: `view-${view}`,
-    label: `Open ${getViewLabel(view)} view`,
+    label: `Open ${viewLabels[view] || getViewLabel(view)} view`,
     hint: focus ? "workspace takeover" : "view switch",
     keywords: `${view} switch open`,
     run: () => {
@@ -692,10 +707,10 @@ function getPaletteActions() {
   });
 
   return [
+    setView("web-helpers", true),
     setView("mission-control", false),
     setView("execution", true),
     setView("agents", true),
-    setView("web-helpers", true),
     setView("intelligence", true),
     setView("strategy", true),
     setView("simulation", true),

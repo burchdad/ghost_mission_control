@@ -19,16 +19,18 @@
     <main class="app-shell">
       <div class="workspace-shell">
         <aside class="nav-rail" aria-label="Primary navigation">
-          <p class="nav-title">Navigation</p>
-          <button class="nav-item active" type="button" data-view="mission-control">Mission Control</button>
+          <p class="nav-title">Ghost Ops</p>
+          <button class="nav-item active" type="button" data-view="mission-control">Overview</button>
+          <p class="nav-group-label">Client Ops</p>
+          <button class="nav-item" type="button" data-view="web-helpers">
+            <span>Web Helpers</span><span id="navBadgeWebHelpers" class="nav-badge"></span>
+          </button>
           <button class="nav-item" type="button" data-view="execution">
             <span>Execution</span><span id="navBadgeExecution" class="nav-badge"></span>
           </button>
+          <p class="nav-group-label">Intelligence</p>
           <button class="nav-item" type="button" data-view="agents">
             <span>Agents</span><span id="navBadgeAgents" class="nav-badge"></span>
-          </button>
-          <button class="nav-item" type="button" data-view="web-helpers">
-            <span>Web Helpers</span><span id="navBadgeWebHelpers" class="nav-badge"></span>
           </button>
           <button class="nav-item" type="button" data-view="intelligence">
             <span>Intelligence</span><span id="navBadgeIntelligence" class="nav-badge"></span>
@@ -38,9 +40,10 @@
           <button class="nav-item" type="button" data-view="autonomy">
             <span>Autonomy</span><span id="navBadgeAutonomy" class="nav-badge"></span>
           </button>
+          <p class="nav-group-label">Production</p>
           <button class="nav-item" type="button" data-view="build-queue">Build Queue</button>
           <div id="navCorrelationHint" class="nav-correlation view-hidden" aria-live="polite"></div>
-          <button id="openPaletteButton" class="nav-utility" type="button">Command Palette (Ctrl/Cmd + K)</button>
+          <button id="openPaletteButton" class="nav-utility" type="button">Command Palette</button>
         </aside>
 
         <div class="workspace-main">
@@ -50,10 +53,10 @@
       </div>
       <header class="topbar" id="topbarPanel">
         <div class="brand-block">
-          <p class="eyebrow">Ghost Web Operations</p>
+          <p class="eyebrow">Client Site Operations</p>
           <h1>Ghost Mission Control</h1>
           <p class="subtitle">
-            Command center for scraping, funnels, SEO, social, marketing, and AI automations.
+            One control room for site health, client web helpers, approvals, automations, and post-launch support.
           </p>
         </div>
 
@@ -67,7 +70,7 @@
               id="commandInput"
               class="command-input"
               type="text"
-              placeholder="Increase lead flow, fix SEO, analyze drop-off..."
+              placeholder="Update client hours, investigate form issue, prep a Web Helper handoff..."
               aria-label="Mission command input"
             />
             <button id="commandSend" class="command-send" type="button">Run</button>
