@@ -27,6 +27,9 @@
           <button class="nav-item" type="button" data-view="agents">
             <span>Agents</span><span id="navBadgeAgents" class="nav-badge"></span>
           </button>
+          <button class="nav-item" type="button" data-view="web-helpers">
+            <span>Web Helpers</span><span id="navBadgeWebHelpers" class="nav-badge"></span>
+          </button>
           <button class="nav-item" type="button" data-view="intelligence">
             <span>Intelligence</span><span id="navBadgeIntelligence" class="nav-badge"></span>
           </button>
@@ -102,9 +105,25 @@
             </div>
             <div id="buildQueueColumns" class="build-queue-columns"></div>
           </section>
+
+          <section class="module-panel view-panel" id="webHelpersPanel" aria-label="Web helper agents">
+            <div class="panel-header">
+              <h2>Web Helper Agents</h2>
+              <p>Dedicated post-launch operators for client site updates, fixes, approvals, and handoffs.</p>
+            </div>
+            <div id="webHelperSummary" class="web-helper-summary"></div>
+            <div id="webHelperCards" class="web-helper-cards"></div>
+          </section>
         </div>
 
         <aside class="side-column">
+          <section class="module-panel view-panel" id="webHelperRequestsPanel" aria-label="Web helper request queue">
+            <div class="panel-header compact">
+              <h2>Helper Requests</h2>
+            </div>
+            <div id="webHelperRequests" class="web-helper-requests"></div>
+          </section>
+
           <section class="module-panel view-panel" id="alertsPanel" aria-label="Alerts panel">
             <div class="panel-header compact">
               <h2>Failures & Alerts</h2>

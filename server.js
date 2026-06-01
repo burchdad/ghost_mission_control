@@ -862,6 +862,127 @@ async function getMissionSnapshot(forceRefresh = false) {
   return monitoringCache.pending;
 }
 
+function formatWebHelperDate(value) {
+  if (!value) {
+    return "No deploy recorded";
+  }
+
+  try {
+    return new Date(value).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric"
+    });
+  } catch {
+    return "No deploy recorded";
+  }
+}
+
+function buildWebHelperRequests(site) {
+  const failedPages = (site.pages || []).filter((page) => !page.ok);
+  const slowPages = (site.pages || []).filter((page) => page.ok && page.latencyMs >= 1500);
+  const requests = [];
+
+  if (failedPages.length > 0) {
+    requests.push({
+      id: `${site.id}-repair-${failedPages.length}`,
+      type: "bug_fix",
+      title: "Repair unreachable website pages",
+      summary: `${failedPages.length} page checks are failing and should be triaged before client-facing reply.`,
+      status: "needs-review",
+      approvalRequired: true,
+      sla: "Same day"
+    });
+  }
+
+  if (slowPages.length > 0) {
+    requests.push({
+      id: `${site.id}-latency-${slowPages.length}`,
+      type: "performance",
+      title: "Investigate slow page performance",
+      summary: `${slowPages.length} monitored pages are responding slowly and may need optimization.`,
+      status: "queued",
+      approvalRequired: false,
+      sla: "Next business day"
+    });
+  }
+
+  if (!requests.length) {
+    requests.push({
+      id: `${site.id}-template-ready`,
+      type: "template_setup",
+      title: "Create reusable helper template",
+      summary: "Site is stable. Helper is ready for client profile, scope rules, and repo connection.",
+      status: "ready",
+      approvalRequired: false,
+      sla: "Template setup"
+    });
+  }
+
+  return requests;
+}
+
+function buildWebHelperAgents(snapshot, requestedSiteId = "") {
+  const websites = snapshot.websites || [];
+  const filteredSites = requestedSiteId
+    ? websites.filter((site) => site.id === requestedSiteId)
+    : websites;
+
+  return filteredSites.map((site) => {
+    const requests = buildWebHelperRequests(site);
+    const pendingApprovals = requests.filter((request) => request.approvalRequired).length;
+    const status = pendingApprovals > 0 ? "needs-approval" : "active";
+    let rootUrl = `https://${site.domain}`;
+    try {
+      if (site.pages?.[0]?.url) {
+        rootUrl = new URL(site.pages[0].url).origin;
+      }
+    } catch {
+      rootUrl = `https://${site.domain}`;
+    }
+
+    return {
+      id: `${site.id}-web-helper`,
+      siteId: site.id,
+      name: `${site.name} Web Helper`,
+      clientName: site.name,
+      websiteUrl: rootUrl,
+      repo: "",
+      deployment: "Vercel / monitored site",
+      status,
+      statusLabel: status === "needs-approval" ? "Needs Approval" : "Active",
+      autonomyLevel: "Level 1 - prepare changes, owner approves deploy",
+      plan: "Post-launch maintenance template",
+      openRequests: requests.length,
+      pendingApprovals,
+      lastDeployment: snapshot.generatedAt,
+      lastDeploymentLabel: formatWebHelperDate(snapshot.generatedAt),
+      scope: ["copy edits", "image swaps", "hours", "broken links", "minor layout bugs"],
+      escalationRules: ["new pages", "forms", "payments", "billing", "angry client"],
+      memoryFiles: [
+        "client-profile.md",
+        "brand-voice.md",
+        "website-stack.md",
+        "scope-rules.md",
+        "update-history.md"
+      ],
+      requests
+    };
+  });
+}
+
+function summarizeWebHelpers(helpers) {
+  return {
+    helperCount: helpers.length,
+    activeCount: helpers.filter((helper) => helper.status === "active").length,
+    openRequests: helpers.reduce((sum, helper) => sum + Number(helper.openRequests || 0), 0),
+    pendingApprovals: helpers.reduce((sum, helper) => sum + Number(helper.pendingApprovals || 0), 0),
+    templateReadyCount: helpers.filter((helper) =>
+      (helper.requests || []).some((request) => request.type === "template_setup")
+    ).length
+  };
+}
+
 function getCorsOrigin(request) {
   const requestOrigin = request.headers.origin;
   if (!requestOrigin) {
@@ -2305,6 +2426,32 @@ function buildDispatchActions(command, category, priority, siteId) {
         detail: "Validate baseline before full deployment."
       }
     ],
+    web_helper: [
+      {
+        action: "classify_client_request",
+        target: "client-update-inbox",
+        agent: "Web Helper Agent",
+        detail: "Identify whether the client request is content, bug fix, feature, billing, or escalation."
+      },
+      {
+        action: "check_scope_rules",
+        target: "maintenance-plan-policy",
+        agent: "Automation Supervisor",
+        detail: "Compare request against allowed maintenance scope and approval thresholds."
+      },
+      {
+        action: "prepare_site_change",
+        target: "client-website-workspace",
+        agent: "Web Helper Agent",
+        detail: "Prepare a review-ready code or content change with test notes."
+      },
+      {
+        action: "draft_client_reply",
+        target: "client-response-thread",
+        agent: "Web Helper Agent",
+        detail: "Write a clear client update in the studio voice and route risky work for owner approval."
+      }
+    ],
     general: [
       {
         action: "classify_directive",
@@ -2653,6 +2800,27 @@ function getCommandPlan(command, siteId) {
         ],
         expectedImpact: "Faster system expansion with less manual setup overhead."
       }
+    },
+    {
+      match: ["web helper", "client update", "website update", "change hours", "broken link", "content edit", "post-launch"],
+      payload: {
+        category: "web_helper",
+        summary: "Web Helper directive accepted. Client request triage and review-ready site change workflow are queued.",
+        priority: "P2 High Value",
+        objective: "Route a post-launch client website request through scope, code/content prep, approval, and client reply.",
+        owners: ["Web Helper Agent", "Automation Supervisor"],
+        systemActions: [
+          "Identify the client site and request category.",
+          "Check maintenance scope and approval rules before code work.",
+          "Prepare the safest possible site change for owner review.",
+          "Draft a client-facing response in the studio voice."
+        ],
+        autoActions: [
+          "Opened web helper request workflow for " + siteLabel + ".",
+          "Prepared approval gate before deployment."
+        ],
+        expectedImpact: "Faster post-launch support without mixing client context or skipping owner approvals."
+      }
     }
   ];
 
@@ -2802,6 +2970,30 @@ const server = http.createServer((request, response) => {
       .catch((error) => {
         sendJson(request, response, 500, {
           error: "Unable to generate mission snapshot",
+          detail: String(error?.message || error)
+        });
+      });
+
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/web-helpers") {
+    const forceRefresh = url.searchParams.get("refresh") === "true";
+    const requestedSiteId = url.searchParams.get("siteId") || "";
+
+    getMissionSnapshot(forceRefresh)
+      .then((snapshot) => {
+        const helpers = buildWebHelperAgents(snapshot, requestedSiteId);
+        sendJson(request, response, 200, {
+          generatedAt: new Date().toISOString(),
+          siteId: requestedSiteId || null,
+          summary: summarizeWebHelpers(helpers),
+          helpers
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to generate web helper agents",
           detail: String(error?.message || error)
         });
       });

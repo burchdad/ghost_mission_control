@@ -39,6 +39,7 @@ const elements = {
   agentsTabs: document.getElementById("agentsTabs"),
   navBadgeExecution: document.getElementById("navBadgeExecution"),
   navBadgeAgents: document.getElementById("navBadgeAgents"),
+  navBadgeWebHelpers: document.getElementById("navBadgeWebHelpers"),
   navBadgeIntelligence: document.getElementById("navBadgeIntelligence"),
   navBadgeAutonomy: document.getElementById("navBadgeAutonomy"),
   navCorrelationHint: document.getElementById("navCorrelationHint"),
@@ -50,8 +51,13 @@ const elements = {
   focusTitle: document.getElementById("focusTitle"),
   exitFocusButton: document.getElementById("exitFocusButton"),
   buildQueueColumns: document.getElementById("buildQueueColumns"),
+  webHelperSummary: document.getElementById("webHelperSummary"),
+  webHelperCards: document.getElementById("webHelperCards"),
+  webHelperRequests: document.getElementById("webHelperRequests"),
   operationsPanel: document.getElementById("operationsPanel"),
   buildQueuePanel: document.getElementById("buildQueuePanel"),
+  webHelpersPanel: document.getElementById("webHelpersPanel"),
+  webHelperRequestsPanel: document.getElementById("webHelperRequestsPanel"),
   alertsPanel: document.getElementById("alertsPanel"),
   activityPanel: document.getElementById("activityPanel"),
   commandPlanPanel: document.getElementById("commandPlanPanel"),
@@ -105,6 +111,7 @@ let activeCommandPlan = {
 
 let commandMemory = [];
 let liveAgentIntelligence = [];
+let liveWebHelpers = [];
 let livePredictiveSignals = [];
 let liveAutonomousGoals = [];
 let activeSiteId = "";
@@ -192,6 +199,7 @@ let deferredRecommendationId = null;
 const badgeCounts = {
   execution: null,
   agents: null,
+  webHelpers: null,
   intelligence: null,
   autonomy: null
 };
@@ -233,6 +241,7 @@ const viewVisibility = {
     "agentCollabPanel"
   ],
   agents: ["agentsPanel", "agentCollabPanel", "perceptionPanel", "activityPanel"],
+  "web-helpers": ["webHelpersPanel", "webHelperRequestsPanel", "commandPlanPanel", "commandMemoryPanel"],
   intelligence: ["predictivePanel", "crossSystemPanel", "perceptionPanel", "alertsPanel", "activityPanel"],
   strategy: ["strategicPanel", "perceptionPanel", "commandPlanPanel", "commandMemoryPanel"],
   simulation: ["scenarioPanel", "strategicPanel", "predictivePanel"],
@@ -255,6 +264,8 @@ function setActiveView(view) {
   const shellPanels = [
     "operationsPanel",
     "buildQueuePanel",
+    "webHelpersPanel",
+    "webHelperRequestsPanel",
     "alertsPanel",
     "perceptionPanel",
     "activityPanel",
@@ -311,8 +322,9 @@ function setActiveView(view) {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
 
-  const mainColumnPanels = ["operationsPanel", "buildQueuePanel"];
+  const mainColumnPanels = ["operationsPanel", "buildQueuePanel", "webHelpersPanel"];
   const sideColumnPanels = [
+    "webHelperRequestsPanel",
     "alertsPanel",
     "activityPanel",
     "commandPlanPanel",
@@ -683,6 +695,7 @@ function getPaletteActions() {
     setView("mission-control", false),
     setView("execution", true),
     setView("agents", true),
+    setView("web-helpers", true),
     setView("intelligence", true),
     setView("strategy", true),
     setView("simulation", true),
@@ -949,6 +962,50 @@ function getAgentsBadgeMeta(agents) {
   return { count, text, severity, degradedCount: count, tooltip };
 }
 
+function getWebHelpersBadgeMeta(helpers) {
+  const pendingApprovals = (helpers || []).reduce((sum, helper) => sum + Number(helper.pendingApprovals || 0), 0);
+  const openRequests = (helpers || []).reduce((sum, helper) => sum + Number(helper.openRequests || 0), 0);
+  const pausedCount = (helpers || []).filter((helper) => helper.status === "paused").length;
+
+  if (pendingApprovals > 0) {
+    return {
+      count: pendingApprovals,
+      text: `${pendingApprovals} !`,
+      severity: "critical",
+      pendingApprovals,
+      tooltip: `${pendingApprovals} web helper changes are waiting for approval.`
+    };
+  }
+
+  if (openRequests > 0) {
+    return {
+      count: openRequests,
+      text: String(openRequests),
+      severity: "active",
+      pendingApprovals: 0,
+      tooltip: `${openRequests} client website requests are open.`
+    };
+  }
+
+  if (pausedCount > 0) {
+    return {
+      count: pausedCount,
+      text: `${pausedCount} p`,
+      severity: "warning",
+      pendingApprovals: 0,
+      tooltip: `${pausedCount} web helper agents are paused.`
+    };
+  }
+
+  return {
+    count: 0,
+    text: "",
+    severity: "none",
+    pendingApprovals: 0,
+    tooltip: "All web helper agents are clear."
+  };
+}
+
 function getIntelligenceBadgeMeta(signals) {
   const activeSignals = signals || [];
   const count = activeSignals.length;
@@ -1033,11 +1090,13 @@ function updateContextualAwareness(execution, agents, intelligence, autonomy) {
 function updateNavBadges() {
   const execution = getExecutionBadgeMeta(activeCommandPlan.execution?.actions || []);
   const agents = getAgentsBadgeMeta(liveAgentIntelligence);
+  const webHelpers = getWebHelpersBadgeMeta(liveWebHelpers);
   const intelligence = getIntelligenceBadgeMeta(livePredictiveSignals);
   const autonomy = getAutonomyBadgeMeta(liveAutonomousGoals);
 
   setBadge(elements.navBadgeExecution, "execution", execution);
   setBadge(elements.navBadgeAgents, "agents", agents);
+  setBadge(elements.navBadgeWebHelpers, "webHelpers", webHelpers);
   setBadge(elements.navBadgeIntelligence, "intelligence", intelligence);
   setBadge(elements.navBadgeAutonomy, "autonomy", autonomy);
   updateCorrelationHint(execution, agents, intelligence, autonomy);
@@ -1857,6 +1916,137 @@ function renderBuildQueue(site) {
     .join("");
 }
 
+async function loadWebHelpers(siteId = activeSiteId) {
+  if (!elements.webHelperCards || !elements.webHelperRequests || !elements.webHelperSummary) {
+    return;
+  }
+
+  try {
+    const response = await fetch(apiUrl(`/mission/web-helpers?siteId=${encodeURIComponent(siteId || "")}`));
+    if (!response.ok) {
+      throw new Error(`Web helper request failed with status ${response.status}`);
+    }
+
+    const payload = await response.json();
+    liveWebHelpers = payload.helpers || [];
+    renderWebHelpers(payload);
+  } catch {
+    liveWebHelpers = [];
+    renderWebHelpers(null);
+  }
+}
+
+function renderWebHelpers(payload) {
+  if (!elements.webHelperCards || !elements.webHelperRequests || !elements.webHelperSummary) {
+    return;
+  }
+
+  const helpers = payload?.helpers || [];
+  const summary = payload?.summary || {
+    helperCount: 0,
+    activeCount: 0,
+    openRequests: 0,
+    pendingApprovals: 0,
+    templateReadyCount: 0
+  };
+
+  elements.webHelperSummary.innerHTML = `
+    <article class="web-helper-stat">
+      <span>Helpers</span>
+      <strong>${summary.helperCount}</strong>
+    </article>
+    <article class="web-helper-stat">
+      <span>Active</span>
+      <strong>${summary.activeCount}</strong>
+    </article>
+    <article class="web-helper-stat">
+      <span>Open Requests</span>
+      <strong>${summary.openRequests}</strong>
+    </article>
+    <article class="web-helper-stat">
+      <span>Approvals</span>
+      <strong>${summary.pendingApprovals}</strong>
+    </article>
+    <article class="web-helper-stat">
+      <span>Template Ready</span>
+      <strong>${summary.templateReadyCount}</strong>
+    </article>
+  `;
+
+  if (!helpers.length) {
+    elements.webHelperCards.innerHTML = `
+      <article class="web-helper-card">
+        <div class="web-helper-card-head">
+          <h3>No Web Helpers Configured</h3>
+          <span class="pill tone-gray">Waiting</span>
+        </div>
+        <p>Add monitored sites or import Vercel projects to generate one web helper template per client site.</p>
+      </article>
+    `;
+    elements.webHelperRequests.innerHTML = `
+      <article class="web-helper-request">
+        <h3>No requests yet</h3>
+        <p>Client update requests will appear here after helper agents are created.</p>
+      </article>
+    `;
+    updateNavBadges();
+    return;
+  }
+
+  elements.webHelperCards.innerHTML = helpers
+    .map((helper) => {
+      const tone = helper.status === "active" ? "green" : helper.status === "needs-approval" ? "yellow" : "gray";
+      return `<article class="web-helper-card">
+        <div class="web-helper-card-head">
+          <h3>${helper.clientName}</h3>
+          <span class="pill ${toneClass[tone] ?? "tone-gray"}">${helper.statusLabel}</span>
+        </div>
+        <p class="web-helper-domain">${helper.websiteUrl}</p>
+        <div class="web-helper-meta">
+          <div><span>Agent</span>${helper.name}</div>
+          <div><span>Autonomy</span>${helper.autonomyLevel}</div>
+          <div><span>Plan</span>${helper.plan}</div>
+          <div><span>Repo</span>${helper.repo || "Not connected"}</div>
+          <div><span>Deployment</span>${helper.deployment}</div>
+          <div><span>Last Deploy</span>${helper.lastDeploymentLabel}</div>
+        </div>
+        <div class="web-helper-scope">
+          ${helper.scope.map((item) => `<span>${item}</span>`).join("")}
+        </div>
+      </article>`;
+    })
+    .join("");
+
+  const requests = helpers.flatMap((helper) =>
+    (helper.requests || []).map((request) => ({
+      ...request,
+      helperName: helper.name,
+      clientName: helper.clientName
+    }))
+  );
+
+  elements.webHelperRequests.innerHTML = requests.length
+    ? requests
+        .map((request) => `<article class="web-helper-request">
+          <div class="web-helper-request-head">
+            <h3>${request.title}</h3>
+            <span class="exec-status ${request.approvalRequired ? "exec-retrying" : "exec-running"}">
+              ${request.approvalRequired ? "approval" : "safe"}
+            </span>
+          </div>
+          <p>${request.clientName} | ${request.helperName}</p>
+          <p>${request.summary}</p>
+          <p class="statline">Type: ${request.type} | Status: ${request.status} | SLA: ${request.sla}</p>
+        </article>`)
+        .join("")
+    : `<article class="web-helper-request">
+        <h3>Request Queue Clear</h3>
+        <p>All client web helper queues are clear.</p>
+      </article>`;
+
+  updateNavBadges();
+}
+
 function renderSite(siteId) {
   const site = missionData.websites.find((entry) => entry.id === siteId) ?? missionData.websites[0] ?? getEmptySiteState();
   activeSiteId = site.id;
@@ -1869,6 +2059,7 @@ function renderSite(siteId) {
   renderCrossSystemInsights(site);
   renderAgents(site);
   renderBuildQueue(site);
+  loadWebHelpers(site.id);
 }
 
 async function runMissionCommand() {
