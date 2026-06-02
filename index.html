@@ -299,15 +299,22 @@
             <div id="activityFeed" class="activity-feed"></div>
           </section>
 
-          <section class="module-panel view-panel" id="commandPlanPanel" aria-label="Command action plan">
+          <section class="module-panel view-panel" id="executionActionsPanel" aria-label="Execution actions">
             <div class="panel-header compact">
-              <h2>Command Action Plan</h2>
+              <h2>Execution Actions</h2>
               <div id="executionTabs" class="subview-tabs view-hidden" aria-label="Execution sub views">
                 <button class="subview-tab active" type="button" data-exec-tab="overview">Overview</button>
                 <button class="subview-tab" type="button" data-exec-tab="active">Active Runs</button>
                 <button class="subview-tab" type="button" data-exec-tab="history">History</button>
                 <button class="subview-tab" type="button" data-exec-tab="failures">Failures</button>
               </div>
+            </div>
+            <div id="executionActions" class="execution-side-list"></div>
+          </section>
+
+          <section class="module-panel view-panel" id="commandPlanPanel" aria-label="Command action plan">
+            <div class="panel-header compact">
+              <h2>Command Action Plan</h2>
             </div>
             <div id="commandPlan" class="command-plan"></div>
           </section>

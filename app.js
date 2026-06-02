@@ -22,6 +22,7 @@ const elements = {
   executionCommandResponse: document.getElementById("executionCommandResponse"),
   executionSummary: document.getElementById("executionSummary"),
   executionBoard: document.getElementById("executionBoard"),
+  executionActions: document.getElementById("executionActions"),
   commandPlan: document.getElementById("commandPlan"),
   commandMemory: document.getElementById("commandMemory"),
   kpiSection: document.getElementById("kpiSection"),
@@ -126,6 +127,7 @@ const elements = {
   webHelpersPanel: document.getElementById("webHelpersPanel"),
   webHelperRequestsPanel: document.getElementById("webHelperRequestsPanel"),
   executionPanel: document.getElementById("executionPanel"),
+  executionActionsPanel: document.getElementById("executionActionsPanel"),
   alertsPanel: document.getElementById("alertsPanel"),
   activityPanel: document.getElementById("activityPanel"),
   commandPlanPanel: document.getElementById("commandPlanPanel"),
@@ -302,10 +304,10 @@ const storageKeys = {
 };
 
 const executionSubviewVisibility = {
-  overview: ["executionPanel", "commandPlanPanel", "activityPanel"],
-  active: ["executionPanel", "commandPlanPanel", "agentCollabPanel"],
+  overview: ["executionPanel", "executionActionsPanel"],
+  active: ["executionPanel", "executionActionsPanel", "agentCollabPanel"],
   history: ["executionPanel", "commandMemoryPanel", "activityPanel"],
-  failures: ["executionPanel", "alertsPanel", "activityPanel", "commandPlanPanel"]
+  failures: ["executionPanel", "executionActionsPanel", "alertsPanel"]
 };
 
 const agentsSubviewVisibility = {
@@ -328,8 +330,7 @@ const viewVisibility = {
   services: ["servicesPanel", "serviceActionsPanel"],
   execution: [
     "executionPanel",
-    "commandPlanPanel",
-    "activityPanel"
+    "executionActionsPanel"
   ],
   agents: ["agentsPanel", "agentCollabPanel", "perceptionPanel", "activityPanel"],
   "web-helpers": ["webHelpersPanel", "webHelperRequestsPanel"],
@@ -366,6 +367,7 @@ function setActiveView(view) {
     "buildQueuePanel",
     "webHelpersPanel",
     "executionPanel",
+    "executionActionsPanel",
     "webHelperRequestsPanel",
     "alertsPanel",
     "perceptionPanel",
@@ -430,6 +432,7 @@ function setActiveView(view) {
     "serviceActionsPanel",
     "toolActionsPanel",
     "webHelperRequestsPanel",
+    "executionActionsPanel",
     "alertsPanel",
     "activityPanel",
     "commandPlanPanel",
@@ -3445,6 +3448,65 @@ function renderExecutionConsole() {
         <div class="execution-memory-stack">${memoryItems}</div>
       </article>
     </section>
+  `;
+  renderExecutionActions();
+}
+
+function renderExecutionActions() {
+  if (!elements.executionActions) {
+    return;
+  }
+
+  const execution = activeCommandPlan.execution;
+  const actions = execution?.actions || [];
+  const blockedActions = actions.filter((action) => ["attention", "blocked", "failed", "error"].includes(action.status));
+  const runningActions = actions.filter((action) => ["running", "queued", "pending"].includes(action.status));
+  const recentEvents = execution?.history?.slice(-3) || [];
+
+  if (!execution) {
+    elements.executionActions.innerHTML = `
+      <article class="execution-side-item">
+        <h3>No active run</h3>
+        <p>Dispatch a mission command to generate routed actions and execution status.</p>
+      </article>
+      <article class="execution-side-item">
+        <h3>Approval Model</h3>
+        <p>Agents prepare work. Owner approval controls deploys, billing-sensitive changes, ads, forms, and risky client updates.</p>
+      </article>
+      <article class="execution-side-item">
+        <h3>Best First Commands</h3>
+        <p>Try a Web Helper handoff, GEO service connection, client issue triage, or service routing directive.</p>
+      </article>
+    `;
+    return;
+  }
+
+  elements.executionActions.innerHTML = `
+    <article class="execution-side-item">
+      <div class="execution-side-head">
+        <h3>Current Run</h3>
+        <span class="exec-status ${getExecutionStatusClass(execution.status)}">${escapeHtml(execution.status)}</span>
+      </div>
+      <p>${escapeHtml(execution.id)}</p>
+    </article>
+    <article class="execution-side-item">
+      <h3>Approval Needed</h3>
+      ${blockedActions.length
+        ? blockedActions.map((action) => `<p>${escapeHtml(action.action)} -> ${escapeHtml(action.target || "review")}</p>`).join("")
+        : "<p>No approval blockers detected.</p>"}
+    </article>
+    <article class="execution-side-item">
+      <h3>Active Routing</h3>
+      ${runningActions.length
+        ? runningActions.slice(0, 4).map((action) => `<p>${escapeHtml(action.agent || "Agent")}: ${escapeHtml(action.action)}</p>`).join("")
+        : "<p>No active routed actions.</p>"}
+    </article>
+    <article class="execution-side-item">
+      <h3>Recent Run Events</h3>
+      ${recentEvents.length
+        ? recentEvents.map((event) => `<p>${escapeHtml(event)}</p>`).join("")
+        : "<p>No execution events recorded yet.</p>"}
+    </article>
   `;
 }
 
