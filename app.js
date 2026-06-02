@@ -356,12 +356,7 @@ function setupNavigation() {
     item.addEventListener("click", () => {
       const selectedView = item.dataset.view;
       setActiveView(selectedView);
-
-      if (selectedView === "mission-control") {
-        setFocusMode(false);
-      } else {
-        setFocusMode(true, selectedView);
-      }
+      setFocusMode(false);
     });
   });
 
