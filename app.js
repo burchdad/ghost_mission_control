@@ -56,12 +56,19 @@ const elements = {
   exitFocusButton: document.getElementById("exitFocusButton"),
   buildQueueColumns: document.getElementById("buildQueueColumns"),
   clientSummary: document.getElementById("clientSummary"),
+  clientPipeline: document.getElementById("clientPipeline"),
   clientCards: document.getElementById("clientCards"),
   clientActions: document.getElementById("clientActions"),
   clientOnboardForm: document.getElementById("clientOnboardForm"),
   clientNameInput: document.getElementById("clientNameInput"),
+  clientStageInput: document.getElementById("clientStageInput"),
   clientWebsiteInput: document.getElementById("clientWebsiteInput"),
   clientRepoInput: document.getElementById("clientRepoInput"),
+  clientRailwayInput: document.getElementById("clientRailwayInput"),
+  clientVercelInput: document.getElementById("clientVercelInput"),
+  clientMobileAppInput: document.getElementById("clientMobileAppInput"),
+  clientGoogleBusinessInput: document.getElementById("clientGoogleBusinessInput"),
+  clientSocialsInput: document.getElementById("clientSocialsInput"),
   clientPlanInput: document.getElementById("clientPlanInput"),
   clientServicesInput: document.getElementById("clientServicesInput"),
   clientContactInput: document.getElementById("clientContactInput"),
@@ -153,6 +160,18 @@ let liveToolRegistry = null;
 let livePredictiveSignals = [];
 let liveAutonomousGoals = [];
 let activeSiteId = "";
+
+const clientPipelineStages = [
+  { id: "lead", label: "Lead" },
+  { id: "deposit-paid", label: "Deposit Paid" },
+  { id: "website-build", label: "Website Build" },
+  { id: "client-review", label: "Client Review" },
+  { id: "final-payment", label: "Final Payment" },
+  { id: "launch-handoff", label: "Launch / Handoff" },
+  { id: "web-helper-care", label: "Web Helper Care" },
+  { id: "growth-services", label: "Growth Services" },
+  { id: "paused-archived", label: "Paused / Archived" }
+];
 
 function getActiveSite() {
   return missionData.websites.find((entry) => entry.id === activeSiteId) ?? missionData.websites[0] ?? null;
@@ -2094,7 +2113,7 @@ function renderOpsActions(element, actions, emptyText) {
 }
 
 async function loadClients() {
-  if (!elements.clientSummary || !elements.clientCards || !elements.clientActions) {
+  if (!elements.clientSummary || !elements.clientPipeline || !elements.clientCards || !elements.clientActions) {
     return;
   }
 
@@ -2112,41 +2131,127 @@ async function loadClients() {
   }
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function getClientStage(client) {
+  return client?.stage || client?.status || "website-build";
+}
+
+function getClientStageLabel(stageId) {
+  return clientPipelineStages.find((stage) => stage.id === stageId)?.label || stageId || "Website Build";
+}
+
+function renderClientLink(label, value, options = {}) {
+  const href = String(value || "").trim();
+  if (!href) {
+    return `<div class="connection-link is-empty"><span>${escapeHtml(label)}</span><strong>Not linked</strong></div>`;
+  }
+
+  const safeHref = escapeHtml(href);
+  return `<a class="connection-link${options.sensitive ? " is-sensitive" : ""}" href="${safeHref}" target="_blank" rel="noreferrer">
+    <span>${escapeHtml(label)}</span>
+    <strong>${escapeHtml(href)}</strong>
+  </a>`;
+}
+
+function renderSocialLinks(urls) {
+  const links = Array.isArray(urls) ? urls.filter(Boolean) : [];
+  if (!links.length) {
+    return `<div class="connection-link is-empty"><span>Socials</span><strong>Not linked</strong></div>`;
+  }
+
+  return `<div class="connection-link social-stack">
+    <span>Socials</span>
+    <strong>${links.map((url) => `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(url)}</a>`).join("")}</strong>
+  </div>`;
+}
+
+function renderClientPipeline(clients) {
+  if (!elements.clientPipeline) {
+    return;
+  }
+
+  elements.clientPipeline.innerHTML = clientPipelineStages
+    .map((stage) => {
+      const stageClients = clients.filter((client) => getClientStage(client) === stage.id);
+      const cards = stageClients.length
+        ? stageClients.map((client) => `<article class="pipeline-card">
+            <h3>${escapeHtml(client.clientName)}</h3>
+            <p>${escapeHtml(client.plan || "Launch + Care")}</p>
+            <span>${escapeHtml(client.websiteUrl || client.repo || "Connections needed")}</span>
+            <div class="ops-chip-row">
+              ${(client.services || []).slice(0, 3).map((service) => `<span>${escapeHtml(service)}</span>`).join("")}
+            </div>
+          </article>`).join("")
+        : `<div class="pipeline-empty">No clients</div>`;
+
+      return `<section class="pipeline-column">
+        <div class="pipeline-column-head">
+          <h3>${escapeHtml(stage.label)}</h3>
+          <span>${stageClients.length}</span>
+        </div>
+        ${cards}
+      </section>`;
+    })
+    .join("");
+}
+
 function renderClients(payload) {
   const summary = payload?.summary || {
     clientCount: 0,
     onboardingCount: 0,
     liveCount: 0,
     searchClients: 0,
-    repoLinked: 0
+    repoLinked: 0,
+    websiteBuildCount: 0,
+    connectionGaps: 0
   };
 
   renderOpsSummary(elements.clientSummary, [
     { label: "Clients", value: summary.clientCount },
-    { label: "Onboarding", value: summary.onboardingCount },
-    { label: "Live", value: summary.liveCount },
+    { label: "Website Build", value: summary.websiteBuildCount },
+    { label: "Care / Growth", value: summary.liveCount },
     { label: "SEO/AEO/GEO", value: summary.searchClients },
-    { label: "Repo Linked", value: summary.repoLinked }
+    { label: "Connection Gaps", value: summary.connectionGaps }
   ]);
 
   const clients = payload?.clients || [];
+  renderClientPipeline(clients);
+
   elements.clientCards.innerHTML = clients.length
     ? clients.map((client) => `<article class="ops-card">
         <div class="ops-card-head">
-          <h3>${client.clientName}</h3>
-          <span class="pill ${client.status === "live" ? "tone-green" : "tone-blue"}">${client.status}</span>
+          <h3>${escapeHtml(client.clientName)}</h3>
+          <span class="pill ${["web-helper-care", "growth-services"].includes(getClientStage(client)) ? "tone-green" : "tone-blue"}">${escapeHtml(getClientStageLabel(getClientStage(client)))}</span>
         </div>
-        <p>${client.websiteUrl || "No website linked yet"}</p>
+        <p>${escapeHtml(client.websiteUrl || "No website linked yet")}</p>
         <div class="ops-meta-grid">
-          <div><span>Plan</span>${client.plan}</div>
-          <div><span>Repo</span>${client.repo || "Not linked"}</div>
-          <div><span>Contact</span>${client.contact || "Not set"}</div>
-          <div><span>Source</span>${client.source}</div>
+          <div><span>Plan</span>${escapeHtml(client.plan)}</div>
+          <div><span>Repo</span>${escapeHtml(client.repo || "Not linked")}</div>
+          <div><span>Contact</span>${escapeHtml(client.contact || "Not set")}</div>
+          <div><span>Source</span>${escapeHtml(client.source)}</div>
         </div>
+        <div class="connection-list">
+          ${renderClientLink("Website", client.websiteUrl)}
+          ${renderClientLink("GitHub", client.githubUrl || client.repo)}
+          ${renderClientLink("Railway Backend", client.railwayUrl, { sensitive: true })}
+          ${renderClientLink("Vercel", client.vercelUrl)}
+          ${renderClientLink("Mobile App", client.mobileAppUrl)}
+          ${renderClientLink("Google Business", client.googleBusinessUrl)}
+          ${renderSocialLinks(client.socialUrls)}
+        </div>
+        ${client.railwayUrl ? `<p class="sensitive-link-note">Backend links should stay internal until auth, role masking, and audit logging are in place.</p>` : ""}
         <div class="ops-chip-row">
-          ${(client.services || []).map((service) => `<span>${service}</span>`).join("")}
+          ${(client.services || []).map((service) => `<span>${escapeHtml(service)}</span>`).join("")}
         </div>
-        ${client.notes ? `<p>${client.notes}</p>` : ""}
+        ${client.notes ? `<p>${escapeHtml(client.notes)}</p>` : ""}
       </article>`).join("")
     : `<article class="ops-card">
         <h3>No clients onboarded yet</h3>
@@ -2176,8 +2281,17 @@ async function submitClientOnboarding(event) {
 
   const payload = {
     clientName: elements.clientNameInput?.value || "",
+    stage: elements.clientStageInput?.value || "website-build",
     websiteUrl: elements.clientWebsiteInput?.value || "",
     repo: elements.clientRepoInput?.value || "",
+    railwayUrl: elements.clientRailwayInput?.value || "",
+    vercelUrl: elements.clientVercelInput?.value || "",
+    mobileAppUrl: elements.clientMobileAppInput?.value || "",
+    googleBusinessUrl: elements.clientGoogleBusinessInput?.value || "",
+    socialUrls: String(elements.clientSocialsInput?.value || "")
+      .split(/\r?\n/)
+      .map((url) => url.trim())
+      .filter(Boolean),
     plan: elements.clientPlanInput?.value || "",
     services: getSelectedClientServices(),
     contact: elements.clientContactInput?.value || "",
@@ -2208,6 +2322,9 @@ async function submitClientOnboarding(event) {
     liveClients = result;
     renderClients(result);
     elements.clientOnboardForm.reset();
+    if (elements.clientStageInput) {
+      elements.clientStageInput.value = "website-build";
+    }
     elements.clientFormResponse.textContent = `Created ${result.created.clientName}.`;
   } catch (error) {
     elements.clientFormResponse.textContent = String(error.message || error);

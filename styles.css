@@ -979,6 +979,150 @@ select:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.client-pipeline {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(184px, 1fr);
+  gap: 0.62rem;
+  overflow-x: auto;
+  padding-bottom: 0.45rem;
+}
+
+.pipeline-column {
+  min-height: 176px;
+  border: 1px solid rgba(177, 194, 163, 0.2);
+  border-radius: 8px;
+  background: rgba(9, 18, 11, 0.78);
+  padding: 0.55rem;
+}
+
+.pipeline-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.pipeline-column-head h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.15;
+}
+
+.pipeline-column-head span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  background: rgba(111, 247, 143, 0.14);
+  color: var(--green);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.pipeline-card,
+.pipeline-empty {
+  border-radius: 7px;
+  border: 1px solid rgba(177, 194, 163, 0.16);
+  background: rgba(4, 8, 5, 0.86);
+  padding: 0.5rem;
+}
+
+.pipeline-card + .pipeline-card,
+.pipeline-empty + .pipeline-card {
+  margin-top: 0.45rem;
+}
+
+.pipeline-card h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.86rem;
+}
+
+.pipeline-card p,
+.pipeline-card span,
+.pipeline-empty {
+  color: var(--muted);
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
+.pipeline-card p {
+  margin: 0.22rem 0 0;
+}
+
+.pipeline-card > span {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.connection-list {
+  margin-top: 0.65rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.connection-link {
+  min-width: 0;
+  display: grid;
+  gap: 0.18rem;
+  border: 1px solid rgba(145, 194, 220, 0.18);
+  border-radius: 7px;
+  background: rgba(13, 25, 31, 0.56);
+  color: var(--text);
+  padding: 0.45rem;
+  text-decoration: none;
+}
+
+.connection-link span {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.connection-link strong {
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.connection-link.is-empty {
+  opacity: 0.62;
+}
+
+.connection-link.is-sensitive {
+  border-color: rgba(255, 194, 112, 0.28);
+  background: rgba(42, 30, 10, 0.42);
+}
+
+.connection-link.social-stack {
+  grid-column: 1 / -1;
+}
+
+.connection-link.social-stack strong {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.connection-link.social-stack a {
+  color: #caffd5;
+  text-decoration: none;
+}
+
+.sensitive-link-note {
+  margin-top: 0.5rem;
+  border-left: 2px solid rgba(255, 194, 112, 0.7);
+  padding-left: 0.5rem;
+}
+
 .ops-side-list {
   display: grid;
   gap: 0.5rem;

@@ -31,6 +31,18 @@ const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || process.env.GH_TOKEN || 
 const GITHUB_REPO_CACHE_TTL_MS = Number(process.env.GITHUB_REPO_CACHE_TTL_MS || 300000);
 const runtimeClients = [];
 
+const CLIENT_PIPELINE_STAGES = [
+  { id: "lead", label: "Lead / Prospect" },
+  { id: "deposit-paid", label: "Deposit Paid" },
+  { id: "website-build", label: "Website Build" },
+  { id: "client-review", label: "Client Review" },
+  { id: "final-payment", label: "Final Payment" },
+  { id: "launch-handoff", label: "Launch / Handoff" },
+  { id: "web-helper-care", label: "Web Helper Care" },
+  { id: "growth-services", label: "Growth Services" },
+  { id: "paused-archived", label: "Paused / Archived" }
+];
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -1156,6 +1168,69 @@ function getClientWebsiteUrl(value) {
   }
 }
 
+function getClientUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return new URL(trimmed).href;
+    }
+
+    return new URL(`https://${trimmed}`).href;
+  } catch {
+    return "";
+  }
+}
+
+function normalizeUrlList(value) {
+  if (Array.isArray(value)) {
+    return value.map(getClientUrl).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value.split(/[\n,]/).map(getClientUrl).filter(Boolean);
+  }
+
+  return [];
+}
+
+function normalizeClientStage(value) {
+  const stage = String(value || "").trim().toLowerCase();
+  if (CLIENT_PIPELINE_STAGES.some((entry) => entry.id === stage)) {
+    return stage;
+  }
+
+  if (stage === "onboarding") {
+    return "website-build";
+  }
+
+  if (stage === "live") {
+    return "web-helper-care";
+  }
+
+  return "website-build";
+}
+
+function getGithubUrl(repo) {
+  const trimmed = String(repo || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return getClientUrl(trimmed);
+  }
+
+  if (/^[\w.-]+\/[\w.-]+$/.test(trimmed)) {
+    return `https://github.com/${trimmed}`;
+  }
+
+  return "";
+}
+
 function normalizeClient(client) {
   if (!client || typeof client !== "object") {
     return null;
@@ -1169,17 +1244,26 @@ function normalizeClient(client) {
   const id = client.id || slugify(clientName);
   const services = normalizeServiceList(client.services || client.activeServices);
   const websiteUrl = getClientWebsiteUrl(client.websiteUrl || client.website || client.rootUrl);
+  const repo = String(client.repo || client.githubRepo || "").trim();
+  const stage = normalizeClientStage(client.stage || client.pipelineStage || client.status);
   const now = new Date().toISOString();
 
   return {
     id,
     clientName,
     websiteUrl,
-    repo: String(client.repo || client.githubRepo || "").trim(),
+    repo,
+    githubUrl: getGithubUrl(repo),
+    railwayUrl: getClientUrl(client.railwayUrl || client.backendUrl || client.apiUrl),
+    vercelUrl: getClientUrl(client.vercelUrl || client.deploymentUrl),
+    mobileAppUrl: getClientUrl(client.mobileAppUrl || client.appUrl),
+    googleBusinessUrl: getClientUrl(client.googleBusinessUrl || client.googleBusinessProfile || client.gbpUrl),
+    socialUrls: normalizeUrlList(client.socialUrls || client.socials),
     plan: String(client.plan || "Launch + Care").trim(),
     contact: String(client.contact || client.primaryContact || "").trim(),
     notes: String(client.notes || "").trim(),
-    status: String(client.status || "onboarding").trim(),
+    stage,
+    status: stage,
     services,
     createdAt: client.createdAt || now,
     updatedAt: now,
@@ -1191,7 +1275,7 @@ function buildClientRecord(input) {
   const normalized = normalizeClient({
     ...input,
     source: "runtime",
-    status: input.status || "onboarding"
+    stage: input.stage || input.status || "website-build"
   });
 
   if (!normalized) {
@@ -1226,6 +1310,21 @@ function getClientDerivedActions(client) {
   if (!client.repo) {
     actions.push("Link GitHub repo for code-aware updates.");
   }
+  if (!client.vercelUrl) {
+    actions.push("Link Vercel project or deployment URL.");
+  }
+  if (!client.railwayUrl) {
+    actions.push("Add Railway/backend URL if this client has a backend service.");
+  }
+  if (!client.googleBusinessUrl) {
+    actions.push("Add Google Business Profile if local search matters.");
+  }
+  if (!client.socialUrls?.length) {
+    actions.push("Add social profile URLs for content and reputation services.");
+  }
+  if (client.railwayUrl) {
+    actions.push("Keep backend links internal until auth, role masking, and audit logging are active.");
+  }
   if (!client.services.includes("search-intelligence")) {
     actions.push("Decide whether SEO/AEO/GEO belongs in this client package.");
   }
@@ -1237,12 +1336,17 @@ function getClientDerivedActions(client) {
 }
 
 function summarizeClients(clients) {
+  const activeBuildStages = ["lead", "deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"];
+  const careStages = ["web-helper-care", "growth-services"];
   return {
     clientCount: clients.length,
-    onboardingCount: clients.filter((client) => client.status === "onboarding").length,
-    liveCount: clients.filter((client) => client.status === "live").length,
+    onboardingCount: clients.filter((client) => activeBuildStages.includes(client.stage)).length,
+    liveCount: clients.filter((client) => careStages.includes(client.stage)).length,
+    websiteBuildCount: clients.filter((client) => client.stage === "website-build").length,
     searchClients: clients.filter((client) => client.services.includes("search-intelligence")).length,
-    repoLinked: clients.filter((client) => Boolean(client.repo)).length
+    repoLinked: clients.filter((client) => Boolean(client.repo)).length,
+    connectedCount: clients.filter((client) => client.websiteUrl && client.repo && client.vercelUrl).length,
+    connectionGaps: clients.filter((client) => !client.websiteUrl || !client.repo || !client.vercelUrl).length
   };
 }
 
@@ -3403,6 +3507,7 @@ const server = http.createServer((request, response) => {
     sendJson(request, response, 200, {
       generatedAt: new Date().toISOString(),
       summary: summarizeClients(clients),
+      pipelineStages: CLIENT_PIPELINE_STAGES,
       clients: clients.map((client) => ({
         ...client,
         actions: getClientDerivedActions(client)
@@ -3441,6 +3546,7 @@ const server = http.createServer((request, response) => {
         sendJson(request, response, 201, {
           created: client,
           summary: summarizeClients(clients),
+          pipelineStages: CLIENT_PIPELINE_STAGES,
           clients: clients.map((entry) => ({
             ...entry,
             actions: getClientDerivedActions(entry)

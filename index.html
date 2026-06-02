@@ -107,10 +107,11 @@
         <div class="main-column">
           <section class="module-panel view-panel" id="clientsPanel" aria-label="Client registry">
             <div class="panel-header">
-              <h2>Client Registry</h2>
-              <p>One record per client, connected to services, sites, tools, agents, approvals, and maintenance scope.</p>
+              <h2>Client Pipeline</h2>
+              <p>Move each client from deposit and build through launch, Web Helper care, GEO growth, and long-term operations.</p>
             </div>
             <div id="clientSummary" class="ops-summary"></div>
+            <div id="clientPipeline" class="client-pipeline"></div>
             <div id="clientCards" class="ops-card-grid"></div>
           </section>
 
@@ -178,12 +179,46 @@
                 <input id="clientNameInput" name="clientName" type="text" placeholder="Acme Dental" required />
               </label>
               <label>
+                <span>Pipeline Stage</span>
+                <select id="clientStageInput" name="stage">
+                  <option value="lead">Lead / Prospect</option>
+                  <option value="deposit-paid">Deposit Paid</option>
+                  <option value="website-build" selected>Website Build</option>
+                  <option value="client-review">Client Review</option>
+                  <option value="final-payment">Final Payment</option>
+                  <option value="launch-handoff">Launch / Handoff</option>
+                  <option value="web-helper-care">Web Helper Care</option>
+                  <option value="growth-services">Growth Services</option>
+                  <option value="paused-archived">Paused / Archived</option>
+                </select>
+              </label>
+              <label>
                 <span>Website URL</span>
                 <input id="clientWebsiteInput" name="websiteUrl" type="url" placeholder="https://example.com" />
               </label>
               <label>
-                <span>GitHub Repo</span>
+                <span>GitHub Repo / URL</span>
                 <input id="clientRepoInput" name="repo" type="text" placeholder="burchdad/client-site" />
+              </label>
+              <label>
+                <span>Railway Backend URL</span>
+                <input id="clientRailwayInput" name="railwayUrl" type="url" placeholder="https://backend.up.railway.app" />
+              </label>
+              <label>
+                <span>Vercel URL</span>
+                <input id="clientVercelInput" name="vercelUrl" type="url" placeholder="https://client-site.vercel.app" />
+              </label>
+              <label>
+                <span>Mobile App URL</span>
+                <input id="clientMobileAppInput" name="mobileAppUrl" type="url" placeholder="https://apps.apple.com/app/..." />
+              </label>
+              <label>
+                <span>Google Business Profile</span>
+                <input id="clientGoogleBusinessInput" name="googleBusinessUrl" type="url" placeholder="https://g.page/r/..." />
+              </label>
+              <label>
+                <span>Social URLs</span>
+                <textarea id="clientSocialsInput" name="socialUrls" rows="3" placeholder="One Facebook, Instagram, LinkedIn, TikTok, or YouTube URL per line"></textarea>
               </label>
               <label>
                 <span>Plan</span>
