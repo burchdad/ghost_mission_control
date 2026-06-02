@@ -2648,6 +2648,35 @@ function renderConnectionStatus(connection, clientId) {
   </div>`;
 }
 
+function renderOnboardingCard(client) {
+  return `<article class="onboarding-client-card">
+    <div class="onboarding-client-head">
+      <div>
+        <h3>${escapeHtml(client.clientName)}</h3>
+        <p>${escapeHtml(client.plan || "Launch + Care")}</p>
+      </div>
+      <span class="onboarding-progress">${client.progress}%</span>
+    </div>
+    <div class="progress-track"><span style="width: ${Math.max(0, Math.min(100, Number(client.progress || 0)))}%"></span></div>
+    <div class="client-warning-row">
+      ${client.blockers?.length ? client.blockers.slice(0, 4).map((blocker) => `<span class="client-warning-badge">${escapeHtml(blocker.label)}</span>`).join("") : `<span class="client-ok-badge">No required blockers</span>`}
+    </div>
+    <p>${escapeHtml(client.nextAction)}</p>
+    <div class="onboarding-checklist">
+      ${(client.checklist || []).map((item) => {
+        const itemId = slugForUi(item.label);
+        const skipped = isOnboardingSkipped(client.id, itemId);
+        const status = skipped ? "skipped" : item.status;
+        return `<div>
+          <span>${escapeHtml(item.label)}</span>
+          <strong class="${getStatusTone(status)}">${escapeHtml(status)}</strong>
+          <button type="button" data-onboarding-skip-client="${escapeHtml(client.id)}" data-onboarding-skip-item="${escapeHtml(itemId)}">${skipped ? "Unskip" : "Skip"}</button>
+        </div>`;
+      }).join("")}
+    </div>
+  </article>`;
+}
+
 function renderOnboarding(payload) {
   const summary = payload?.summary || {
     activeClients: 0,
@@ -2663,37 +2692,25 @@ function renderOnboarding(payload) {
   ]);
 
   const queue = (payload?.activation?.queue || []).map(applyOnboardingSkips);
-  elements.onboardingQueue.innerHTML = queue.length
-    ? queue.map((client) => `<article class="onboarding-client-card">
-        <div class="onboarding-client-head">
-          <div>
-            <h3>${escapeHtml(client.clientName)}</h3>
-            <p>${escapeHtml(client.stageLabel)} · ${escapeHtml(client.plan || "Launch + Care")}</p>
+  const kanbanStages = clientPipelineStages.filter((stage) =>
+    ["lead", "deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"].includes(stage.id)
+  );
+  elements.onboardingQueue.innerHTML = `<div class="onboarding-section-title">
+      <h3>Onboarding Board</h3>
+      <p>Each stage shows client activation progress, blockers, and skippable services.</p>
+    </div>
+    <div class="onboarding-kanban">
+      ${kanbanStages.map((stage) => {
+        const stageClients = queue.filter((client) => client.stage === stage.id);
+        return `<section class="onboarding-column">
+          <div class="onboarding-column-head">
+            <h3>${escapeHtml(stage.label)}</h3>
+            <span>${stageClients.length}</span>
           </div>
-          <span class="onboarding-progress">${client.progress}%</span>
-        </div>
-        <div class="progress-track"><span style="width: ${Math.max(0, Math.min(100, Number(client.progress || 0)))}%"></span></div>
-        <div class="client-warning-row">
-          ${client.blockers?.length ? client.blockers.slice(0, 4).map((blocker) => `<span class="client-warning-badge">${escapeHtml(blocker.label)}</span>`).join("") : `<span class="client-ok-badge">No required blockers</span>`}
-        </div>
-        <p>${escapeHtml(client.nextAction)}</p>
-        <div class="onboarding-checklist">
-          ${(client.checklist || []).map((item) => {
-            const itemId = slugForUi(item.label);
-            const skipped = isOnboardingSkipped(client.id, itemId);
-            const status = skipped ? "skipped" : item.status;
-            return `<div>
-              <span>${escapeHtml(item.label)}</span>
-              <strong class="${getStatusTone(status)}">${escapeHtml(status)}</strong>
-              <button type="button" data-onboarding-skip-client="${escapeHtml(client.id)}" data-onboarding-skip-item="${escapeHtml(itemId)}">${skipped ? "Unskip" : "Skip"}</button>
-            </div>`;
-          }).join("")}
-        </div>
-      </article>`).join("")
-    : `<article class="ops-card">
-        <h3>No active onboarding clients</h3>
-        <p>Move a client into Lead, Deposit Paid, Website Build, Client Review, Final Payment, or Launch / Handoff to start activation tracking.</p>
-      </article>`;
+          ${stageClients.length ? stageClients.map(renderOnboardingCard).join("") : `<div class="pipeline-empty">No clients</div>`}
+        </section>`;
+      }).join("")}
+    </div>`;
 
   const connectionClients = queue.slice(0, 8);
   elements.onboardingConnections.innerHTML = connectionClients.length
