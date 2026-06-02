@@ -2464,7 +2464,6 @@ function renderClients(payload) {
     : `<article class="ops-card">
         <h3>No clients onboarded yet</h3>
         <p>Create the first client record to connect services, tools, agents, approvals, and maintenance scope.</p>
-        <button class="new-client-button inline-client-button" type="button" data-open-client-modal="true">Create first client</button>
       </article>`;
 
   const clientActions = clients.flatMap((client) =>
@@ -2949,12 +2948,6 @@ async function init() {
   elements.clientStageFilter?.addEventListener("change", () => renderClients(liveClients));
   elements.clientIssueFilter?.addEventListener("change", () => renderClients(liveClients));
   elements.clientsPanel?.addEventListener("click", (event) => {
-    const modalButton = event.target.closest("[data-open-client-modal]");
-    if (modalButton) {
-      openClientModal();
-      return;
-    }
-
     const detailTarget = event.target.closest("[data-client-detail]");
     if (!detailTarget) {
       return;
