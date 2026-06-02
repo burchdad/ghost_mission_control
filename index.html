@@ -22,6 +22,9 @@
           <p class="nav-title">Ghost Ops</p>
           <button class="nav-item active" type="button" data-view="mission-control">Overview</button>
           <p class="nav-group-label">Client Ops</p>
+          <button class="nav-item" type="button" data-view="clients">
+            <span>Clients</span><span id="navBadgeClients" class="nav-badge"></span>
+          </button>
           <button class="nav-item" type="button" data-view="onboarding">
             <span>Onboarding</span><span id="navBadgeOnboarding" class="nav-badge"></span>
           </button>
@@ -102,6 +105,15 @@
 
       <section class="layout-grid">
         <div class="main-column">
+          <section class="module-panel view-panel" id="clientsPanel" aria-label="Client registry">
+            <div class="panel-header">
+              <h2>Client Registry</h2>
+              <p>One record per client, connected to services, sites, tools, agents, approvals, and maintenance scope.</p>
+            </div>
+            <div id="clientSummary" class="ops-summary"></div>
+            <div id="clientCards" class="ops-card-grid"></div>
+          </section>
+
           <section class="module-panel view-panel" id="onboardingPanel" aria-label="Client onboarding">
             <div class="panel-header">
               <h2>Client Onboarding</h2>
@@ -156,6 +168,63 @@
         </div>
 
         <aside class="side-column">
+          <section class="module-panel view-panel" id="clientOnboardPanel" aria-label="Onboard client form">
+            <div class="panel-header compact">
+              <h2>Onboard Client</h2>
+            </div>
+            <form id="clientOnboardForm" class="client-onboard-form">
+              <label>
+                <span>Client Name</span>
+                <input id="clientNameInput" name="clientName" type="text" placeholder="Acme Dental" required />
+              </label>
+              <label>
+                <span>Website URL</span>
+                <input id="clientWebsiteInput" name="websiteUrl" type="url" placeholder="https://example.com" />
+              </label>
+              <label>
+                <span>GitHub Repo</span>
+                <input id="clientRepoInput" name="repo" type="text" placeholder="burchdad/client-site" />
+              </label>
+              <label>
+                <span>Plan</span>
+                <select id="clientPlanInput" name="plan">
+                  <option>Launch + Care</option>
+                  <option>Website Care</option>
+                  <option>SEO / AEO / GEO</option>
+                  <option>Full Growth Stack</option>
+                </select>
+              </label>
+              <label>
+                <span>Services</span>
+                <select id="clientServicesInput" name="services" multiple>
+                  <option value="website-build">Website Build</option>
+                  <option value="web-helper-care">Web Helper Care</option>
+                  <option value="search-intelligence">SEO / AEO / GEO</option>
+                  <option value="lead-funnel">Lead Funnel</option>
+                  <option value="content-social">Content + Social</option>
+                  <option value="reporting">Client Reporting</option>
+                </select>
+              </label>
+              <label>
+                <span>Primary Contact</span>
+                <input id="clientContactInput" name="contact" type="text" placeholder="Name, email, or phone" />
+              </label>
+              <label>
+                <span>Notes</span>
+                <textarea id="clientNotesInput" name="notes" rows="3" placeholder="Anything the agent should know first..."></textarea>
+              </label>
+              <button class="command-send" type="submit">Create Client</button>
+              <p id="clientFormResponse" class="command-response" aria-live="polite"></p>
+            </form>
+          </section>
+
+          <section class="module-panel view-panel" id="clientActionsPanel" aria-label="Client actions">
+            <div class="panel-header compact">
+              <h2>Client Actions</h2>
+            </div>
+            <div id="clientActions" class="ops-side-list"></div>
+          </section>
+
           <section class="module-panel view-panel" id="onboardingActionsPanel" aria-label="Onboarding actions">
             <div class="panel-header compact">
               <h2>Onboarding Actions</h2>

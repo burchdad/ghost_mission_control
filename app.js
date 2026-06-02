@@ -38,6 +38,7 @@ const elements = {
   executionTabs: document.getElementById("executionTabs"),
   agentsTabs: document.getElementById("agentsTabs"),
   navBadgeExecution: document.getElementById("navBadgeExecution"),
+  navBadgeClients: document.getElementById("navBadgeClients"),
   navBadgeOnboarding: document.getElementById("navBadgeOnboarding"),
   navBadgeServices: document.getElementById("navBadgeServices"),
   navBadgeAgents: document.getElementById("navBadgeAgents"),
@@ -54,6 +55,18 @@ const elements = {
   focusTitle: document.getElementById("focusTitle"),
   exitFocusButton: document.getElementById("exitFocusButton"),
   buildQueueColumns: document.getElementById("buildQueueColumns"),
+  clientSummary: document.getElementById("clientSummary"),
+  clientCards: document.getElementById("clientCards"),
+  clientActions: document.getElementById("clientActions"),
+  clientOnboardForm: document.getElementById("clientOnboardForm"),
+  clientNameInput: document.getElementById("clientNameInput"),
+  clientWebsiteInput: document.getElementById("clientWebsiteInput"),
+  clientRepoInput: document.getElementById("clientRepoInput"),
+  clientPlanInput: document.getElementById("clientPlanInput"),
+  clientServicesInput: document.getElementById("clientServicesInput"),
+  clientContactInput: document.getElementById("clientContactInput"),
+  clientNotesInput: document.getElementById("clientNotesInput"),
+  clientFormResponse: document.getElementById("clientFormResponse"),
   onboardingSummary: document.getElementById("onboardingSummary"),
   onboardingStages: document.getElementById("onboardingStages"),
   onboardingActions: document.getElementById("onboardingActions"),
@@ -67,6 +80,9 @@ const elements = {
   webHelperCards: document.getElementById("webHelperCards"),
   webHelperRequests: document.getElementById("webHelperRequests"),
   operationsPanel: document.getElementById("operationsPanel"),
+  clientsPanel: document.getElementById("clientsPanel"),
+  clientOnboardPanel: document.getElementById("clientOnboardPanel"),
+  clientActionsPanel: document.getElementById("clientActionsPanel"),
   onboardingPanel: document.getElementById("onboardingPanel"),
   onboardingActionsPanel: document.getElementById("onboardingActionsPanel"),
   servicesPanel: document.getElementById("servicesPanel"),
@@ -128,6 +144,7 @@ let activeCommandPlan = {
 };
 
 let commandMemory = [];
+let liveClients = null;
 let liveAgentIntelligence = [];
 let liveWebHelpers = [];
 let liveOnboarding = null;
@@ -218,6 +235,7 @@ let paletteSelectionIndex = 0;
 let currentPaletteActions = [];
 let deferredRecommendationId = null;
 const badgeCounts = {
+  clients: null,
   onboarding: null,
   services: null,
   execution: null,
@@ -257,6 +275,7 @@ const viewVisibility = {
     "crossSystemPanel",
     "activityPanel"
   ],
+  clients: ["clientsPanel", "clientOnboardPanel", "clientActionsPanel"],
   onboarding: ["onboardingPanel", "onboardingActionsPanel", "commandPlanPanel"],
   services: ["servicesPanel", "serviceActionsPanel", "commandPlanPanel"],
   execution: [
@@ -290,6 +309,9 @@ function setActiveView(view) {
 
   const shellPanels = [
     "operationsPanel",
+    "clientsPanel",
+    "clientOnboardPanel",
+    "clientActionsPanel",
     "onboardingPanel",
     "onboardingActionsPanel",
     "servicesPanel",
@@ -355,8 +377,10 @@ function setActiveView(view) {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
 
-  const mainColumnPanels = ["operationsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel"];
+  const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel"];
   const sideColumnPanels = [
+    "clientOnboardPanel",
+    "clientActionsPanel",
     "onboardingActionsPanel",
     "serviceActionsPanel",
     "toolActionsPanel",
@@ -689,6 +713,7 @@ function renderPerceptionLayer(execution, agents, intelligence, autonomy) {
 function getViewLabel(view) {
   const labels = {
     "mission-control": "Overview",
+    clients: "Clients",
     onboarding: "Onboarding",
     services: "Services",
     "web-helpers": "Web Helpers",
@@ -726,6 +751,7 @@ function setFocusMode(enabled, targetView = activeView) {
 function getPaletteActions() {
   const viewLabels = {
     "mission-control": "Overview",
+    clients: "Clients",
     onboarding: "Onboarding",
     services: "Services",
     "web-helpers": "Web Helpers",
@@ -745,6 +771,7 @@ function getPaletteActions() {
 
   return [
     setView("web-helpers", true),
+    setView("clients", true),
     setView("onboarding", true),
     setView("services", true),
     setView("tools", true),
@@ -1061,6 +1088,20 @@ function getWebHelpersBadgeMeta(helpers) {
   };
 }
 
+function getClientsBadgeMeta(clientsPayload) {
+  const onboardingCount = clientsPayload?.summary?.onboardingCount || 0;
+  if (!onboardingCount) {
+    return { count: 0, text: "", severity: "none", tooltip: "No clients are waiting in onboarding." };
+  }
+
+  return {
+    count: onboardingCount,
+    text: String(onboardingCount),
+    severity: "active",
+    tooltip: `${onboardingCount} clients are in onboarding.`
+  };
+}
+
 function getOnboardingBadgeMeta(onboarding) {
   const needsIntegration = onboarding?.summary?.needsIntegration || 0;
   if (!needsIntegration) {
@@ -1188,6 +1229,7 @@ function updateContextualAwareness(execution, agents, intelligence, autonomy) {
 }
 
 function updateNavBadges() {
+  const clients = getClientsBadgeMeta(liveClients);
   const onboarding = getOnboardingBadgeMeta(liveOnboarding);
   const services = getServicesBadgeMeta(liveServiceCatalog);
   const execution = getExecutionBadgeMeta(activeCommandPlan.execution?.actions || []);
@@ -1197,6 +1239,7 @@ function updateNavBadges() {
   const intelligence = getIntelligenceBadgeMeta(livePredictiveSignals);
   const autonomy = getAutonomyBadgeMeta(liveAutonomousGoals);
 
+  setBadge(elements.navBadgeClients, "clients", clients);
   setBadge(elements.navBadgeOnboarding, "onboarding", onboarding);
   setBadge(elements.navBadgeServices, "services", services);
   setBadge(elements.navBadgeExecution, "execution", execution);
@@ -2050,6 +2093,127 @@ function renderOpsActions(element, actions, emptyText) {
     .join("");
 }
 
+async function loadClients() {
+  if (!elements.clientSummary || !elements.clientCards || !elements.clientActions) {
+    return;
+  }
+
+  try {
+    const response = await fetch(apiUrl("/mission/clients"));
+    if (!response.ok) {
+      throw new Error(`Clients request failed with status ${response.status}`);
+    }
+
+    liveClients = await response.json();
+    renderClients(liveClients);
+  } catch {
+    liveClients = null;
+    renderClients(null);
+  }
+}
+
+function renderClients(payload) {
+  const summary = payload?.summary || {
+    clientCount: 0,
+    onboardingCount: 0,
+    liveCount: 0,
+    searchClients: 0,
+    repoLinked: 0
+  };
+
+  renderOpsSummary(elements.clientSummary, [
+    { label: "Clients", value: summary.clientCount },
+    { label: "Onboarding", value: summary.onboardingCount },
+    { label: "Live", value: summary.liveCount },
+    { label: "SEO/AEO/GEO", value: summary.searchClients },
+    { label: "Repo Linked", value: summary.repoLinked }
+  ]);
+
+  const clients = payload?.clients || [];
+  elements.clientCards.innerHTML = clients.length
+    ? clients.map((client) => `<article class="ops-card">
+        <div class="ops-card-head">
+          <h3>${client.clientName}</h3>
+          <span class="pill ${client.status === "live" ? "tone-green" : "tone-blue"}">${client.status}</span>
+        </div>
+        <p>${client.websiteUrl || "No website linked yet"}</p>
+        <div class="ops-meta-grid">
+          <div><span>Plan</span>${client.plan}</div>
+          <div><span>Repo</span>${client.repo || "Not linked"}</div>
+          <div><span>Contact</span>${client.contact || "Not set"}</div>
+          <div><span>Source</span>${client.source}</div>
+        </div>
+        <div class="ops-chip-row">
+          ${(client.services || []).map((service) => `<span>${service}</span>`).join("")}
+        </div>
+        ${client.notes ? `<p>${client.notes}</p>` : ""}
+      </article>`).join("")
+    : `<article class="ops-card">
+        <h3>No clients onboarded yet</h3>
+        <p>Create the first client record to connect services, tools, agents, approvals, and maintenance scope.</p>
+      </article>`;
+
+  const clientActions = clients.flatMap((client) =>
+    (client.actions || []).slice(0, 3).map((action) => `${client.clientName}: ${action}`)
+  );
+  renderOpsActions(elements.clientActions, clientActions.length ? clientActions : payload?.actions || [], "Client actions will appear here.");
+  updateNavBadges();
+}
+
+function getSelectedClientServices() {
+  if (!elements.clientServicesInput) {
+    return [];
+  }
+
+  return [...elements.clientServicesInput.selectedOptions].map((option) => option.value);
+}
+
+async function submitClientOnboarding(event) {
+  event.preventDefault();
+  if (!elements.clientOnboardForm) {
+    return;
+  }
+
+  const payload = {
+    clientName: elements.clientNameInput?.value || "",
+    websiteUrl: elements.clientWebsiteInput?.value || "",
+    repo: elements.clientRepoInput?.value || "",
+    plan: elements.clientPlanInput?.value || "",
+    services: getSelectedClientServices(),
+    contact: elements.clientContactInput?.value || "",
+    notes: elements.clientNotesInput?.value || ""
+  };
+
+  if (!payload.clientName.trim()) {
+    elements.clientFormResponse.textContent = "Client name is required.";
+    return;
+  }
+
+  elements.clientFormResponse.textContent = "Creating client record...";
+
+  try {
+    const response = await fetch(apiUrl("/mission/clients"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || `Client create failed with status ${response.status}`);
+    }
+
+    liveClients = result;
+    renderClients(result);
+    elements.clientOnboardForm.reset();
+    elements.clientFormResponse.textContent = `Created ${result.created.clientName}.`;
+  } catch (error) {
+    elements.clientFormResponse.textContent = String(error.message || error);
+  }
+}
+
 async function loadOnboarding() {
   if (!elements.onboardingSummary || !elements.onboardingStages || !elements.onboardingActions) {
     return;
@@ -2418,6 +2582,7 @@ async function init() {
   renderSite(initialSite.id);
   renderCommandPlan();
   loadCommandMemory();
+  loadClients();
   loadOnboarding();
   loadServices();
   loadTools();
@@ -2445,6 +2610,10 @@ async function init() {
       runMissionCommand();
     }
   });
+
+  if (elements.clientOnboardForm) {
+    elements.clientOnboardForm.addEventListener("submit", submitClientOnboarding);
+  }
 
   setInterval(async () => {
     const previousSiteId = activeSiteId;

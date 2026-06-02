@@ -988,6 +988,53 @@ select:focus-visible {
   padding: 0.62rem;
 }
 
+.client-onboard-form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.client-onboard-form label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.client-onboard-form label span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.client-onboard-form input,
+.client-onboard-form select,
+.client-onboard-form textarea {
+  width: 100%;
+  min-width: 0;
+  border-radius: 7px;
+  border: 1px solid rgba(177, 194, 163, 0.24);
+  background: rgba(7, 10, 7, 0.88);
+  color: var(--text);
+  padding: 0.56rem 0.65rem;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.client-onboard-form select[multiple] {
+  min-height: 118px;
+}
+
+.client-onboard-form textarea {
+  resize: vertical;
+}
+
+.client-onboard-form input:focus-visible,
+.client-onboard-form select:focus-visible,
+.client-onboard-form textarea:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
 .perception-next,
 .trust-explanation {
   display: grid;

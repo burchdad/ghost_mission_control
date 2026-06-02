@@ -29,6 +29,7 @@ const VERCEL_MAX_PROJECTS = Number(process.env.VERCEL_MAX_PROJECTS || 100);
 const GITHUB_OWNER = String(process.env.GITHUB_OWNER || "burchdad").trim();
 const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "").trim();
 const GITHUB_REPO_CACHE_TTL_MS = Number(process.env.GITHUB_REPO_CACHE_TTL_MS || 300000);
+const runtimeClients = [];
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -1111,6 +1112,140 @@ function getOnboardingBlueprint() {
   };
 }
 
+function parseConfiguredClients() {
+  const rawJson = process.env.MISSION_CLIENTS || process.env.CLIENTS_JSON || "";
+  if (!rawJson) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawJson);
+    return Array.isArray(parsed) ? parsed.map(normalizeClient).filter(Boolean) : [];
+  } catch {
+    console.warn("Unable to parse MISSION_CLIENTS JSON.");
+    return [];
+  }
+}
+
+function normalizeServiceList(services) {
+  if (Array.isArray(services)) {
+    return services.map((service) => String(service || "").trim()).filter(Boolean);
+  }
+
+  if (typeof services === "string") {
+    return services.split(",").map((service) => service.trim()).filter(Boolean);
+  }
+
+  return [];
+}
+
+function getClientWebsiteUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return new URL(trimmed).origin;
+    }
+
+    return new URL(`https://${trimmed}`).origin;
+  } catch {
+    return "";
+  }
+}
+
+function normalizeClient(client) {
+  if (!client || typeof client !== "object") {
+    return null;
+  }
+
+  const clientName = String(client.clientName || client.name || "").trim();
+  if (!clientName) {
+    return null;
+  }
+
+  const id = client.id || slugify(clientName);
+  const services = normalizeServiceList(client.services || client.activeServices);
+  const websiteUrl = getClientWebsiteUrl(client.websiteUrl || client.website || client.rootUrl);
+  const now = new Date().toISOString();
+
+  return {
+    id,
+    clientName,
+    websiteUrl,
+    repo: String(client.repo || client.githubRepo || "").trim(),
+    plan: String(client.plan || "Launch + Care").trim(),
+    contact: String(client.contact || client.primaryContact || "").trim(),
+    notes: String(client.notes || "").trim(),
+    status: String(client.status || "onboarding").trim(),
+    services,
+    createdAt: client.createdAt || now,
+    updatedAt: now,
+    source: client.source || "configured"
+  };
+}
+
+function buildClientRecord(input) {
+  const normalized = normalizeClient({
+    ...input,
+    source: "runtime",
+    status: input.status || "onboarding"
+  });
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (!normalized.services.length) {
+    normalized.services = ["website-build", "web-helper-care"];
+  }
+
+  return normalized;
+}
+
+function getAllClients() {
+  const configured = parseConfiguredClients();
+  const merged = new Map();
+
+  [...configured, ...runtimeClients].forEach((client) => {
+    if (client?.id) {
+      merged.set(client.id, client);
+    }
+  });
+
+  return [...merged.values()].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+}
+
+function getClientDerivedActions(client) {
+  const actions = [];
+  if (!client.websiteUrl) {
+    actions.push("Add website URL so monitoring and Web Helper setup can attach.");
+  }
+  if (!client.repo) {
+    actions.push("Link GitHub repo for code-aware updates.");
+  }
+  if (!client.services.includes("search-intelligence")) {
+    actions.push("Decide whether SEO/AEO/GEO belongs in this client package.");
+  }
+  if (client.services.includes("search-intelligence")) {
+    actions.push("Map client to geo.ghostai.solutions profile.");
+  }
+  actions.push("Define approval rules and monthly maintenance scope.");
+  return actions;
+}
+
+function summarizeClients(clients) {
+  return {
+    clientCount: clients.length,
+    onboardingCount: clients.filter((client) => client.status === "onboarding").length,
+    liveCount: clients.filter((client) => client.status === "live").length,
+    searchClients: clients.filter((client) => client.services.includes("search-intelligence")).length,
+    repoLinked: clients.filter((client) => Boolean(client.repo)).length
+  };
+}
+
 function classifyRepo(repo) {
   const name = String(repo.name || "").toLowerCase();
   const description = String(repo.description || "").toLowerCase();
@@ -1287,6 +1422,30 @@ function sendJson(request, response, statusCode, data) {
 function sendHead(request, response, statusCode, headers = {}) {
   response.writeHead(statusCode, getDefaultHeaders(request, headers));
   response.end();
+}
+
+function readJsonBody(request, maxBytes = 1_000_000) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+
+    request.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > maxBytes) {
+        reject(new Error("Request body too large"));
+        request.destroy();
+      }
+    });
+
+    request.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error("Invalid JSON payload"));
+      }
+    });
+
+    request.on("error", reject);
+  });
 }
 
 function hasAiProviderConfigured(provider) {
@@ -3236,6 +3395,61 @@ const server = http.createServer((request, response) => {
         });
       });
 
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/clients") {
+    const clients = getAllClients();
+    sendJson(request, response, 200, {
+      generatedAt: new Date().toISOString(),
+      summary: summarizeClients(clients),
+      clients: clients.map((client) => ({
+        ...client,
+        actions: getClientDerivedActions(client)
+      })),
+      actions: [
+        "Onboard one real client and connect website, repo, plan, and services.",
+        "Attach Web Helper care after completion payment.",
+        "Map SEO/AEO/GEO clients to geo.ghostai.solutions.",
+        "Define approval and monthly scope rules per client."
+      ]
+    });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/clients") {
+    readJsonBody(request)
+      .then((payload) => {
+        const client = buildClientRecord(payload);
+        if (!client) {
+          sendJson(request, response, 400, { error: "Client name is required" });
+          return;
+        }
+
+        const existingIndex = runtimeClients.findIndex((entry) => entry.id === client.id);
+        if (existingIndex >= 0) {
+          runtimeClients[existingIndex] = {
+            ...runtimeClients[existingIndex],
+            ...client,
+            updatedAt: new Date().toISOString()
+          };
+        } else {
+          runtimeClients.push(client);
+        }
+
+        const clients = getAllClients();
+        sendJson(request, response, 201, {
+          created: client,
+          summary: summarizeClients(clients),
+          clients: clients.map((entry) => ({
+            ...entry,
+            actions: getClientDerivedActions(entry)
+          }))
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
     return;
   }
 
