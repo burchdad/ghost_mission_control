@@ -1033,6 +1033,26 @@ margin-top: 0.75rem;
   scrollbar-width: thin;
 }
 
+.client-toolbar {
+  margin-top: 0.65rem;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(150px, 190px) minmax(170px, 220px);
+  gap: 0.5rem;
+}
+
+.client-search-input,
+.client-filter-select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(177, 194, 163, 0.24);
+  border-radius: 7px;
+  background: rgba(7, 10, 7, 0.88);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.56rem 0.65rem;
+}
+
 .pipeline-column {
 min-height: 176px;
   border: 1px solid rgba(177, 194, 163, 0.2);
@@ -1086,6 +1106,84 @@ margin-top: 0.45rem;
 margin: 0;
   color: var(--text);
   font-size: 0.86rem;
+}
+
+.pipeline-card {
+  cursor: pointer;
+}
+
+.pipeline-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.pipeline-card-head span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: rgba(244, 199, 96, 0.16);
+  color: #ffe3a0;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.client-warning-row {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.28rem;
+}
+
+.client-warning-badge,
+.client-ok-badge {
+  border: 1px solid rgba(244, 199, 96, 0.34);
+  border-radius: 999px;
+  background: rgba(244, 199, 96, 0.1);
+  color: #ffe3a0;
+  padding: 0.16rem 0.38rem;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.client-ok-badge {
+  border-color: rgba(124, 255, 155, 0.34);
+  background: rgba(124, 255, 155, 0.1);
+  color: #caffd5;
+}
+
+.client-quick-actions {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem;
+}
+
+.client-quick-actions a,
+.client-quick-actions button {
+  border: 1px solid rgba(145, 194, 220, 0.22);
+  border-radius: 7px;
+  background: rgba(13, 25, 31, 0.56);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0.38rem 0.48rem;
+  text-decoration: none;
+}
+
+.client-quick-actions button {
+  border-color: rgba(124, 255, 155, 0.34);
+  color: #caffd5;
+}
+
+.inline-client-button {
+  margin-top: 0.75rem;
 }
 
 .pipeline-card p,
@@ -1243,6 +1341,54 @@ position: fixed;
 
 .client-modal.view-hidden {
 display: none !important;
+}
+
+.client-detail-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 55;
+  width: min(440px, calc(100% - 1rem));
+  padding: 0.75rem;
+  background: rgba(2, 7, 5, 0.28);
+  backdrop-filter: blur(3px);
+}
+
+.client-detail-drawer.view-hidden {
+  display: none !important;
+}
+
+.client-detail-panel {
+  height: 100%;
+  overflow-y: auto;
+  border: 1px solid rgba(124, 255, 155, 0.26);
+  border-radius: 12px;
+  background: rgba(12, 20, 13, 0.98);
+  box-shadow: -20px 0 70px rgba(0, 0, 0, 0.48);
+  padding: 0.9rem;
+}
+
+.client-detail-content {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.client-detail-section {
+  border: 1px solid rgba(177, 194, 163, 0.16);
+  border-radius: 8px;
+  background: rgba(7, 10, 7, 0.58);
+  padding: 0.65rem;
+}
+
+.client-detail-section h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.84rem;
+}
+
+.client-detail-section p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
 }
 
 .client-modal-panel {

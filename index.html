@@ -114,6 +114,30 @@
               <button id="openClientModalButton" class="new-client-button" type="button">New Client</button>
             </div>
             <div id="clientSummary" class="ops-summary"></div>
+            <div class="client-toolbar" aria-label="Client filters">
+              <input id="clientSearchInput" class="client-search-input" type="search" placeholder="Search clients, services, links..." aria-label="Search clients" />
+              <select id="clientStageFilter" class="client-filter-select" aria-label="Filter clients by stage">
+                <option value="all">All stages</option>
+                <option value="lead">Lead / Prospect</option>
+                <option value="deposit-paid">Deposit Paid</option>
+                <option value="website-build">Website Build</option>
+                <option value="client-review">Client Review</option>
+                <option value="final-payment">Final Payment</option>
+                <option value="launch-handoff">Launch / Handoff</option>
+                <option value="web-helper-care">Web Helper Care</option>
+                <option value="growth-services">Growth Services</option>
+                <option value="paused-archived">Paused / Archived</option>
+              </select>
+              <select id="clientIssueFilter" class="client-filter-select" aria-label="Filter clients by connection issue">
+                <option value="all">All clients</option>
+                <option value="missing-website">Missing website</option>
+                <option value="missing-repo">Missing repo</option>
+                <option value="missing-vercel">Missing Vercel</option>
+                <option value="missing-gbp">Missing Google Business</option>
+                <option value="missing-socials">Missing socials</option>
+                <option value="needs-geo">Needs GEO setup</option>
+              </select>
+            </div>
             <div id="clientPipeline" class="client-pipeline"></div>
             <div id="clientCards" class="ops-card-grid"></div>
           </section>
@@ -409,6 +433,19 @@
         </form>
       </div>
     </div>
+
+    <aside id="clientDetailDrawer" class="client-detail-drawer view-hidden" aria-label="Client detail drawer">
+      <div class="client-detail-panel">
+        <div class="panel-header compact client-modal-header">
+          <div>
+            <h2 id="clientDetailTitle">Client Details</h2>
+            <p id="clientDetailSubtitle">Connections, services, and operating notes.</p>
+          </div>
+          <button id="closeClientDetailButton" class="icon-button" type="button" aria-label="Close client details">X</button>
+        </div>
+        <div id="clientDetailContent" class="client-detail-content"></div>
+      </div>
+    </aside>
 
     <script src="app.js" defer></script>
   </body>

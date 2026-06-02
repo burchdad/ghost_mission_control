@@ -56,9 +56,17 @@ const elements = {
   exitFocusButton: document.getElementById("exitFocusButton"),
   buildQueueColumns: document.getElementById("buildQueueColumns"),
   clientSummary: document.getElementById("clientSummary"),
+  clientSearchInput: document.getElementById("clientSearchInput"),
+  clientStageFilter: document.getElementById("clientStageFilter"),
+  clientIssueFilter: document.getElementById("clientIssueFilter"),
   clientPipeline: document.getElementById("clientPipeline"),
   clientCards: document.getElementById("clientCards"),
   clientActions: document.getElementById("clientActions"),
+  clientDetailDrawer: document.getElementById("clientDetailDrawer"),
+  closeClientDetailButton: document.getElementById("closeClientDetailButton"),
+  clientDetailTitle: document.getElementById("clientDetailTitle"),
+  clientDetailSubtitle: document.getElementById("clientDetailSubtitle"),
+  clientDetailContent: document.getElementById("clientDetailContent"),
   openClientModalButton: document.getElementById("openClientModalButton"),
   closeClientModalButton: document.getElementById("closeClientModalButton"),
   clientOnboardModal: document.getElementById("clientOnboardModal"),
@@ -154,6 +162,7 @@ let activeCommandPlan = {
 
 let commandMemory = [];
 let liveClients = null;
+let selectedClientId = "";
 let liveAgentIntelligence = [];
 let liveWebHelpers = [];
 let liveOnboarding = null;
@@ -933,6 +942,10 @@ function setupCommandPalette() {
     if (!paletteOpen) {
       if (key === "escape" && clientModalOpen) {
         closeClientModal();
+        return;
+      }
+      if (key === "escape" && elements.clientDetailDrawer && !elements.clientDetailDrawer.classList.contains("view-hidden")) {
+        closeClientDetail();
         return;
       }
       if (key === "escape" && isFocusMode) {
@@ -2173,6 +2186,87 @@ function getClientStageLabel(stageId) {
   return clientPipelineStages.find((stage) => stage.id === stageId)?.label || stageId || "Website Build";
 }
 
+function getClientIssueTags(client) {
+  const issues = [];
+  if (!client.websiteUrl) {
+    issues.push({ id: "missing-website", label: "Missing website" });
+  }
+  if (!client.repo) {
+    issues.push({ id: "missing-repo", label: "Missing repo" });
+  }
+  if (!client.vercelUrl) {
+    issues.push({ id: "missing-vercel", label: "Missing Vercel" });
+  }
+  if (!client.googleBusinessUrl) {
+    issues.push({ id: "missing-gbp", label: "Missing GBP" });
+  }
+  if (!client.socialUrls?.length) {
+    issues.push({ id: "missing-socials", label: "Missing socials" });
+  }
+  if (client.services?.includes("search-intelligence")) {
+    issues.push({ id: "needs-geo", label: "Needs GEO setup" });
+  }
+  return issues;
+}
+
+function getClientFilterState() {
+  return {
+    query: String(elements.clientSearchInput?.value || "").trim().toLowerCase(),
+    stage: elements.clientStageFilter?.value || "all",
+    issue: elements.clientIssueFilter?.value || "all"
+  };
+}
+
+function getFilteredClients(clients) {
+  const filters = getClientFilterState();
+  return clients.filter((client) => {
+    const issueTags = getClientIssueTags(client);
+    const haystack = [
+      client.clientName,
+      client.websiteUrl,
+      client.repo,
+      client.githubUrl,
+      client.railwayUrl,
+      client.vercelUrl,
+      client.mobileAppUrl,
+      client.googleBusinessUrl,
+      client.plan,
+      client.contact,
+      client.notes,
+      ...(client.socialUrls || []),
+      ...(client.services || []),
+      ...issueTags.map((issue) => issue.label)
+    ]
+      .join(" ")
+      .toLowerCase();
+
+    if (filters.query && !haystack.includes(filters.query)) {
+      return false;
+    }
+
+    if (filters.stage !== "all" && getClientStage(client) !== filters.stage) {
+      return false;
+    }
+
+    if (filters.issue !== "all" && !issueTags.some((issue) => issue.id === filters.issue)) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function getClientQuickActions(client) {
+  return [
+    { label: "Site", url: client.websiteUrl },
+    { label: "Repo", url: client.githubUrl || client.repo },
+    { label: "Vercel", url: client.vercelUrl },
+    { label: "Railway", url: client.railwayUrl },
+    { label: "GEO", url: client.geoUrl || client.googleBusinessUrl },
+    { label: "Web Helper", url: client.webHelperUrl }
+  ].filter((action) => action.url);
+}
+
 function renderClientLink(label, value, options = {}) {
   const href = String(value || "").trim();
   if (!href) {
@@ -2198,6 +2292,30 @@ function renderSocialLinks(urls) {
   </div>`;
 }
 
+function renderClientIssueBadges(client) {
+  const issues = getClientIssueTags(client);
+  if (!issues.length) {
+    return `<div class="client-warning-row"><span class="client-ok-badge">Connections ready</span></div>`;
+  }
+
+  return `<div class="client-warning-row">
+    ${issues.slice(0, 4).map((issue) => `<span class="client-warning-badge">${escapeHtml(issue.label)}</span>`).join("")}
+  </div>`;
+}
+
+function renderClientQuickActions(client) {
+  const actions = getClientQuickActions(client);
+  const links = actions
+    .slice(0, 6)
+    .map((action) => `<a href="${escapeHtml(action.url)}" target="_blank" rel="noreferrer">${escapeHtml(action.label)}</a>`)
+    .join("");
+
+  return `<div class="client-quick-actions">
+    ${links || `<span>No links yet</span>`}
+    <button type="button" data-client-detail="${escapeHtml(client.id)}">Details</button>
+  </div>`;
+}
+
 function renderClientPipeline(clients) {
   if (!elements.clientPipeline) {
     return;
@@ -2207,10 +2325,14 @@ function renderClientPipeline(clients) {
     .map((stage) => {
       const stageClients = clients.filter((client) => getClientStage(client) === stage.id);
       const cards = stageClients.length
-        ? stageClients.map((client) => `<article class="pipeline-card">
-            <h3>${escapeHtml(client.clientName)}</h3>
+        ? stageClients.map((client) => `<article class="pipeline-card" data-client-detail="${escapeHtml(client.id)}">
+            <div class="pipeline-card-head">
+              <h3>${escapeHtml(client.clientName)}</h3>
+              <span>${getClientIssueTags(client).length}</span>
+            </div>
             <p>${escapeHtml(client.plan || "Launch + Care")}</p>
             <span>${escapeHtml(client.websiteUrl || client.repo || "Connections needed")}</span>
+            ${renderClientIssueBadges(client)}
             <div class="ops-chip-row">
               ${(client.services || []).slice(0, 3).map((service) => `<span>${escapeHtml(service)}</span>`).join("")}
             </div>
@@ -2226,6 +2348,59 @@ function renderClientPipeline(clients) {
       </section>`;
     })
     .join("");
+}
+
+function openClientDetail(clientId) {
+  const clients = liveClients?.clients || [];
+  const client = clients.find((entry) => entry.id === clientId);
+  if (!client || !elements.clientDetailDrawer || !elements.clientDetailContent) {
+    return;
+  }
+
+  selectedClientId = client.id;
+  elements.clientDetailTitle.textContent = client.clientName;
+  elements.clientDetailSubtitle.textContent = `${getClientStageLabel(getClientStage(client))} - ${client.plan || "Launch + Care"}`;
+  elements.clientDetailContent.innerHTML = `
+    ${renderClientIssueBadges(client)}
+    <div class="client-detail-section">
+      <h3>Quick Actions</h3>
+      ${renderClientQuickActions(client)}
+    </div>
+    <div class="client-detail-section">
+      <h3>Connections</h3>
+      <div class="connection-list">
+        ${renderClientLink("Website", client.websiteUrl)}
+        ${renderClientLink("GitHub", client.githubUrl || client.repo)}
+        ${renderClientLink("Railway Backend", client.railwayUrl, { sensitive: true })}
+        ${renderClientLink("Vercel", client.vercelUrl)}
+        ${renderClientLink("Mobile App", client.mobileAppUrl)}
+        ${renderClientLink("Google Business", client.googleBusinessUrl)}
+        ${renderSocialLinks(client.socialUrls)}
+      </div>
+    </div>
+    <div class="client-detail-section">
+      <h3>Services</h3>
+      <div class="ops-chip-row">${(client.services || []).map((service) => `<span>${escapeHtml(service)}</span>`).join("") || "<span>Not set</span>"}</div>
+    </div>
+    <div class="client-detail-section">
+      <h3>Contact</h3>
+      <p>${escapeHtml(client.contact || "Not set")}</p>
+    </div>
+    <div class="client-detail-section">
+      <h3>Notes</h3>
+      <p>${escapeHtml(client.notes || "No notes yet.")}</p>
+    </div>
+    <div class="client-detail-section">
+      <h3>Update History</h3>
+      <p>Created ${escapeHtml(client.createdAt || "unknown")} · Updated ${escapeHtml(client.updatedAt || "unknown")}</p>
+    </div>
+  `;
+  elements.clientDetailDrawer.classList.remove("view-hidden");
+}
+
+function closeClientDetail() {
+  selectedClientId = "";
+  elements.clientDetailDrawer?.classList.add("view-hidden");
 }
 
 function renderClients(payload) {
@@ -2248,15 +2423,19 @@ function renderClients(payload) {
   ]);
 
   const clients = payload?.clients || [];
-  renderClientPipeline(clients);
+  const filteredClients = getFilteredClients(clients);
+  renderClientPipeline(filteredClients);
 
   elements.clientCards.innerHTML = clients.length
-    ? clients.map((client) => `<article class="ops-card">
+    ? filteredClients.length
+      ? filteredClients.map((client) => `<article class="ops-card client-detail-card">
         <div class="ops-card-head">
           <h3>${escapeHtml(client.clientName)}</h3>
           <span class="pill ${["web-helper-care", "growth-services"].includes(getClientStage(client)) ? "tone-green" : "tone-blue"}">${escapeHtml(getClientStageLabel(getClientStage(client)))}</span>
         </div>
         <p>${escapeHtml(client.websiteUrl || "No website linked yet")}</p>
+        ${renderClientIssueBadges(client)}
+        ${renderClientQuickActions(client)}
         <div class="ops-meta-grid">
           <div><span>Plan</span>${escapeHtml(client.plan)}</div>
           <div><span>Repo</span>${escapeHtml(client.repo || "Not linked")}</div>
@@ -2278,9 +2457,14 @@ function renderClients(payload) {
         </div>
         ${client.notes ? `<p>${escapeHtml(client.notes)}</p>` : ""}
       </article>`).join("")
+      : `<article class="ops-card">
+        <h3>No clients match the filters</h3>
+        <p>Adjust search, stage, or issue filters to bring clients back into view.</p>
+      </article>`
     : `<article class="ops-card">
         <h3>No clients onboarded yet</h3>
         <p>Create the first client record to connect services, tools, agents, approvals, and maintenance scope.</p>
+        <button class="new-client-button inline-client-button" type="button" data-open-client-modal="true">Create first client</button>
       </article>`;
 
   const clientActions = clients.flatMap((client) =>
@@ -2760,6 +2944,28 @@ async function init() {
 
   elements.openClientModalButton?.addEventListener("click", openClientModal);
   elements.closeClientModalButton?.addEventListener("click", closeClientModal);
+  elements.closeClientDetailButton?.addEventListener("click", closeClientDetail);
+  elements.clientSearchInput?.addEventListener("input", () => renderClients(liveClients));
+  elements.clientStageFilter?.addEventListener("change", () => renderClients(liveClients));
+  elements.clientIssueFilter?.addEventListener("change", () => renderClients(liveClients));
+  elements.clientsPanel?.addEventListener("click", (event) => {
+    const modalButton = event.target.closest("[data-open-client-modal]");
+    if (modalButton) {
+      openClientModal();
+      return;
+    }
+
+    const detailTarget = event.target.closest("[data-client-detail]");
+    if (!detailTarget) {
+      return;
+    }
+
+    if (event.target.closest("a")) {
+      return;
+    }
+
+    openClientDetail(detailTarget.dataset.clientDetail);
+  });
   elements.clientOnboardModal?.addEventListener("click", (event) => {
     if (event.target === elements.clientOnboardModal) {
       closeClientModal();
