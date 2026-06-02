@@ -328,7 +328,7 @@ const viewVisibility = {
     "agentCollabPanel"
   ],
   agents: ["agentsPanel", "agentCollabPanel", "perceptionPanel", "activityPanel"],
-  "web-helpers": ["webHelpersPanel", "webHelperRequestsPanel", "commandPlanPanel", "commandMemoryPanel"],
+  "web-helpers": ["webHelpersPanel", "webHelperRequestsPanel"],
   tools: ["toolsPanel", "toolActionsPanel", "commandPlanPanel"],
   intelligence: ["predictivePanel", "crossSystemPanel", "perceptionPanel", "alertsPanel", "activityPanel"],
   strategy: ["strategicPanel", "perceptionPanel", "commandPlanPanel", "commandMemoryPanel"],
@@ -3225,18 +3225,59 @@ function renderWebHelpers(payload) {
 
   if (!helpers.length) {
     elements.webHelperCards.innerHTML = `
-      <article class="web-helper-card">
-        <div class="web-helper-card-head">
-          <h3>No Web Helpers Configured</h3>
+      <div class="web-helper-empty">
+        <article class="web-helper-empty-hero">
+          <div>
+            <h3>No Web Helpers Configured</h3>
+            <p>Activate one helper per completed client site after final payment, with client-safe request handling, approval rules, repo access, and handoff memory.</p>
+          </div>
           <span class="pill tone-gray">Waiting</span>
+        </article>
+        <div class="web-helper-factory">
+          ${[
+            {
+              title: "Template Factory",
+              status: "ready",
+              detail: "Generate a reusable helper profile from client onboarding, service scope, site stack, and approved contacts.",
+              chips: ["client-profile.md", "scope-rules.md", "website-stack.md"]
+            },
+            {
+              title: "Request Intake",
+              status: "planned",
+              detail: "Route client texts or update requests into classified tasks: copy, images, hours, links, forms, bugs, or escalation.",
+              chips: ["client request", "triage", "SLA"]
+            },
+            {
+              title: "Approval Gates",
+              status: "required",
+              detail: "Let helpers prepare code or content while owner approval controls deploys, risky changes, ads, forms, and billing-sensitive work.",
+              chips: ["safe edits", "owner approval", "deploy notes"]
+            },
+            {
+              title: "Agent Handoff",
+              status: "next",
+              detail: "After completion payment, move the site from build mode into Web Helper care with memory files and maintenance rhythm.",
+              chips: ["final payment", "handoff", "monthly care"]
+            }
+          ].map((item) => `<article class="web-helper-factory-card">
+            <div class="web-helper-card-head">
+              <h3>${escapeHtml(item.title)}</h3>
+              <span class="pill ${item.status === "required" ? "tone-yellow" : item.status === "ready" ? "tone-green" : "tone-blue"}">${escapeHtml(item.status)}</span>
+            </div>
+            <p>${escapeHtml(item.detail)}</p>
+            <div class="web-helper-scope">${item.chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("")}</div>
+          </article>`).join("")}
         </div>
-        <p>Add monitored sites or import Vercel projects to generate one web helper template per client site.</p>
-      </article>
+      </div>
     `;
     elements.webHelperRequests.innerHTML = `
       <article class="web-helper-request">
-        <h3>No requests yet</h3>
-        <p>Client update requests will appear here after helper agents are created.</p>
+        <h3>Helper Intake Ready</h3>
+        <p>Add monitored sites, connect client repos/deployments, or move a launched client into Web Helper Care to create the first helper queue.</p>
+      </article>
+      <article class="web-helper-request">
+        <h3>First Activation Path</h3>
+        <p>Client final payment -> helper template -> scope rules -> approved contacts -> request queue.</p>
       </article>
     `;
     updateNavBadges();
