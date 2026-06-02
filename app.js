@@ -2859,7 +2859,6 @@ function renderOnboarding(payload) {
     ${visibleTasks.length ? "" : `<article class="onboarding-empty-state">
       <h3>No active requirement cards</h3>
       <p>${escapeHtml(boardEmptyCopy)}</p>
-      <button class="new-client-button" type="button" data-start-onboarding-empty>Start Onboarding</button>
     </article>`}
     <div class="onboarding-kanban">
       ${onboardingBuckets.map((bucket) => {
@@ -3307,12 +3306,6 @@ async function init() {
     }
   });
   elements.onboardingPanel?.addEventListener("click", (event) => {
-    const startButton = event.target.closest("[data-start-onboarding-empty]");
-    if (startButton) {
-      openClientModal({ title: "Start Onboarding", stage: "lead" });
-      return;
-    }
-
     const skipButton = event.target.closest("[data-onboarding-skip-client][data-onboarding-skip-item]");
     if (!skipButton) {
       return;
