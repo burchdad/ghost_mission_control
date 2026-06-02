@@ -220,6 +220,25 @@
             <div id="webHelperSummary" class="web-helper-summary"></div>
             <div id="webHelperCards" class="web-helper-cards"></div>
           </section>
+
+          <section class="module-panel view-panel" id="executionPanel" aria-label="Execution console">
+            <div class="panel-header client-pipeline-header">
+              <div>
+                <h2>Execution Console</h2>
+                <p>Dispatch mission commands, watch active runs, review routed actions, and keep automation work under approval control.</p>
+              </div>
+            </div>
+            <div id="executionSummary" class="ops-summary"></div>
+            <div class="execution-console">
+              <label for="executionCommandInput">Mission Command</label>
+              <div class="command-row">
+                <input id="executionCommandInput" class="command-input" type="text" placeholder="Create web helper handoff, connect GEO service, investigate form issue..." />
+                <button id="executionCommandSend" class="command-send" type="button">Run</button>
+              </div>
+              <p id="executionCommandResponse" class="command-response" aria-live="polite">Execution console online. Ready for directive.</p>
+            </div>
+            <div id="executionBoard" class="execution-board"></div>
+          </section>
         </div>
 
         <aside class="side-column">

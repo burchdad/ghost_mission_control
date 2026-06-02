@@ -17,6 +17,11 @@ const elements = {
   commandInput: document.getElementById("commandInput"),
   commandSend: document.getElementById("commandSend"),
   commandResponse: document.getElementById("commandResponse"),
+  executionCommandInput: document.getElementById("executionCommandInput"),
+  executionCommandSend: document.getElementById("executionCommandSend"),
+  executionCommandResponse: document.getElementById("executionCommandResponse"),
+  executionSummary: document.getElementById("executionSummary"),
+  executionBoard: document.getElementById("executionBoard"),
   commandPlan: document.getElementById("commandPlan"),
   commandMemory: document.getElementById("commandMemory"),
   kpiSection: document.getElementById("kpiSection"),
@@ -120,6 +125,7 @@ const elements = {
   buildQueuePanel: document.getElementById("buildQueuePanel"),
   webHelpersPanel: document.getElementById("webHelpersPanel"),
   webHelperRequestsPanel: document.getElementById("webHelperRequestsPanel"),
+  executionPanel: document.getElementById("executionPanel"),
   alertsPanel: document.getElementById("alertsPanel"),
   activityPanel: document.getElementById("activityPanel"),
   commandPlanPanel: document.getElementById("commandPlanPanel"),
@@ -296,10 +302,10 @@ const storageKeys = {
 };
 
 const executionSubviewVisibility = {
-  overview: ["commandPlanPanel", "commandMemoryPanel", "activityPanel", "agentCollabPanel"],
-  active: ["commandPlanPanel", "agentCollabPanel"],
-  history: ["commandMemoryPanel", "activityPanel"],
-  failures: ["alertsPanel", "activityPanel", "commandPlanPanel"]
+  overview: ["executionPanel", "commandPlanPanel", "activityPanel"],
+  active: ["executionPanel", "commandPlanPanel", "agentCollabPanel"],
+  history: ["executionPanel", "commandMemoryPanel", "activityPanel"],
+  failures: ["executionPanel", "alertsPanel", "activityPanel", "commandPlanPanel"]
 };
 
 const agentsSubviewVisibility = {
@@ -321,11 +327,9 @@ const viewVisibility = {
   onboarding: ["onboardingPanel", "onboardingActionsPanel"],
   services: ["servicesPanel", "serviceActionsPanel"],
   execution: [
+    "executionPanel",
     "commandPlanPanel",
-    "perceptionPanel",
-    "commandMemoryPanel",
-    "activityPanel",
-    "agentCollabPanel"
+    "activityPanel"
   ],
   agents: ["agentsPanel", "agentCollabPanel", "perceptionPanel", "activityPanel"],
   "web-helpers": ["webHelpersPanel", "webHelperRequestsPanel"],
@@ -361,6 +365,7 @@ function setActiveView(view) {
     "toolActionsPanel",
     "buildQueuePanel",
     "webHelpersPanel",
+    "executionPanel",
     "webHelperRequestsPanel",
     "alertsPanel",
     "perceptionPanel",
@@ -418,7 +423,7 @@ function setActiveView(view) {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
 
-  const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel"];
+  const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "executionPanel"];
   const sideColumnPanels = [
     "clientActionsPanel",
     "onboardingActionsPanel",
@@ -1488,6 +1493,7 @@ function renderCommandMemory() {
         <p>Dispatched commands and outcomes will appear here.</p>
       </article>
     `;
+    renderExecutionConsole();
     return;
   }
 
@@ -1501,6 +1507,7 @@ function renderCommandMemory() {
       </article>`
     )
     .join("");
+  renderExecutionConsole();
 }
 
 function setStatusBadge(status) {
@@ -1728,6 +1735,7 @@ function renderAgents(site) {
     .join("");
 
   updateNavBadges();
+  renderExecutionConsole();
 }
 
 async function loadAgentIntelligence(siteId = activeSiteId) {
@@ -3336,6 +3344,108 @@ function renderWebHelpers(payload) {
       </article>`;
 
   updateNavBadges();
+  renderExecutionConsole();
+}
+
+function renderExecutionConsole() {
+  if (!elements.executionSummary || !elements.executionBoard) {
+    return;
+  }
+
+  const execution = activeCommandPlan.execution;
+  const actions = execution?.actions || [];
+  const runningCount = actions.filter((action) => ["running", "queued", "attention"].includes(action.status)).length;
+  const completedCount = actions.filter((action) => ["complete", "completed", "success"].includes(action.status)).length;
+  const failedCount = actions.filter((action) => ["failed", "error", "blocked"].includes(action.status)).length;
+  renderOpsSummary(elements.executionSummary, [
+    { label: "Active Run", value: execution ? 1 : 0 },
+    { label: "Routed Actions", value: actions.length },
+    { label: "Running", value: runningCount },
+    { label: "Completed", value: completedCount },
+    { label: "Failures", value: failedCount }
+  ]);
+
+  const statusCard = execution
+    ? `<article class="execution-status-card">
+        <div>
+          <span>Current Run</span>
+          <h3>${escapeHtml(execution.id)}</h3>
+          <p>Overall status: <strong class="${getExecutionStatusClass(execution.status)}">${escapeHtml(execution.status)}</strong></p>
+        </div>
+        <span class="pill ${getExecutionStatusClass(execution.status)}">${escapeHtml(execution.status)}</span>
+      </article>`
+    : `<article class="execution-status-card">
+        <div>
+          <span>Current Run</span>
+          <h3>No active execution</h3>
+          <p>Dispatch a command to generate a coordinated action plan, route agents, and begin status polling.</p>
+        </div>
+        <span class="pill tone-gray">waiting</span>
+      </article>`;
+
+  const actionCards = actions.length
+    ? actions.map((action) => `<article class="execution-action-card">
+        <div class="execution-action-head">
+          <h3>${escapeHtml(action.action)}</h3>
+          <span class="exec-status ${getExecutionStatusClass(action.status)}">${escapeHtml(action.status)}</span>
+        </div>
+        <p>${escapeHtml(action.detail || "No detail provided.")}</p>
+        <div class="execution-mini-grid">
+          <div><span>Target</span>${escapeHtml(action.target || "n/a")}</div>
+          <div><span>Agent</span>${escapeHtml(action.agent || "n/a")}</div>
+          <div><span>Mode</span>${escapeHtml(action.dispatchMode || "primary")}</div>
+          <div><span>Attempts</span>${escapeHtml(String(action.attempts ?? 0))}</div>
+        </div>
+      </article>`).join("")
+    : `<article class="execution-empty-card">
+        <h3>Execution Ready</h3>
+        <p>Use this tab for commands that need coordinated action: client updates, Web Helper handoffs, GEO setup, service routing, incident triage, or approval prep.</p>
+      </article>`;
+
+  const historyItems = execution?.history?.length
+    ? execution.history.slice(-5).map((item) => `<li>${escapeHtml(item)}</li>`).join("")
+    : "<li>No execution events yet.</li>";
+
+  const memoryItems = commandMemory.length
+    ? commandMemory.slice(0, 3).map((entry) => `<article class="execution-memory-card">
+        <h3>${escapeHtml(entry.command)}</h3>
+        <p>${escapeHtml(entry.summary)}</p>
+        <span>${escapeHtml(entry.status)} | ${escapeHtml(entry.priority)}</span>
+      </article>`).join("")
+    : `<article class="execution-memory-card">
+        <h3>No command history</h3>
+        <p>Completed command outcomes will appear here as Mission Control learns from runs.</p>
+      </article>`;
+
+  elements.executionBoard.innerHTML = `
+    <div class="execution-primary-grid">
+      ${statusCard}
+      <article class="execution-status-card">
+        <div>
+          <span>Operating Mode</span>
+          <h3>Owner-supervised automation</h3>
+          <p>Agents can prepare actions, but risky client, deploy, billing, ad, and form changes stay approval-gated.</p>
+        </div>
+      </article>
+    </div>
+    <section class="execution-section">
+      <div class="onboarding-section-title">
+        <h3>Action Routing</h3>
+        <p>Live run actions, assigned agents, targets, and dispatch state.</p>
+      </div>
+      <div class="execution-actions-grid">${actionCards}</div>
+    </section>
+    <section class="execution-secondary-grid">
+      <article>
+        <h3>Run Timeline</h3>
+        <ul>${historyItems}</ul>
+      </article>
+      <article>
+        <h3>Recent Command Memory</h3>
+        <div class="execution-memory-stack">${memoryItems}</div>
+      </article>
+    </section>
+  `;
 }
 
 function renderSite(siteId) {
@@ -3354,14 +3464,28 @@ function renderSite(siteId) {
 }
 
 async function runMissionCommand() {
-  const input = elements.commandInput.value.trim();
+  const isExecutionView = activeView === "execution";
+  const sourceInput = isExecutionView && elements.executionCommandInput ? elements.executionCommandInput : elements.commandInput;
+  const sourceResponse = isExecutionView && elements.executionCommandResponse ? elements.executionCommandResponse : elements.commandResponse;
+  const sourceButton = isExecutionView && elements.executionCommandSend ? elements.executionCommandSend : elements.commandSend;
+  const input = sourceInput.value.trim();
   if (!input) {
-    elements.commandResponse.textContent = "Enter a command to dispatch next-action intelligence.";
+    sourceResponse.textContent = "Enter a command to dispatch next-action intelligence.";
     return;
   }
 
-  elements.commandSend.disabled = true;
-  elements.commandResponse.textContent = "Dispatching command to mission backend...";
+  if (elements.commandInput && sourceInput !== elements.commandInput) {
+    elements.commandInput.value = input;
+  }
+  if (elements.executionCommandInput && sourceInput !== elements.executionCommandInput) {
+    elements.executionCommandInput.value = input;
+  }
+
+  sourceButton.disabled = true;
+  sourceResponse.textContent = "Dispatching command to mission backend...";
+  if (sourceResponse !== elements.commandResponse) {
+    elements.commandResponse.textContent = sourceResponse.textContent;
+  }
 
   try {
     const response = await fetch(apiUrl("/mission/command"), {
@@ -3383,7 +3507,13 @@ async function runMissionCommand() {
     activeCommandPlan = plan;
     commandMemory = plan.memory || commandMemory;
     const aiNote = plan.aiCopilot?.confidenceNote ? ` ${plan.aiCopilot.confidenceNote}` : "";
-    elements.commandResponse.textContent = `${plan.summary}${aiNote}`;
+    sourceResponse.textContent = `${plan.summary}${aiNote}`;
+    if (sourceResponse !== elements.commandResponse) {
+      elements.commandResponse.textContent = sourceResponse.textContent;
+    }
+    if (elements.executionCommandResponse && sourceResponse !== elements.executionCommandResponse) {
+      elements.executionCommandResponse.textContent = sourceResponse.textContent;
+    }
     renderCommandPlan();
     renderCommandMemory();
     renderCollaborationFeed([]);
@@ -3391,8 +3521,10 @@ async function runMissionCommand() {
     pollExecutionStatus();
   } catch (error) {
     stopExecutionPolling();
-    elements.commandResponse.textContent =
-      "Mission backend unavailable. Start the app with npm start to enable live command routing.";
+    sourceResponse.textContent = "Mission backend unavailable. Start the app with npm start to enable live command routing.";
+    if (sourceResponse !== elements.commandResponse) {
+      elements.commandResponse.textContent = sourceResponse.textContent;
+    }
     activeCommandPlan = {
       summary: "Command dispatch failed.",
       priority: "P1 Critical",
@@ -3414,7 +3546,7 @@ async function runMissionCommand() {
     };
     renderCommandPlan();
   } finally {
-    elements.commandSend.disabled = false;
+    sourceButton.disabled = false;
   }
 }
 
@@ -3452,6 +3584,12 @@ async function init() {
 
   elements.commandSend.addEventListener("click", runMissionCommand);
   elements.commandInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      runMissionCommand();
+    }
+  });
+  elements.executionCommandSend?.addEventListener("click", runMissionCommand);
+  elements.executionCommandInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       runMissionCommand();
     }
