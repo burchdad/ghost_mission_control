@@ -1231,6 +1231,17 @@ function getGithubUrl(repo) {
   return "";
 }
 
+function normalizeBoolean(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return value === 1;
+  }
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["1", "true", "yes", "signed", "paid", "complete"].includes(normalized);
+}
+
 function normalizeClient(client) {
   if (!client || typeof client !== "object") {
     return null;
@@ -1261,6 +1272,12 @@ function normalizeClient(client) {
     analyticsUrl: getClientUrl(client.analyticsUrl || client.analytics || client.gaUrl),
     adsStatus: String(client.adsStatus || client.ads || "").trim(),
     socialUrls: normalizeUrlList(client.socialUrls || client.socials),
+    proposalSigned: normalizeBoolean(client.proposalSigned),
+    partnershipSigned: normalizeBoolean(client.partnershipSigned),
+    depositPaid: normalizeBoolean(client.depositPaid),
+    finalPaymentPaid: normalizeBoolean(client.finalPaymentPaid),
+    businessEmail: String(client.businessEmail || "").trim(),
+    businessPhone: String(client.businessPhone || "").trim(),
     plan: String(client.plan || "Launch + Care").trim(),
     contact: String(client.contact || client.primaryContact || "").trim(),
     notes: String(client.notes || "").trim(),
@@ -1513,6 +1530,14 @@ function buildOnboardingActivation(clients) {
       stageLabel: CLIENT_PIPELINE_STAGES.find((stage) => stage.id === client.stage)?.label || client.stage,
       plan: client.plan,
       services: client.services,
+      contact: client.contact,
+      notes: client.notes,
+      proposalSigned: client.proposalSigned,
+      partnershipSigned: client.partnershipSigned,
+      depositPaid: client.depositPaid,
+      finalPaymentPaid: client.finalPaymentPaid,
+      businessEmail: client.businessEmail,
+      businessPhone: client.businessPhone,
       progress: activation.percent,
       blockerCount: activation.blockers.length,
       nextAction: activation.nextAction,

@@ -68,8 +68,10 @@ const elements = {
   clientDetailSubtitle: document.getElementById("clientDetailSubtitle"),
   clientDetailContent: document.getElementById("clientDetailContent"),
   openClientModalButton: document.getElementById("openClientModalButton"),
+  startOnboardingButton: document.getElementById("startOnboardingButton"),
   closeClientModalButton: document.getElementById("closeClientModalButton"),
   clientOnboardModal: document.getElementById("clientOnboardModal"),
+  clientModalTitle: document.getElementById("clientModalTitle"),
   clientOnboardForm: document.getElementById("clientOnboardForm"),
   clientNameInput: document.getElementById("clientNameInput"),
   clientStageInput: document.getElementById("clientStageInput"),
@@ -80,12 +82,19 @@ const elements = {
   clientMobileAppInput: document.getElementById("clientMobileAppInput"),
   clientGoogleBusinessInput: document.getElementById("clientGoogleBusinessInput"),
   clientSocialsInput: document.getElementById("clientSocialsInput"),
+  clientProposalInput: document.getElementById("clientProposalInput"),
+  clientPartnershipInput: document.getElementById("clientPartnershipInput"),
+  clientBusinessEmailInput: document.getElementById("clientBusinessEmailInput"),
+  clientBusinessPhoneInput: document.getElementById("clientBusinessPhoneInput"),
   clientPlanInput: document.getElementById("clientPlanInput"),
   clientServicesInput: document.getElementById("clientServicesInput"),
   clientContactInput: document.getElementById("clientContactInput"),
   clientNotesInput: document.getElementById("clientNotesInput"),
   clientFormResponse: document.getElementById("clientFormResponse"),
   onboardingSummary: document.getElementById("onboardingSummary"),
+  onboardingSearchInput: document.getElementById("onboardingSearchInput"),
+  onboardingBucketFilter: document.getElementById("onboardingBucketFilter"),
+  onboardingStatusFilter: document.getElementById("onboardingStatusFilter"),
   onboardingQueue: document.getElementById("onboardingQueue"),
   onboardingConnections: document.getElementById("onboardingConnections"),
   onboardingStages: document.getElementById("onboardingStages"),
@@ -309,7 +318,7 @@ const viewVisibility = {
     "activityPanel"
   ],
   clients: ["clientsPanel", "clientActionsPanel"],
-  onboarding: ["onboardingPanel", "onboardingActionsPanel", "commandPlanPanel"],
+  onboarding: ["onboardingPanel", "onboardingActionsPanel"],
   services: ["servicesPanel", "serviceActionsPanel", "commandPlanPanel"],
   execution: [
     "commandPlanPanel",
@@ -901,9 +910,16 @@ function closeCommandPalette() {
   elements.commandPalette.classList.add("view-hidden");
 }
 
-function openClientModal() {
+function openClientModal(options = {}) {
   if (!elements.clientOnboardModal) {
     return;
+  }
+
+  if (elements.clientModalTitle) {
+    elements.clientModalTitle.textContent = options.title || "New Client";
+  }
+  if (elements.clientStageInput && options.stage) {
+    elements.clientStageInput.value = options.stage;
   }
 
   elements.clientOnboardModal.classList.remove("view-hidden");
@@ -919,6 +935,9 @@ function closeClientModal() {
   }
 
   elements.clientOnboardModal.classList.add("view-hidden");
+  if (elements.clientModalTitle) {
+    elements.clientModalTitle.textContent = "New Client";
+  }
 }
 
 function setupCommandPalette() {
@@ -2542,6 +2561,10 @@ async function submitClientOnboarding(event) {
       .split(/\r?\n/)
       .map((url) => url.trim())
       .filter(Boolean),
+    proposalSigned: Boolean(elements.clientProposalInput?.checked),
+    partnershipSigned: Boolean(elements.clientPartnershipInput?.checked),
+    businessEmail: elements.clientBusinessEmailInput?.value || "",
+    businessPhone: elements.clientBusinessPhoneInput?.value || "",
     plan: elements.clientPlanInput?.value || "",
     services: getSelectedClientServices(),
     contact: elements.clientContactInput?.value || "",
@@ -2658,6 +2681,37 @@ const onboardingBuckets = [
   { id: "kickoff", label: "Kickoff" }
 ];
 
+const fallbackOnboardingStages = [
+  {
+    name: "Client Intake",
+    status: "ready",
+    description: "Create the client record, choose services, and capture the first contact path.",
+    requiredArtifacts: ["Client record", "Primary contact", "Service selection"],
+    automations: ["Create onboarding board", "Prepare access checklist"]
+  },
+  {
+    name: "Agreement + Payment",
+    status: "ready",
+    description: "Confirm proposal, partnership agreement, deposit, final payment rules, and billing notes.",
+    requiredArtifacts: ["Proposal agreement", "Partnership agreement", "Payment status"],
+    automations: ["Flag unsigned docs", "Escalate payment blockers"]
+  },
+  {
+    name: "Access + Channels",
+    status: "ready",
+    description: "Collect website, repo, deployment, Google Business, social, ads, analytics, and reporting access.",
+    requiredArtifacts: ["Website admin", "GitHub", "Vercel", "Google Business", "Socials"],
+    automations: ["Detect missing links", "Queue secure access requests"]
+  },
+  {
+    name: "Kickoff + Handoff",
+    status: "ready",
+    description: "Lock launch notes, approval rules, client preferences, and Web Helper handoff details.",
+    requiredArtifacts: ["Kickoff notes", "Approval rules", "Internal handoff"],
+    automations: ["Generate launch checklist", "Prepare Web Helper scope"]
+  }
+];
+
 function getConnectionByLabel(client, label) {
   return (client.connections || []).find((connection) => connection.label === label) || null;
 }
@@ -2688,6 +2742,8 @@ function makeOnboardingTask(client, bucket, title, status, detail, options = {})
 
 function buildOnboardingTasks(client) {
   const contact = client.contact || "";
+  const businessEmail = client.businessEmail || "";
+  const businessPhone = client.businessPhone || "";
   const website = getConnectionByLabel(client, "Website");
   const github = getConnectionByLabel(client, "GitHub");
   const vercel = getConnectionByLabel(client, "Vercel");
@@ -2702,12 +2758,12 @@ function buildOnboardingTasks(client) {
   const analytics = getConnectionByLabel(client, "Analytics");
 
   return [
-    makeOnboardingTask(client, "agreements", "Proposal agreement", "missing", "Signed proposal or scope agreement.", { required: true }),
-    makeOnboardingTask(client, "agreements", "Partnership agreement", "missing", "Signed care, posting, ads, or services agreement.", { required: true }),
-    makeOnboardingTask(client, "agreements", "Payment status", client.stage === "deposit-paid" || client.stage === "website-build" ? "complete" : "missing", "Deposit, final payment, or billing terms."),
+    makeOnboardingTask(client, "agreements", "Proposal agreement", client.proposalSigned ? "complete" : "missing", "Signed proposal or scope agreement.", { required: true }),
+    makeOnboardingTask(client, "agreements", "Partnership agreement", client.partnershipSigned ? "complete" : "missing", "Signed care, posting, ads, or services agreement.", { required: true }),
+    makeOnboardingTask(client, "agreements", "Payment status", client.depositPaid || client.finalPaymentPaid || ["deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"].includes(client.stage) ? "complete" : "missing", "Deposit, final payment, or billing terms."),
     makeOnboardingTask(client, "contacts", "Primary contact", contact ? "complete" : "missing", contact || "Name, role, and best contact method.", { required: true }),
-    makeOnboardingTask(client, "contacts", "Email address", hasEmail(contact) ? "complete" : "missing", "Client email for approvals and notices.", { required: true }),
-    makeOnboardingTask(client, "contacts", "Phone number", hasPhone(contact) ? "complete" : "missing", "Client phone for urgent launch or account access issues."),
+    makeOnboardingTask(client, "contacts", "Email address", hasEmail(contact) || hasEmail(businessEmail) ? "complete" : "missing", businessEmail || "Client email for approvals and notices.", { required: true }),
+    makeOnboardingTask(client, "contacts", "Phone number", hasPhone(contact) || hasPhone(businessPhone) ? "complete" : "missing", businessPhone || "Client phone for urgent launch or account access issues."),
     makeOnboardingTask(client, "business", "Business profile", client.notes ? "in-progress" : "missing", "Business facts, service area, offer, audience, and brand voice.", { required: true }),
     makeOnboardingTask(client, "business", "Google Business", googleBusiness?.status || "missing", googleBusiness?.url || "Google Business Profile access or URL."),
     makeOnboardingTask(client, "access", "Website admin", website?.status || "missing", website?.url || "Website/admin access.", { required: true }),
@@ -2747,6 +2803,27 @@ function renderOnboardingCard(task) {
   </article>`;
 }
 
+function getOnboardingFilters() {
+  return {
+    query: String(elements.onboardingSearchInput?.value || "").trim().toLowerCase(),
+    bucket: elements.onboardingBucketFilter?.value || "all",
+    status: elements.onboardingStatusFilter?.value || "all"
+  };
+}
+
+function taskMatchesOnboardingFilters(task, filters) {
+  const matchesBucket = filters.bucket === "all" || task.bucket === filters.bucket;
+  const matchesStatus = filters.status === "all" || task.status === filters.status;
+  const haystack = `${task.title} ${task.clientName} ${task.detail} ${task.status}`.toLowerCase();
+  const matchesQuery = !filters.query || haystack.includes(filters.query);
+  return matchesBucket && matchesStatus && matchesQuery;
+}
+
+function clientMatchesOnboardingFilters(client, filters, clientTasks) {
+  const haystack = `${client.clientName} ${client.stageLabel} ${client.plan} ${client.nextAction} ${(client.blockers || []).map((blocker) => blocker.label).join(" ")}`.toLowerCase();
+  return !filters.query || haystack.includes(filters.query) || clientTasks.some((task) => taskMatchesOnboardingFilters(task, filters));
+}
+
 function renderOnboarding(payload) {
   const summary = payload?.summary || {
     activeClients: 0,
@@ -2761,15 +2838,19 @@ function renderOnboarding(payload) {
     { label: "Missing Connections", value: summary.missingConnections || 0 }
   ]);
 
-  const queue = (payload?.activation?.queue || []).map(applyOnboardingSkips);
-  const onboardingTasks = queue.flatMap(buildOnboardingTasks);
+  const filters = getOnboardingFilters();
+  const rawQueue = (payload?.activation?.queue || []).map(applyOnboardingSkips);
+  const tasksByClient = new Map(rawQueue.map((client) => [client.id, buildOnboardingTasks(client)]));
+  const queue = rawQueue.filter((client) => clientMatchesOnboardingFilters(client, filters, tasksByClient.get(client.id) || []));
+  const onboardingTasks = queue.flatMap((client) => tasksByClient.get(client.id) || []);
+  const visibleTasks = onboardingTasks.filter((task) => task.status !== "not-included" && taskMatchesOnboardingFilters(task, filters));
   elements.onboardingQueue.innerHTML = `<div class="onboarding-section-title">
       <h3>Onboarding Requirements Board</h3>
       <p>Track agreements, contacts, access, socials, ads, kickoff details, and skippable client-specific services.</p>
     </div>
     <div class="onboarding-kanban">
       ${onboardingBuckets.map((bucket) => {
-        const bucketTasks = onboardingTasks.filter((task) => task.bucket === bucket.id && task.status !== "not-included");
+        const bucketTasks = visibleTasks.filter((task) => task.bucket === bucket.id);
         return `<section class="onboarding-column">
           <div class="onboarding-column-head">
             <h3>${escapeHtml(bucket.label)}</h3>
@@ -2791,7 +2872,7 @@ function renderOnboarding(payload) {
       </div>`
     : "";
 
-  const stages = payload?.stages || [];
+  const stages = payload?.stages?.length ? payload.stages : fallbackOnboardingStages;
   elements.onboardingStages.innerHTML = stages.length
     ? `<div class="onboarding-section-title"><h3>Activation Blueprint</h3><p>The standard path every client should pass before ongoing operations.</p></div>
       ${stages.map((stage) => `<article class="ops-card">
@@ -2805,7 +2886,18 @@ function renderOnboarding(payload) {
       </article>`).join("")}`
     : `<article class="ops-card"><h3>No onboarding blueprint</h3><p>Onboarding stages will appear when the backend is available.</p></article>`;
 
-  renderOpsActions(elements.onboardingActions, payload?.activation?.actions || payload?.actions || [], "Onboarding actions will appear here.");
+  const fallbackActions = rawQueue.length
+    ? [
+        `${summary.missingConnections || 0} required onboarding connections need attention.`,
+        "Work missing agreement, contact, access, and kickoff cards before launch handoff.",
+        "Skip any optional service card the client did not purchase."
+      ]
+    : [
+        "Start onboarding for the next client.",
+        "Collect agreement, contact, access, socials, ads, and kickoff details.",
+        "Skip optional service cards that are outside the client scope."
+      ];
+  renderOpsActions(elements.onboardingActions, payload?.activation?.actions || payload?.actions || fallbackActions, "Onboarding actions will appear here.");
   updateNavBadges();
 }
 
@@ -3166,12 +3258,16 @@ async function init() {
     elements.clientOnboardForm.addEventListener("submit", submitClientOnboarding);
   }
 
-  elements.openClientModalButton?.addEventListener("click", openClientModal);
+  elements.openClientModalButton?.addEventListener("click", () => openClientModal());
+  elements.startOnboardingButton?.addEventListener("click", () => openClientModal({ title: "Start Onboarding", stage: "lead" }));
   elements.closeClientModalButton?.addEventListener("click", closeClientModal);
   elements.closeClientDetailButton?.addEventListener("click", closeClientDetail);
   elements.clientSearchInput?.addEventListener("input", () => renderClients(liveClients));
   elements.clientStageFilter?.addEventListener("change", () => renderClients(liveClients));
   elements.clientIssueFilter?.addEventListener("change", () => renderClients(liveClients));
+  elements.onboardingSearchInput?.addEventListener("input", () => renderOnboarding(liveOnboarding));
+  elements.onboardingBucketFilter?.addEventListener("change", () => renderOnboarding(liveOnboarding));
+  elements.onboardingStatusFilter?.addEventListener("change", () => renderOnboarding(liveOnboarding));
   elements.clientsPanel?.addEventListener("click", (event) => {
     const detailTarget = event.target.closest("[data-client-detail]");
     if (!detailTarget) {

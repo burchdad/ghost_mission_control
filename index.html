@@ -143,11 +143,36 @@
           </section>
 
           <section class="module-panel view-panel" id="onboardingPanel" aria-label="Client onboarding">
-            <div class="panel-header">
-              <h2>Client Onboarding</h2>
-              <p>Collect agreements, contacts, access, socials, business info, approvals, and launch handoff details.</p>
+            <div class="panel-header client-pipeline-header">
+              <div>
+                <h2>Client Onboarding</h2>
+                <p>Collect agreements, contacts, access, socials, business info, approvals, and launch handoff details.</p>
+              </div>
+              <button id="startOnboardingButton" class="new-client-button" type="button">Start Onboarding</button>
             </div>
             <div id="onboardingSummary" class="ops-summary"></div>
+            <div class="filter-row onboarding-filter-row">
+              <input id="onboardingSearchInput" type="search" placeholder="Search onboarding clients, tasks, blockers..." aria-label="Search onboarding" />
+              <select id="onboardingBucketFilter" aria-label="Filter onboarding bucket">
+                <option value="all">All requirements</option>
+                <option value="agreements">Agreements</option>
+                <option value="contacts">Contacts</option>
+                <option value="business">Business info</option>
+                <option value="access">Access</option>
+                <option value="channels">Socials</option>
+                <option value="ads">Ads</option>
+                <option value="kickoff">Kickoff</option>
+              </select>
+              <select id="onboardingStatusFilter" aria-label="Filter onboarding status">
+                <option value="all">All statuses</option>
+                <option value="missing">Missing</option>
+                <option value="blocked">Blocked</option>
+                <option value="access-needed">Access needed</option>
+                <option value="in-progress">In progress</option>
+                <option value="complete">Complete</option>
+                <option value="skipped">Skipped</option>
+              </select>
+            </div>
             <div id="onboardingQueue" class="onboarding-queue"></div>
             <div id="onboardingConnections" class="onboarding-connections"></div>
             <div id="onboardingStages" class="ops-card-grid"></div>
@@ -401,6 +426,24 @@
           <label>
             <span>Social URLs</span>
             <textarea id="clientSocialsInput" name="socialUrls" rows="3" placeholder="One Facebook, Instagram, LinkedIn, TikTok, or YouTube URL per line"></textarea>
+          </label>
+          <div class="client-form-checks">
+            <label>
+              <input id="clientProposalInput" name="proposalSigned" type="checkbox" />
+              <span>Proposal signed</span>
+            </label>
+            <label>
+              <input id="clientPartnershipInput" name="partnershipSigned" type="checkbox" />
+              <span>Partnership agreement signed</span>
+            </label>
+          </div>
+          <label>
+            <span>Business Email</span>
+            <input id="clientBusinessEmailInput" name="businessEmail" type="email" placeholder="owner@example.com" />
+          </label>
+          <label>
+            <span>Business Phone</span>
+            <input id="clientBusinessPhoneInput" name="businessPhone" type="tel" placeholder="555-555-5555" />
           </label>
           <label>
             <span>Plan</span>
