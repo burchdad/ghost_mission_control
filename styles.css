@@ -2705,11 +2705,72 @@ body:not(.focus-mode) .topbar.view-hidden {
 }
 
 .client-pipeline {
-  grid-auto-columns: 202px;
-  overflow-x: scroll;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: flex;
+  gap: 0.62rem;
+  overflow-x: auto;
+  overflow-y: hidden;
   overscroll-behavior-inline: contain;
+  padding-bottom: 0.65rem;
   scrollbar-color: rgba(124, 255, 155, 0.72) rgba(177, 194, 163, 0.12);
   scrollbar-width: thin;
+}
+
+.workspace-main,
+.layout-grid,
+.main-column,
+.side-column,
+.module-panel,
+#clientsPanel {
+  min-width: 0;
+}
+
+#clientsPanel {
+  overflow: hidden;
+}
+
+.client-pipeline-header {
+  display: flex !important;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.client-pipeline-header > div {
+  min-width: 0;
+}
+
+.new-client-button {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  border: 1px solid rgba(124, 255, 155, 0.72);
+  border-radius: 7px;
+  background: #6ff78f;
+  color: #071007;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  min-height: 38px;
+  min-width: 126px;
+  padding: 0.52rem 0.85rem;
+  text-align: center;
+  box-shadow: 0 0 0 1px rgba(124, 255, 155, 0.16), 0 10px 26px rgba(124, 255, 155, 0.12);
+}
+
+.new-client-button:hover {
+  background: #8dffab;
+}
+
+.new-client-button:focus-visible {
+  outline: 2px solid #eaffef;
+  outline-offset: 2px;
+}
+
+.pipeline-column {
+  flex: 0 0 202px;
 }
 
 .client-pipeline::-webkit-scrollbar {
