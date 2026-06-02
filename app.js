@@ -319,7 +319,7 @@ const viewVisibility = {
   ],
   clients: ["clientsPanel", "clientActionsPanel"],
   onboarding: ["onboardingPanel", "onboardingActionsPanel"],
-  services: ["servicesPanel", "serviceActionsPanel", "commandPlanPanel"],
+  services: ["servicesPanel", "serviceActionsPanel"],
   execution: [
     "commandPlanPanel",
     "perceptionPanel",
@@ -2712,6 +2712,86 @@ const fallbackOnboardingStages = [
   }
 ];
 
+const fallbackServiceCatalog = [
+  {
+    id: "website-build",
+    name: "Website Build",
+    status: "active",
+    category: "Launch",
+    owner: "Build Operator",
+    description: "Discovery, design, build, review, final payment, launch, and handoff into maintenance.",
+    connectedSystems: ["Clients", "Onboarding", "Build Queue", "GitHub", "Vercel"],
+    triggers: ["Initial deposit paid", "New build approved", "Client revision received"],
+    nextActions: ["Create client profile", "Link repo and deployment", "Define launch checklist"]
+  },
+  {
+    id: "web-helper-care",
+    name: "Web Helper Care",
+    status: "active",
+    category: "Maintenance",
+    owner: "Web Helper Agent",
+    description: "Client request handling, small edits, safe fixes, approval gates, deploy notes, and client replies.",
+    connectedSystems: ["Web Helpers", "Approvals", "GitHub", "Vercel"],
+    triggers: ["Completion payment received", "Client update request", "Site issue detected"],
+    nextActions: ["Attach agent memory", "Set scope rules", "Connect approved contacts"]
+  },
+  {
+    id: "search-intelligence",
+    name: "SEO / AEO / GEO",
+    status: "integration-needed",
+    category: "Growth",
+    owner: "Search Intelligence Agent",
+    description: "Organic search, answer engine readiness, and generative engine visibility through geo.ghostai.solutions.",
+    connectedSystems: ["geo.ghostai.solutions", "Reports", "Web Helpers", "Approvals"],
+    triggers: ["New client onboarded", "Ranking issue", "AI visibility opportunity"],
+    nextActions: ["Add API credentials", "Map siteId to GEO profile", "Import scores and recommendations"]
+  },
+  {
+    id: "lead-funnel",
+    name: "Lead Funnel",
+    status: "planned",
+    category: "Growth",
+    owner: "Funnel Monitor Agent",
+    description: "Lead capture, conversion path monitoring, follow-up routing, and form health.",
+    connectedSystems: ["Forms", "CRM", "Analytics", "Client Reports"],
+    triggers: ["Lead drop", "Form failure", "Campaign launch"],
+    nextActions: ["Define conversion events", "Connect CRM", "Add form probes"]
+  },
+  {
+    id: "content-social",
+    name: "Content + Social",
+    status: "planned",
+    category: "Marketing",
+    owner: "Content Operator",
+    description: "Content briefs, posting queue, social distribution, business page posting, and campaign support.",
+    connectedSystems: ["Social Pages", "Google Business", "Content Tools", "Search Intelligence"],
+    triggers: ["Content calendar due", "GEO topic gap", "Campaign push"],
+    nextActions: ["Connect social pages", "Create monthly plan", "Set approval rules"]
+  },
+  {
+    id: "paid-ads",
+    name: "Paid Ads",
+    status: "planned",
+    category: "Growth",
+    owner: "Ads Operator",
+    description: "Ad account access, campaign setup, landing-page alignment, tracking, and performance review.",
+    connectedSystems: ["Meta Ads", "Google Ads", "Analytics", "Lead Funnel"],
+    triggers: ["Ad package sold", "Campaign refresh", "Conversion tracking issue"],
+    nextActions: ["Collect ad account access", "Confirm budget rules", "Connect tracking"]
+  },
+  {
+    id: "reporting",
+    name: "Client Reporting",
+    status: "planned",
+    category: "Retention",
+    owner: "Reporting Agent",
+    description: "Monthly service summaries, completed work, search visibility, site health, and next-best investment.",
+    connectedSystems: ["Mission History", "Search Intelligence", "Web Helpers", "Billing"],
+    triggers: ["Monthly report due", "Client check-in", "Renewal window"],
+    nextActions: ["Create report template", "Map service KPIs", "Add export workflow"]
+  }
+];
+
 function getConnectionByLabel(client, label) {
   return (client.connections || []).find((connection) => connection.label === label) || null;
 }
@@ -2941,7 +3021,13 @@ async function loadServices() {
 }
 
 function renderServices(payload) {
-  const summary = payload?.summary || { serviceCount: 0, activeCount: 0, integrationNeeded: 0, plannedCount: 0 };
+  const services = payload?.services?.length ? payload.services : fallbackServiceCatalog;
+  const summary = payload?.summary || {
+    serviceCount: services.length,
+    activeCount: services.filter((service) => service.status === "active").length,
+    integrationNeeded: services.filter((service) => service.status === "integration-needed").length,
+    plannedCount: services.filter((service) => service.status === "planned").length
+  };
   renderOpsSummary(elements.serviceSummary, [
     { label: "Services", value: summary.serviceCount },
     { label: "Active", value: summary.activeCount },
@@ -2949,24 +3035,80 @@ function renderServices(payload) {
     { label: "Planned", value: summary.plannedCount }
   ]);
 
-  const services = payload?.services || [];
+  const activeServices = services.filter((service) => service.status === "active");
+  const integrationServices = services.filter((service) => service.status === "integration-needed");
+  const plannedServices = services.filter((service) => service.status === "planned");
+  const serviceGroups = [
+    { label: "Active Services", description: "Services ready to run against client accounts.", services: activeServices },
+    { label: "Integration Queue", description: "Services that need API credentials, account mapping, or workflow wiring.", services: integrationServices },
+    { label: "Planned Packages", description: "Revenue services prepared for future clients or upsells.", services: plannedServices }
+  ];
+
   elements.serviceCards.innerHTML = services.length
-    ? services.map((service) => `<article class="ops-card">
-        <div class="ops-card-head">
-          <h3>${service.name}</h3>
-          <span class="pill ${service.status === "active" ? "tone-green" : service.status === "integration-needed" ? "tone-yellow" : "tone-blue"}">${service.status}</span>
-        </div>
-        <p>${service.description}</p>
-        <div class="ops-meta-grid">
-          <div><span>Category</span>${service.category}</div>
-          <div><span>Owner</span>${service.owner}</div>
-        </div>
-        <div class="ops-chip-row">${service.connectedSystems.map((item) => `<span>${item}</span>`).join("")}</div>
-      </article>`).join("")
+    ? `<div class="service-command-strip">
+        <article>
+          <span>Core Flow</span>
+          <strong>Build -> Care -> Growth -> Reporting</strong>
+          <p>Each client should map to the services they bought, the tools required, and the approval rules that control execution.</p>
+        </article>
+        <article>
+          <span>GEO Integration</span>
+          <strong>geo.ghostai.solutions</strong>
+          <p>Connect API credentials, map each client site to a GEO profile, and route recommendations into Web Helper tasks.</p>
+        </article>
+      </div>
+      <div class="service-lane-grid">
+        ${serviceGroups.map((group) => `<section class="service-lane">
+          <div class="service-lane-head">
+            <div>
+              <h3>${escapeHtml(group.label)}</h3>
+              <p>${escapeHtml(group.description)}</p>
+            </div>
+            <span>${group.services.length}</span>
+          </div>
+          <div class="service-card-stack">
+            ${group.services.length ? group.services.map(renderServiceCard).join("") : `<div class="pipeline-empty">No services</div>`}
+          </div>
+        </section>`).join("")}
+      </div>`
     : `<article class="ops-card"><h3>No services loaded</h3><p>Service catalog will appear when the backend is available.</p></article>`;
 
-  renderOpsActions(elements.serviceActions, payload?.actions || [], "Service actions will appear here.");
+  const actions = payload?.actions?.length ? payload.actions : [
+    "Connect geo.ghostai.solutions API for SEO / AEO / GEO service delivery.",
+    "Map each client to purchased services and required tools.",
+    "Define approval rules for ads, socials, reports, and site changes.",
+    "Attach Web Helper tasks to active care and growth services."
+  ];
+  renderOpsActions(elements.serviceActions, actions, "Service actions will appear here.");
   updateNavBadges();
+}
+
+function renderServiceCard(service) {
+  const statusTone = service.status === "active" ? "tone-green" : service.status === "integration-needed" ? "tone-yellow" : "tone-blue";
+  return `<article class="service-card">
+    <div class="service-card-head">
+      <div>
+        <h3>${escapeHtml(service.name)}</h3>
+        <p>${escapeHtml(service.category)} | ${escapeHtml(service.owner)}</p>
+      </div>
+      <span class="pill ${statusTone}">${escapeHtml(service.status)}</span>
+    </div>
+    <p>${escapeHtml(service.description)}</p>
+    <div class="service-card-section">
+      <span>Connected Systems</span>
+      <div class="ops-chip-row">${(service.connectedSystems || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
+    </div>
+    <div class="service-card-grid">
+      <div>
+        <span>Triggers</span>
+        ${(service.triggers || []).map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
+      </div>
+      <div>
+        <span>Next Actions</span>
+        ${(service.nextActions || []).map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
+      </div>
+    </div>
+  </article>`;
 }
 
 async function loadTools(forceRefresh = false) {

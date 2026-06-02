@@ -1588,8 +1588,142 @@ padding: 0.62rem;
   gap: 0.6rem;
 }
 
+.service-command-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.service-command-strip article,
+.service-lane,
+.service-card {
+  border: 1px solid rgba(177, 194, 163, 0.16);
+  border-radius: 8px;
+  background: rgba(10, 17, 11, 0.78);
+}
+
+.service-command-strip article {
+  padding: 0.72rem;
+}
+
+.service-command-strip span,
+.service-card-section > span,
+.service-card-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.service-command-strip strong {
+  display: block;
+  margin-top: 0.2rem;
+  color: #f0faed;
+  font-size: 0.95rem;
+}
+
+.service-command-strip p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.service-lane-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(240px, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.service-lane {
+  min-width: 0;
+  padding: 0.58rem;
+}
+
+.service-lane-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+
+.service-lane-head h3,
+.service-card h3 {
+  margin: 0;
+  color: #f0faed;
+  font-size: 0.95rem;
+}
+
+.service-lane-head p,
+.service-card-head p,
+.service-card > p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.service-lane-head span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  background: rgba(111, 247, 143, 0.14);
+  color: var(--green);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.service-card-stack {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.service-card {
+  padding: 0.62rem;
+}
+
+.service-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.service-card-section {
+  margin-top: 0.62rem;
+}
+
+.service-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.62rem;
+}
+
+.service-card-grid div {
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.48rem;
+}
+
+.service-card-grid p {
+  margin: 0.28rem 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
 @media (max-width: 760px) {
   .onboarding-filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .service-command-strip,
+  .service-lane-grid,
+  .service-card-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -1059,10 +1059,21 @@ function getServiceCatalog() {
       status: "planned",
       category: "marketing",
       owner: "Content Operator",
-      description: "Content briefs, posting queue, social distribution, and campaign support.",
-      connectedSystems: ["Content Tools", "Social Posting", "Search Intelligence"],
+      description: "Content briefs, posting queue, social distribution, business page posting, and campaign support.",
+      connectedSystems: ["Social Pages", "Google Business", "Content Tools", "Search Intelligence"],
       triggers: ["content calendar due", "GEO topic gap", "campaign push"],
-      nextActions: ["Inventory content repos", "Connect posting queue", "Generate monthly plan"]
+      nextActions: ["Connect social pages", "Create monthly plan", "Set approval rules"]
+    },
+    {
+      id: "paid-ads",
+      name: "Paid Ads",
+      status: "planned",
+      category: "growth",
+      owner: "Ads Operator",
+      description: "Ad account access, campaign setup, landing-page alignment, tracking, and performance review.",
+      connectedSystems: ["Meta Ads", "Google Ads", "Analytics", "Lead Funnel"],
+      triggers: ["ad package sold", "campaign refresh", "conversion tracking issue"],
+      nextActions: ["Collect ad account access", "Confirm budget rules", "Connect tracking"]
     },
     {
       id: "reporting",
