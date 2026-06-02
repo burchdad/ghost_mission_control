@@ -38,8 +38,11 @@ const elements = {
   executionTabs: document.getElementById("executionTabs"),
   agentsTabs: document.getElementById("agentsTabs"),
   navBadgeExecution: document.getElementById("navBadgeExecution"),
+  navBadgeOnboarding: document.getElementById("navBadgeOnboarding"),
+  navBadgeServices: document.getElementById("navBadgeServices"),
   navBadgeAgents: document.getElementById("navBadgeAgents"),
   navBadgeWebHelpers: document.getElementById("navBadgeWebHelpers"),
+  navBadgeTools: document.getElementById("navBadgeTools"),
   navBadgeIntelligence: document.getElementById("navBadgeIntelligence"),
   navBadgeAutonomy: document.getElementById("navBadgeAutonomy"),
   navCorrelationHint: document.getElementById("navCorrelationHint"),
@@ -51,10 +54,25 @@ const elements = {
   focusTitle: document.getElementById("focusTitle"),
   exitFocusButton: document.getElementById("exitFocusButton"),
   buildQueueColumns: document.getElementById("buildQueueColumns"),
+  onboardingSummary: document.getElementById("onboardingSummary"),
+  onboardingStages: document.getElementById("onboardingStages"),
+  onboardingActions: document.getElementById("onboardingActions"),
+  serviceSummary: document.getElementById("serviceSummary"),
+  serviceCards: document.getElementById("serviceCards"),
+  serviceActions: document.getElementById("serviceActions"),
+  toolSummary: document.getElementById("toolSummary"),
+  toolCards: document.getElementById("toolCards"),
+  toolActions: document.getElementById("toolActions"),
   webHelperSummary: document.getElementById("webHelperSummary"),
   webHelperCards: document.getElementById("webHelperCards"),
   webHelperRequests: document.getElementById("webHelperRequests"),
   operationsPanel: document.getElementById("operationsPanel"),
+  onboardingPanel: document.getElementById("onboardingPanel"),
+  onboardingActionsPanel: document.getElementById("onboardingActionsPanel"),
+  servicesPanel: document.getElementById("servicesPanel"),
+  serviceActionsPanel: document.getElementById("serviceActionsPanel"),
+  toolsPanel: document.getElementById("toolsPanel"),
+  toolActionsPanel: document.getElementById("toolActionsPanel"),
   buildQueuePanel: document.getElementById("buildQueuePanel"),
   webHelpersPanel: document.getElementById("webHelpersPanel"),
   webHelperRequestsPanel: document.getElementById("webHelperRequestsPanel"),
@@ -112,6 +130,9 @@ let activeCommandPlan = {
 let commandMemory = [];
 let liveAgentIntelligence = [];
 let liveWebHelpers = [];
+let liveOnboarding = null;
+let liveServiceCatalog = null;
+let liveToolRegistry = null;
 let livePredictiveSignals = [];
 let liveAutonomousGoals = [];
 let activeSiteId = "";
@@ -197,9 +218,12 @@ let paletteSelectionIndex = 0;
 let currentPaletteActions = [];
 let deferredRecommendationId = null;
 const badgeCounts = {
+  onboarding: null,
+  services: null,
   execution: null,
   agents: null,
   webHelpers: null,
+  tools: null,
   intelligence: null,
   autonomy: null
 };
@@ -233,6 +257,8 @@ const viewVisibility = {
     "crossSystemPanel",
     "activityPanel"
   ],
+  onboarding: ["onboardingPanel", "onboardingActionsPanel", "commandPlanPanel"],
+  services: ["servicesPanel", "serviceActionsPanel", "commandPlanPanel"],
   execution: [
     "commandPlanPanel",
     "perceptionPanel",
@@ -242,6 +268,7 @@ const viewVisibility = {
   ],
   agents: ["agentsPanel", "agentCollabPanel", "perceptionPanel", "activityPanel"],
   "web-helpers": ["webHelpersPanel", "webHelperRequestsPanel", "commandPlanPanel", "commandMemoryPanel"],
+  tools: ["toolsPanel", "toolActionsPanel", "commandPlanPanel"],
   intelligence: ["predictivePanel", "crossSystemPanel", "perceptionPanel", "alertsPanel", "activityPanel"],
   strategy: ["strategicPanel", "perceptionPanel", "commandPlanPanel", "commandMemoryPanel"],
   simulation: ["scenarioPanel", "strategicPanel", "predictivePanel"],
@@ -263,6 +290,12 @@ function setActiveView(view) {
 
   const shellPanels = [
     "operationsPanel",
+    "onboardingPanel",
+    "onboardingActionsPanel",
+    "servicesPanel",
+    "serviceActionsPanel",
+    "toolsPanel",
+    "toolActionsPanel",
     "buildQueuePanel",
     "webHelpersPanel",
     "webHelperRequestsPanel",
@@ -322,8 +355,11 @@ function setActiveView(view) {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
 
-  const mainColumnPanels = ["operationsPanel", "buildQueuePanel", "webHelpersPanel"];
+  const mainColumnPanels = ["operationsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel"];
   const sideColumnPanels = [
+    "onboardingActionsPanel",
+    "serviceActionsPanel",
+    "toolActionsPanel",
     "webHelperRequestsPanel",
     "alertsPanel",
     "activityPanel",
@@ -653,7 +689,10 @@ function renderPerceptionLayer(execution, agents, intelligence, autonomy) {
 function getViewLabel(view) {
   const labels = {
     "mission-control": "Overview",
+    onboarding: "Onboarding",
+    services: "Services",
     "web-helpers": "Web Helpers",
+    tools: "Tool Registry",
     "build-queue": "Build Queue"
   };
 
@@ -687,7 +726,10 @@ function setFocusMode(enabled, targetView = activeView) {
 function getPaletteActions() {
   const viewLabels = {
     "mission-control": "Overview",
+    onboarding: "Onboarding",
+    services: "Services",
     "web-helpers": "Web Helpers",
+    tools: "Tool Registry",
     "build-queue": "Build Queue"
   };
   const setView = (view, focus = false) => ({
@@ -703,6 +745,9 @@ function getPaletteActions() {
 
   return [
     setView("web-helpers", true),
+    setView("onboarding", true),
+    setView("services", true),
+    setView("tools", true),
     setView("mission-control", false),
     setView("execution", true),
     setView("agents", true),
@@ -1016,6 +1061,51 @@ function getWebHelpersBadgeMeta(helpers) {
   };
 }
 
+function getOnboardingBadgeMeta(onboarding) {
+  const needsIntegration = onboarding?.summary?.needsIntegration || 0;
+  if (!needsIntegration) {
+    return { count: 0, text: "", severity: "none", tooltip: "Client onboarding blueprint is ready." };
+  }
+
+  return {
+    count: needsIntegration,
+    text: `${needsIntegration} !`,
+    severity: "warning",
+    tooltip: `${needsIntegration} onboarding stages need integration.`
+  };
+}
+
+function getServicesBadgeMeta(catalog) {
+  const integrationNeeded = catalog?.summary?.integrationNeeded || 0;
+  const plannedCount = catalog?.summary?.plannedCount || 0;
+  const count = integrationNeeded + plannedCount;
+
+  if (!count) {
+    return { count: 0, text: "", severity: "none", tooltip: "All services are active." };
+  }
+
+  return {
+    count,
+    text: integrationNeeded ? `${integrationNeeded} !` : String(plannedCount),
+    severity: integrationNeeded ? "warning" : "growth",
+    tooltip: `${integrationNeeded} services need integration and ${plannedCount} are planned.`
+  };
+}
+
+function getToolsBadgeMeta(registry) {
+  const needsClassification = registry?.summary?.needsClassification || 0;
+  if (!needsClassification) {
+    return { count: 0, text: "", severity: "none", tooltip: "Tool registry is classified." };
+  }
+
+  return {
+    count: needsClassification,
+    text: `${needsClassification}`,
+    severity: "warning",
+    tooltip: `${needsClassification} repos need classification.`
+  };
+}
+
 function getIntelligenceBadgeMeta(signals) {
   const activeSignals = signals || [];
   const count = activeSignals.length;
@@ -1098,15 +1188,21 @@ function updateContextualAwareness(execution, agents, intelligence, autonomy) {
 }
 
 function updateNavBadges() {
+  const onboarding = getOnboardingBadgeMeta(liveOnboarding);
+  const services = getServicesBadgeMeta(liveServiceCatalog);
   const execution = getExecutionBadgeMeta(activeCommandPlan.execution?.actions || []);
   const agents = getAgentsBadgeMeta(liveAgentIntelligence);
   const webHelpers = getWebHelpersBadgeMeta(liveWebHelpers);
+  const tools = getToolsBadgeMeta(liveToolRegistry);
   const intelligence = getIntelligenceBadgeMeta(livePredictiveSignals);
   const autonomy = getAutonomyBadgeMeta(liveAutonomousGoals);
 
+  setBadge(elements.navBadgeOnboarding, "onboarding", onboarding);
+  setBadge(elements.navBadgeServices, "services", services);
   setBadge(elements.navBadgeExecution, "execution", execution);
   setBadge(elements.navBadgeAgents, "agents", agents);
   setBadge(elements.navBadgeWebHelpers, "webHelpers", webHelpers);
+  setBadge(elements.navBadgeTools, "tools", tools);
   setBadge(elements.navBadgeIntelligence, "intelligence", intelligence);
   setBadge(elements.navBadgeAutonomy, "autonomy", autonomy);
   updateCorrelationHint(execution, agents, intelligence, autonomy);
@@ -1926,6 +2022,181 @@ function renderBuildQueue(site) {
     .join("");
 }
 
+function renderOpsSummary(element, items) {
+  if (!element) {
+    return;
+  }
+
+  element.innerHTML = items
+    .map((item) => `<article class="ops-stat">
+      <span>${item.label}</span>
+      <strong>${item.value}</strong>
+    </article>`)
+    .join("");
+}
+
+function renderOpsActions(element, actions, emptyText) {
+  if (!element) {
+    return;
+  }
+
+  if (!actions || actions.length === 0) {
+    element.innerHTML = `<article class="ops-side-item"><h3>No actions</h3><p>${emptyText}</p></article>`;
+    return;
+  }
+
+  element.innerHTML = actions
+    .map((action) => `<article class="ops-side-item"><p>${action}</p></article>`)
+    .join("");
+}
+
+async function loadOnboarding() {
+  if (!elements.onboardingSummary || !elements.onboardingStages || !elements.onboardingActions) {
+    return;
+  }
+
+  try {
+    const response = await fetch(apiUrl("/mission/onboarding"));
+    if (!response.ok) {
+      throw new Error(`Onboarding request failed with status ${response.status}`);
+    }
+
+    liveOnboarding = await response.json();
+    renderOnboarding(liveOnboarding);
+  } catch {
+    liveOnboarding = null;
+    renderOnboarding(null);
+  }
+}
+
+function renderOnboarding(payload) {
+  const summary = payload?.summary || { stageCount: 0, templateReady: 0, needsIntegration: 0 };
+  renderOpsSummary(elements.onboardingSummary, [
+    { label: "Stages", value: summary.stageCount },
+    { label: "Template Ready", value: summary.templateReady },
+    { label: "Needs Integration", value: summary.needsIntegration }
+  ]);
+
+  const stages = payload?.stages || [];
+  elements.onboardingStages.innerHTML = stages.length
+    ? stages.map((stage) => `<article class="ops-card">
+        <div class="ops-card-head">
+          <h3>${stage.name}</h3>
+          <span class="pill ${stage.status === "needs-integration" ? "tone-yellow" : "tone-green"}">${stage.status}</span>
+        </div>
+        <p>${stage.description}</p>
+        <div class="ops-chip-row">${stage.requiredArtifacts.map((item) => `<span>${item}</span>`).join("")}</div>
+        <div class="ops-mini-list">${stage.automations.map((item) => `<p>${item}</p>`).join("")}</div>
+      </article>`).join("")
+    : `<article class="ops-card"><h3>No onboarding blueprint</h3><p>Onboarding stages will appear when the backend is available.</p></article>`;
+
+  renderOpsActions(elements.onboardingActions, payload?.actions || [], "Onboarding actions will appear here.");
+  updateNavBadges();
+}
+
+async function loadServices() {
+  if (!elements.serviceSummary || !elements.serviceCards || !elements.serviceActions) {
+    return;
+  }
+
+  try {
+    const response = await fetch(apiUrl("/mission/services"));
+    if (!response.ok) {
+      throw new Error(`Services request failed with status ${response.status}`);
+    }
+
+    liveServiceCatalog = await response.json();
+    renderServices(liveServiceCatalog);
+  } catch {
+    liveServiceCatalog = null;
+    renderServices(null);
+  }
+}
+
+function renderServices(payload) {
+  const summary = payload?.summary || { serviceCount: 0, activeCount: 0, integrationNeeded: 0, plannedCount: 0 };
+  renderOpsSummary(elements.serviceSummary, [
+    { label: "Services", value: summary.serviceCount },
+    { label: "Active", value: summary.activeCount },
+    { label: "Integrations", value: summary.integrationNeeded },
+    { label: "Planned", value: summary.plannedCount }
+  ]);
+
+  const services = payload?.services || [];
+  elements.serviceCards.innerHTML = services.length
+    ? services.map((service) => `<article class="ops-card">
+        <div class="ops-card-head">
+          <h3>${service.name}</h3>
+          <span class="pill ${service.status === "active" ? "tone-green" : service.status === "integration-needed" ? "tone-yellow" : "tone-blue"}">${service.status}</span>
+        </div>
+        <p>${service.description}</p>
+        <div class="ops-meta-grid">
+          <div><span>Category</span>${service.category}</div>
+          <div><span>Owner</span>${service.owner}</div>
+        </div>
+        <div class="ops-chip-row">${service.connectedSystems.map((item) => `<span>${item}</span>`).join("")}</div>
+      </article>`).join("")
+    : `<article class="ops-card"><h3>No services loaded</h3><p>Service catalog will appear when the backend is available.</p></article>`;
+
+  renderOpsActions(elements.serviceActions, payload?.actions || [], "Service actions will appear here.");
+  updateNavBadges();
+}
+
+async function loadTools(forceRefresh = false) {
+  if (!elements.toolSummary || !elements.toolCards || !elements.toolActions) {
+    return;
+  }
+
+  try {
+    const refreshParam = forceRefresh ? "?refresh=true" : "";
+    const response = await fetch(apiUrl(`/mission/tools${refreshParam}`));
+    if (!response.ok) {
+      throw new Error(`Tools request failed with status ${response.status}`);
+    }
+
+    liveToolRegistry = await response.json();
+    renderTools(liveToolRegistry);
+  } catch {
+    liveToolRegistry = null;
+    renderTools(null);
+  }
+}
+
+function renderTools(payload) {
+  const summary = payload?.summary || { totalTools: 0, activeTools: 0, needsClassification: 0, revenueProducts: 0 };
+  renderOpsSummary(elements.toolSummary, [
+    { label: "Repos", value: summary.totalTools },
+    { label: "Active", value: summary.activeTools },
+    { label: "Unclassified", value: summary.needsClassification },
+    { label: "Revenue Tools", value: summary.revenueProducts }
+  ]);
+
+  const tools = (payload?.tools || []).slice(0, 12);
+  elements.toolCards.innerHTML = tools.length
+    ? tools.map((tool) => `<article class="ops-card">
+        <div class="ops-card-head">
+          <h3>${tool.name}</h3>
+          <span class="pill ${tool.category === "Unclassified" ? "tone-yellow" : "tone-green"}">${tool.category}</span>
+        </div>
+        <p>${tool.description}</p>
+        <div class="ops-meta-grid">
+          <div><span>Status</span>${tool.productStatus}</div>
+          <div><span>Service</span>${tool.serviceId}</div>
+          <div><span>Language</span>${tool.language}</div>
+          <div><span>Health</span>${tool.health}</div>
+        </div>
+      </article>`).join("")
+    : `<article class="ops-card"><h3>No GitHub tools loaded</h3><p>Add public repos or configure GITHUB_TOKEN to inventory private burchdad tools.</p></article>`;
+
+  const actions = payload?.actions || [
+    "Configure GITHUB_TOKEN for private repo inventory.",
+    "Classify repos once imported.",
+    "Connect tools to client services."
+  ];
+  renderOpsActions(elements.toolActions, actions, "Tool actions will appear here.");
+  updateNavBadges();
+}
+
 async function loadWebHelpers(siteId = activeSiteId) {
   if (!elements.webHelperCards || !elements.webHelperRequests || !elements.webHelperSummary) {
     return;
@@ -2147,6 +2418,9 @@ async function init() {
   renderSite(initialSite.id);
   renderCommandPlan();
   loadCommandMemory();
+  loadOnboarding();
+  loadServices();
+  loadTools();
   if (initialSite.id && initialSite.id !== "no-site") {
     loadAgentIntelligence(initialSite.id);
     loadPredictiveSignals(initialSite.id);

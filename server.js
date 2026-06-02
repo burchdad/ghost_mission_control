@@ -26,6 +26,9 @@ const VERCEL_TEAM_ID = String(process.env.VERCEL_TEAM_ID || "").trim();
 const VERCEL_AUTO_IMPORT_PROJECTS = String(process.env.VERCEL_AUTO_IMPORT_PROJECTS || "true").toLowerCase() !== "false";
 const VERCEL_SYNC_CACHE_TTL_MS = Number(process.env.VERCEL_SYNC_CACHE_TTL_MS || 300000);
 const VERCEL_MAX_PROJECTS = Number(process.env.VERCEL_MAX_PROJECTS || 100);
+const GITHUB_OWNER = String(process.env.GITHUB_OWNER || "burchdad").trim();
+const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "").trim();
+const GITHUB_REPO_CACHE_TTL_MS = Number(process.env.GITHUB_REPO_CACHE_TTL_MS || 300000);
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -59,6 +62,14 @@ const vercelSiteCache = {
   lastSuccessAt: 0,
   lastError: "",
   lastProjectCount: 0
+};
+const githubRepoCache = {
+  generatedAt: 0,
+  repos: [],
+  pending: null,
+  lastAttemptAt: 0,
+  lastSuccessAt: 0,
+  lastError: ""
 };
 
 function parseBool(value, fallback = false) {
@@ -980,6 +991,257 @@ function summarizeWebHelpers(helpers) {
     templateReadyCount: helpers.filter((helper) =>
       (helper.requests || []).some((request) => request.type === "template_setup")
     ).length
+  };
+}
+
+function getServiceCatalog() {
+  return [
+    {
+      id: "website-build",
+      name: "Website Build",
+      status: "active",
+      category: "launch",
+      owner: "Build Operator",
+      description: "Discovery, design, build, review, final payment, launch, and handoff into maintenance.",
+      connectedSystems: ["Build Queue", "Vercel", "GitHub", "Web Helper Agents"],
+      triggers: ["initial deposit paid", "new build approved", "client revision received"],
+      nextActions: ["Create client profile", "Link repo and deployment", "Define launch checklist"]
+    },
+    {
+      id: "web-helper-care",
+      name: "Web Helper Care",
+      status: "active",
+      category: "maintenance",
+      owner: "Web Helper Agent",
+      description: "Client request handling, small edits, safe fixes, approval gates, deploy notes, and client replies.",
+      connectedSystems: ["Web Helpers", "Client Request Inbox", "Approvals", "GitHub", "Vercel"],
+      triggers: ["completion payment received", "client update request", "site issue detected"],
+      nextActions: ["Attach agent memory", "Set scope rules", "Connect approved contacts"]
+    },
+    {
+      id: "search-intelligence",
+      name: "SEO / AEO / GEO",
+      status: "integration-needed",
+      category: "growth",
+      owner: "Search Intelligence Agent",
+      description: "Organic search, answer engine readiness, and generative engine visibility from geo.ghostai.solutions.",
+      connectedSystems: ["geo.ghostai.solutions", "Reports", "Web Helpers", "Approvals"],
+      triggers: ["new client onboarded", "ranking issue", "AI visibility opportunity"],
+      nextActions: ["Add API credentials", "Map siteId to GEO profile", "Import scores and recommendations"]
+    },
+    {
+      id: "lead-funnel",
+      name: "Lead Funnel",
+      status: "planned",
+      category: "growth",
+      owner: "Funnel Monitor Agent",
+      description: "Lead capture, conversion path monitoring, follow-up routing, and form health.",
+      connectedSystems: ["Forms", "CRM", "Analytics", "Client Reports"],
+      triggers: ["lead drop", "form failure", "campaign launch"],
+      nextActions: ["Define conversion events", "Connect CRM", "Add form probes"]
+    },
+    {
+      id: "content-social",
+      name: "Content + Social",
+      status: "planned",
+      category: "marketing",
+      owner: "Content Operator",
+      description: "Content briefs, posting queue, social distribution, and campaign support.",
+      connectedSystems: ["Content Tools", "Social Posting", "Search Intelligence"],
+      triggers: ["content calendar due", "GEO topic gap", "campaign push"],
+      nextActions: ["Inventory content repos", "Connect posting queue", "Generate monthly plan"]
+    },
+    {
+      id: "reporting",
+      name: "Client Reporting",
+      status: "planned",
+      category: "retention",
+      owner: "Reporting Agent",
+      description: "Monthly service summaries, completed work, search visibility, site health, and next-best investment.",
+      connectedSystems: ["Mission History", "Search Intelligence", "Web Helpers", "Billing"],
+      triggers: ["monthly report due", "client check-in", "renewal window"],
+      nextActions: ["Create report template", "Map service KPIs", "Add export workflow"]
+    }
+  ];
+}
+
+function getOnboardingBlueprint() {
+  return {
+    stages: [
+      {
+        id: "intake",
+        name: "Client Intake",
+        status: "template-ready",
+        description: "Capture business facts, approved contacts, offer, website goals, and communication preferences.",
+        requiredArtifacts: ["client-profile.md", "contacts.md", "brand-voice.md"],
+        automations: ["create client record", "assign default services", "open onboarding mission"]
+      },
+      {
+        id: "service-map",
+        name: "Service Map",
+        status: "template-ready",
+        description: "Select website build, Web Helper care, SEO/AEO/GEO, lead funnel, content, and reporting services.",
+        requiredArtifacts: ["service-plan.md", "scope-rules.md", "billing-plan.md"],
+        automations: ["create service missions", "set approval thresholds", "flag upsell paths"]
+      },
+      {
+        id: "tool-linking",
+        name: "Tool Linking",
+        status: "needs-integration",
+        description: "Attach GitHub repos, deployments, APIs, analytics, GEO profile, and agent permissions.",
+        requiredArtifacts: ["repo-access.md", "website-stack.md", "api-connections.md"],
+        automations: ["link repo", "link Vercel project", "map GEO profile"]
+      },
+      {
+        id: "launch-handoff",
+        name: "Launch + Handoff",
+        status: "template-ready",
+        description: "After completion payment, activate the client Web Helper and move the site into maintenance.",
+        requiredArtifacts: ["launch-checklist.md", "update-history.md", "handoff-summary.md"],
+        automations: ["activate Web Helper", "create maintenance queue", "start monthly reporting"]
+      }
+    ],
+    actions: [
+      "Build client profile form and save output to client memory.",
+      "Create a service selection checklist tied to active packages.",
+      "Connect GitHub repo and deployment per client site.",
+      "Map each onboarded client to geo.ghostai.solutions when available.",
+      "Create approval rules before any agent can deploy changes."
+    ]
+  };
+}
+
+function classifyRepo(repo) {
+  const name = String(repo.name || "").toLowerCase();
+  const description = String(repo.description || "").toLowerCase();
+  const haystack = `${name} ${description}`;
+
+  if (haystack.includes("geo") || haystack.includes("seo") || haystack.includes("aeo")) {
+    return { category: "SEO / AEO / GEO Tools", productStatus: "Revenue Product", serviceId: "search-intelligence" };
+  }
+
+  if (haystack.includes("mission") || haystack.includes("dashboard") || haystack.includes("control")) {
+    return { category: "Internal Dashboards", productStatus: "Internal Tool", serviceId: "reporting" };
+  }
+
+  if (haystack.includes("agent") || haystack.includes("automation") || haystack.includes("bot")) {
+    return { category: "Agent Runtimes", productStatus: "Internal Tool", serviceId: "web-helper-care" };
+  }
+
+  if (haystack.includes("lead") || haystack.includes("funnel") || haystack.includes("crm")) {
+    return { category: "Lead Funnel Tools", productStatus: "Revenue Product", serviceId: "lead-funnel" };
+  }
+
+  if (haystack.includes("content") || haystack.includes("scrap") || haystack.includes("social")) {
+    return { category: "Content / Social Tools", productStatus: "Internal Tool", serviceId: "content-social" };
+  }
+
+  if (haystack.includes("site") || haystack.includes("web") || haystack.includes("client")) {
+    return { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" };
+  }
+
+  return { category: "Unclassified", productStatus: "Needs Classification", serviceId: "website-build" };
+}
+
+async function fetchGitHubRepos(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && githubRepoCache.repos.length && now - githubRepoCache.generatedAt < GITHUB_REPO_CACHE_TTL_MS) {
+    return githubRepoCache.repos;
+  }
+
+  if (!forceRefresh && githubRepoCache.pending) {
+    return githubRepoCache.pending;
+  }
+
+  githubRepoCache.lastAttemptAt = Date.now();
+  const headers = {
+    "User-Agent": "GhostMissionControl/1.0 (+tool-registry)",
+    Accept: "application/vnd.github+json"
+  };
+
+  if (GITHUB_TOKEN) {
+    headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
+  }
+
+  githubRepoCache.pending = fetch(`https://api.github.com/users/${encodeURIComponent(GITHUB_OWNER)}/repos?per_page=100&sort=updated`, {
+    method: "GET",
+    headers
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`GitHub repo request failed (${response.status})`);
+      }
+      return response.json();
+    })
+    .then((repos) => {
+      githubRepoCache.repos = Array.isArray(repos) ? repos : [];
+      githubRepoCache.generatedAt = Date.now();
+      githubRepoCache.lastSuccessAt = githubRepoCache.generatedAt;
+      githubRepoCache.lastError = "";
+      githubRepoCache.pending = null;
+      return githubRepoCache.repos;
+    })
+    .catch((error) => {
+      githubRepoCache.pending = null;
+      githubRepoCache.lastError = String(error?.message || error || "unknown error");
+      console.warn(`Unable to sync GitHub repos: ${githubRepoCache.lastError}`);
+      return githubRepoCache.repos;
+    });
+
+  return githubRepoCache.pending;
+}
+
+async function buildToolRegistry(forceRefresh = false) {
+  const repos = await fetchGitHubRepos(forceRefresh);
+  const tools = repos.map((repo) => {
+    const classification = classifyRepo(repo);
+    return {
+      id: repo.id,
+      name: repo.name,
+      fullName: repo.full_name,
+      description: repo.description || "No description set.",
+      url: repo.html_url,
+      private: Boolean(repo.private),
+      archived: Boolean(repo.archived),
+      updatedAt: repo.updated_at,
+      pushedAt: repo.pushed_at,
+      language: repo.language || "n/a",
+      category: classification.category,
+      productStatus: classification.productStatus,
+      serviceId: classification.serviceId,
+      deployment: "Unlinked",
+      health: repo.archived ? "archived" : "needs-review"
+    };
+  });
+
+  const categoryCounts = tools.reduce((counts, tool) => {
+    counts[tool.category] = (counts[tool.category] || 0) + 1;
+    return counts;
+  }, {});
+
+  return {
+    owner: GITHUB_OWNER,
+    generatedAt: new Date().toISOString(),
+    sync: {
+      tokenConfigured: Boolean(GITHUB_TOKEN),
+      lastSuccessAt: toIsoOrNull(githubRepoCache.lastSuccessAt),
+      lastError: githubRepoCache.lastError || null
+    },
+    summary: {
+      totalTools: tools.length,
+      activeTools: tools.filter((tool) => !tool.archived).length,
+      needsClassification: tools.filter((tool) => tool.category === "Unclassified").length,
+      revenueProducts: tools.filter((tool) => tool.productStatus === "Revenue Product").length,
+      categoryCounts
+    },
+    tools,
+    actions: [
+      "Classify unassigned repos into services.",
+      "Attach live URLs and deployment providers.",
+      "Map each production tool to a client or internal owner.",
+      "Register APIs exposed by service tools.",
+      "Add health checks for active revenue tools."
+    ]
   };
 }
 
@@ -2998,6 +3260,54 @@ const server = http.createServer((request, response) => {
         });
       });
 
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/services") {
+    const services = getServiceCatalog();
+    sendJson(request, response, 200, {
+      generatedAt: new Date().toISOString(),
+      summary: {
+        serviceCount: services.length,
+        activeCount: services.filter((service) => service.status === "active").length,
+        integrationNeeded: services.filter((service) => service.status === "integration-needed").length,
+        plannedCount: services.filter((service) => service.status === "planned").length
+      },
+      services,
+      actions: [
+        "Connect geo.ghostai.solutions API for Search Intelligence.",
+        "Create package templates for build, care, GEO, lead, content, and reporting.",
+        "Map each service to required tools and approval rules."
+      ]
+    });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/onboarding") {
+    const blueprint = getOnboardingBlueprint();
+    sendJson(request, response, 200, {
+      generatedAt: new Date().toISOString(),
+      summary: {
+        stageCount: blueprint.stages.length,
+        templateReady: blueprint.stages.filter((stage) => stage.status === "template-ready").length,
+        needsIntegration: blueprint.stages.filter((stage) => stage.status === "needs-integration").length
+      },
+      ...blueprint
+    });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/tools") {
+    buildToolRegistry(url.searchParams.get("refresh") === "true")
+      .then((registry) => {
+        sendJson(request, response, 200, registry);
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to generate tool registry",
+          detail: String(error?.message || error)
+        });
+      });
     return;
   }
 

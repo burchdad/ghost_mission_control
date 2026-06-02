@@ -22,6 +22,12 @@
           <p class="nav-title">Ghost Ops</p>
           <button class="nav-item active" type="button" data-view="mission-control">Overview</button>
           <p class="nav-group-label">Client Ops</p>
+          <button class="nav-item" type="button" data-view="onboarding">
+            <span>Onboarding</span><span id="navBadgeOnboarding" class="nav-badge"></span>
+          </button>
+          <button class="nav-item" type="button" data-view="services">
+            <span>Services</span><span id="navBadgeServices" class="nav-badge"></span>
+          </button>
           <button class="nav-item" type="button" data-view="web-helpers">
             <span>Web Helpers</span><span id="navBadgeWebHelpers" class="nav-badge"></span>
           </button>
@@ -41,6 +47,9 @@
             <span>Autonomy</span><span id="navBadgeAutonomy" class="nav-badge"></span>
           </button>
           <p class="nav-group-label">Production</p>
+          <button class="nav-item" type="button" data-view="tools">
+            <span>Tool Registry</span><span id="navBadgeTools" class="nav-badge"></span>
+          </button>
           <button class="nav-item" type="button" data-view="build-queue">Build Queue</button>
           <div id="navCorrelationHint" class="nav-correlation view-hidden" aria-live="polite"></div>
           <button id="openPaletteButton" class="nav-utility" type="button">Command Palette</button>
@@ -93,6 +102,33 @@
 
       <section class="layout-grid">
         <div class="main-column">
+          <section class="module-panel view-panel" id="onboardingPanel" aria-label="Client onboarding">
+            <div class="panel-header">
+              <h2>Client Onboarding</h2>
+              <p>Turn a new client into services, agents, tools, approvals, and launch milestones.</p>
+            </div>
+            <div id="onboardingSummary" class="ops-summary"></div>
+            <div id="onboardingStages" class="ops-card-grid"></div>
+          </section>
+
+          <section class="module-panel view-panel" id="servicesPanel" aria-label="Client services">
+            <div class="panel-header">
+              <h2>Service Hub</h2>
+              <p>Run website, SEO, AEO, GEO, lead, content, reporting, and maintenance services from one command layer.</p>
+            </div>
+            <div id="serviceSummary" class="ops-summary"></div>
+            <div id="serviceCards" class="ops-card-grid"></div>
+          </section>
+
+          <section class="module-panel view-panel" id="toolsPanel" aria-label="Tool registry">
+            <div class="panel-header">
+              <h2>Tool Registry</h2>
+              <p>Inventory the burchdad GitHub ecosystem and connect each repo to clients, services, agents, and deployments.</p>
+            </div>
+            <div id="toolSummary" class="ops-summary"></div>
+            <div id="toolCards" class="ops-card-grid"></div>
+          </section>
+
           <section class="module-panel view-panel" id="operationsPanel" aria-label="Operational modules">
             <div class="panel-header">
               <h2>Operations Board</h2>
@@ -120,6 +156,27 @@
         </div>
 
         <aside class="side-column">
+          <section class="module-panel view-panel" id="onboardingActionsPanel" aria-label="Onboarding actions">
+            <div class="panel-header compact">
+              <h2>Onboarding Actions</h2>
+            </div>
+            <div id="onboardingActions" class="ops-side-list"></div>
+          </section>
+
+          <section class="module-panel view-panel" id="serviceActionsPanel" aria-label="Service actions">
+            <div class="panel-header compact">
+              <h2>Service Actions</h2>
+            </div>
+            <div id="serviceActions" class="ops-side-list"></div>
+          </section>
+
+          <section class="module-panel view-panel" id="toolActionsPanel" aria-label="Tool actions">
+            <div class="panel-header compact">
+              <h2>Tool Actions</h2>
+            </div>
+            <div id="toolActions" class="ops-side-list"></div>
+          </section>
+
           <section class="module-panel view-panel" id="webHelperRequestsPanel" aria-label="Web helper request queue">
             <div class="panel-header compact">
               <h2>Helper Requests</h2>

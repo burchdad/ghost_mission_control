@@ -869,6 +869,125 @@ select:focus-visible {
   gap: 0.55rem;
 }
 
+.ops-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.ops-stat,
+.ops-card,
+.ops-side-item {
+  border-radius: 7px;
+  border: 1px solid rgba(177, 194, 163, 0.15);
+  background: rgba(16, 21, 16, 0.86);
+}
+
+.ops-stat {
+  padding: 0.65rem;
+}
+
+.ops-stat span,
+.ops-meta-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ops-stat strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--green);
+  font-size: 1.3rem;
+}
+
+.ops-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.6rem;
+}
+
+.ops-card {
+  padding: 0.72rem;
+}
+
+.ops-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.ops-card h3,
+.ops-side-item h3 {
+  margin: 0;
+  color: #f0faed;
+  font-size: 0.98rem;
+}
+
+.ops-card p,
+.ops-side-item p {
+  margin: 0.42rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.ops-chip-row {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.ops-chip-row span {
+  border: 1px solid rgba(124, 255, 155, 0.28);
+  border-radius: 999px;
+  background: rgba(124, 255, 155, 0.08);
+  color: #caffd5;
+  padding: 0.18rem 0.42rem;
+  font-size: 0.7rem;
+}
+
+.ops-mini-list {
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(177, 194, 163, 0.12);
+}
+
+.ops-mini-list p {
+  margin-top: 0.22rem;
+}
+
+.ops-meta-grid {
+  margin-top: 0.6rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.ops-meta-grid div {
+  min-width: 0;
+  padding: 0.4rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.ops-side-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ops-side-item {
+  padding: 0.62rem;
+}
+
 .perception-next,
 .trust-explanation {
   display: grid;
