@@ -2322,30 +2322,6 @@ body:not(.focus-mode) .focus-banner {
 display: none !important;
 }
 
-body:not(.focus-mode) .topbar,
-body:not(.focus-mode) .kpi-section,
-body:not(.focus-mode) .mission-strip {
-display: grid;
-}
-
-body:not(.focus-mode) .topbar.view-hidden,
-body:not(.focus-mode) .kpi-section.view-hidden,
-body:not(.focus-mode) .mission-strip.view-hidden {
-display: grid !important;
-}
-
-body:not(.focus-mode) .mission-strip.view-hidden {
-display: grid !important;
-}
-
-body:not(.focus-mode) .kpi-section.view-hidden {
-display: grid !important;
-}
-
-body:not(.focus-mode) .topbar.view-hidden {
-display: grid !important;
-}
-
 .workspace-main,
 .layout-grid,
 .main-column,
