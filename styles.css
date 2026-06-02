@@ -1271,6 +1271,150 @@ display: grid;
 padding: 0.62rem;
 }
 
+.onboarding-queue {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.onboarding-client-card {
+  border: 1px solid rgba(177, 194, 163, 0.18);
+  border-radius: 8px;
+  background: rgba(7, 13, 8, 0.78);
+  padding: 0.72rem;
+}
+
+.onboarding-client-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.onboarding-client-head h3 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.onboarding-client-head p,
+.onboarding-client-card > p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.onboarding-progress {
+  display: inline-grid;
+  place-items: center;
+  min-width: 3rem;
+  height: 2rem;
+  border: 1px solid rgba(124, 255, 155, 0.34);
+  border-radius: 999px;
+  background: rgba(124, 255, 155, 0.1);
+  color: var(--green);
+  font-weight: 900;
+}
+
+.progress-track {
+  height: 0.42rem;
+  margin-top: 0.6rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(177, 194, 163, 0.12);
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+
+.onboarding-checklist {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+}
+
+.onboarding-checklist div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.42rem;
+  font-size: 0.75rem;
+}
+
+.onboarding-checklist span {
+  color: var(--muted);
+}
+
+.onboarding-section-title {
+  grid-column: 1 / -1;
+  margin-top: 0.9rem;
+}
+
+.onboarding-section-title h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.onboarding-section-title p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.onboarding-connections {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.connection-matrix {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.connection-client {
+  border: 1px solid rgba(177, 194, 163, 0.18);
+  border-radius: 8px;
+  background: rgba(7, 13, 8, 0.68);
+  padding: 0.65rem;
+}
+
+.connection-client h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.92rem;
+}
+
+.connection-client > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 0.4rem;
+}
+
+.connection-status {
+  border: 1px solid rgba(177, 194, 163, 0.16);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.42rem;
+}
+
+.connection-status span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.connection-status strong {
+  display: block;
+  margin-top: 0.18rem;
+  font-size: 0.74rem;
+}
+
 .client-onboard-form {
 display: grid;
   gap: 0.55rem;

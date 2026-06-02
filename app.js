@@ -86,6 +86,8 @@ const elements = {
   clientNotesInput: document.getElementById("clientNotesInput"),
   clientFormResponse: document.getElementById("clientFormResponse"),
   onboardingSummary: document.getElementById("onboardingSummary"),
+  onboardingQueue: document.getElementById("onboardingQueue"),
+  onboardingConnections: document.getElementById("onboardingConnections"),
   onboardingStages: document.getElementById("onboardingStages"),
   onboardingActions: document.getElementById("onboardingActions"),
   serviceSummary: document.getElementById("serviceSummary"),
@@ -2541,7 +2543,7 @@ async function submitClientOnboarding(event) {
 }
 
 async function loadOnboarding() {
-  if (!elements.onboardingSummary || !elements.onboardingStages || !elements.onboardingActions) {
+  if (!elements.onboardingSummary || !elements.onboardingQueue || !elements.onboardingConnections || !elements.onboardingStages || !elements.onboardingActions) {
     return;
   }
 
@@ -2559,28 +2561,90 @@ async function loadOnboarding() {
   }
 }
 
+function getStatusTone(status) {
+  if (["connected", "active", "complete", "ready"].includes(status)) {
+    return "tone-green";
+  }
+  if (["planned", "in-progress"].includes(status)) {
+    return "tone-blue";
+  }
+  if (["missing", "access-needed", "blocked"].includes(status)) {
+    return "tone-yellow";
+  }
+  return "tone-gray";
+}
+
+function renderConnectionStatus(connection) {
+  return `<div class="connection-status ${getStatusTone(connection.status)}">
+    <span>${escapeHtml(connection.label)}</span>
+    <strong>${escapeHtml(connection.status)}</strong>
+  </div>`;
+}
+
 function renderOnboarding(payload) {
-  const summary = payload?.summary || { stageCount: 0, templateReady: 0, needsIntegration: 0 };
+  const summary = payload?.summary || {
+    activeClients: 0,
+    blockedClients: 0,
+    readyForHandoff: 0,
+    missingConnections: 0
+  };
   renderOpsSummary(elements.onboardingSummary, [
-    { label: "Stages", value: summary.stageCount },
-    { label: "Template Ready", value: summary.templateReady },
-    { label: "Needs Integration", value: summary.needsIntegration }
+    { label: "Active Onboarding", value: summary.activeClients || 0 },
+    { label: "Blocked Clients", value: summary.blockedClients || 0 },
+    { label: "Ready Handoff", value: summary.readyForHandoff || 0 },
+    { label: "Missing Connections", value: summary.missingConnections || 0 }
   ]);
+
+  const queue = payload?.activation?.queue || [];
+  elements.onboardingQueue.innerHTML = queue.length
+    ? queue.map((client) => `<article class="onboarding-client-card">
+        <div class="onboarding-client-head">
+          <div>
+            <h3>${escapeHtml(client.clientName)}</h3>
+            <p>${escapeHtml(client.stageLabel)} · ${escapeHtml(client.plan || "Launch + Care")}</p>
+          </div>
+          <span class="onboarding-progress">${client.progress}%</span>
+        </div>
+        <div class="progress-track"><span style="width: ${Math.max(0, Math.min(100, Number(client.progress || 0)))}%"></span></div>
+        <div class="client-warning-row">
+          ${client.blockers?.length ? client.blockers.slice(0, 4).map((blocker) => `<span class="client-warning-badge">${escapeHtml(blocker.label)}</span>`).join("") : `<span class="client-ok-badge">No required blockers</span>`}
+        </div>
+        <p>${escapeHtml(client.nextAction)}</p>
+        <div class="onboarding-checklist">
+          ${(client.checklist || []).map((item) => `<div><span>${escapeHtml(item.label)}</span><strong class="${getStatusTone(item.status)}">${escapeHtml(item.status)}</strong></div>`).join("")}
+        </div>
+      </article>`).join("")
+    : `<article class="ops-card">
+        <h3>No active onboarding clients</h3>
+        <p>Move a client into Lead, Deposit Paid, Website Build, Client Review, Final Payment, or Launch / Handoff to start activation tracking.</p>
+      </article>`;
+
+  const connectionClients = queue.slice(0, 8);
+  elements.onboardingConnections.innerHTML = connectionClients.length
+    ? `<div class="onboarding-section-title"><h3>Connection Status</h3><p>Website, dev, search, socials, ads, analytics, reporting, and Web Helper readiness.</p></div>
+      <div class="connection-matrix">
+        ${connectionClients.map((client) => `<article class="connection-client">
+          <h3>${escapeHtml(client.clientName)}</h3>
+          <div>${(client.connections || []).map(renderConnectionStatus).join("")}</div>
+        </article>`).join("")}
+      </div>`
+    : "";
 
   const stages = payload?.stages || [];
   elements.onboardingStages.innerHTML = stages.length
-    ? stages.map((stage) => `<article class="ops-card">
+    ? `<div class="onboarding-section-title"><h3>Activation Blueprint</h3><p>The standard path every client should pass before ongoing operations.</p></div>
+      ${stages.map((stage) => `<article class="ops-card">
         <div class="ops-card-head">
-          <h3>${stage.name}</h3>
-          <span class="pill ${stage.status === "needs-integration" ? "tone-yellow" : "tone-green"}">${stage.status}</span>
+          <h3>${escapeHtml(stage.name)}</h3>
+          <span class="pill ${stage.status === "needs-integration" ? "tone-yellow" : "tone-green"}">${escapeHtml(stage.status)}</span>
         </div>
-        <p>${stage.description}</p>
-        <div class="ops-chip-row">${stage.requiredArtifacts.map((item) => `<span>${item}</span>`).join("")}</div>
-        <div class="ops-mini-list">${stage.automations.map((item) => `<p>${item}</p>`).join("")}</div>
-      </article>`).join("")
+        <p>${escapeHtml(stage.description)}</p>
+        <div class="ops-chip-row">${stage.requiredArtifacts.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
+        <div class="ops-mini-list">${stage.automations.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
+      </article>`).join("")}`
     : `<article class="ops-card"><h3>No onboarding blueprint</h3><p>Onboarding stages will appear when the backend is available.</p></article>`;
 
-  renderOpsActions(elements.onboardingActions, payload?.actions || [], "Onboarding actions will appear here.");
+  renderOpsActions(elements.onboardingActions, payload?.activation?.actions || payload?.actions || [], "Onboarding actions will appear here.");
   updateNavBadges();
 }
 

@@ -1258,6 +1258,8 @@ function normalizeClient(client) {
     vercelUrl: getClientUrl(client.vercelUrl || client.deploymentUrl),
     mobileAppUrl: getClientUrl(client.mobileAppUrl || client.appUrl),
     googleBusinessUrl: getClientUrl(client.googleBusinessUrl || client.googleBusinessProfile || client.gbpUrl),
+    analyticsUrl: getClientUrl(client.analyticsUrl || client.analytics || client.gaUrl),
+    adsStatus: String(client.adsStatus || client.ads || "").trim(),
     socialUrls: normalizeUrlList(client.socialUrls || client.socials),
     plan: String(client.plan || "Launch + Care").trim(),
     contact: String(client.contact || client.primaryContact || "").trim(),
@@ -1347,6 +1349,195 @@ function summarizeClients(clients) {
     repoLinked: clients.filter((client) => Boolean(client.repo)).length,
     connectedCount: clients.filter((client) => client.websiteUrl && client.repo && client.vercelUrl).length,
     connectionGaps: clients.filter((client) => !client.websiteUrl || !client.repo || !client.vercelUrl).length
+  };
+}
+
+function socialPlatformMap(urls) {
+  const platforms = {
+    facebook: "",
+    instagram: "",
+    linkedin: "",
+    tiktok: "",
+    youtube: ""
+  };
+
+  (urls || []).forEach((url) => {
+    const lower = String(url).toLowerCase();
+    if (lower.includes("facebook.com") || lower.includes("fb.com")) {
+      platforms.facebook = url;
+    } else if (lower.includes("instagram.com")) {
+      platforms.instagram = url;
+    } else if (lower.includes("linkedin.com")) {
+      platforms.linkedin = url;
+    } else if (lower.includes("tiktok.com")) {
+      platforms.tiktok = url;
+    } else if (lower.includes("youtube.com") || lower.includes("youtu.be")) {
+      platforms.youtube = url;
+    }
+  });
+
+  return platforms;
+}
+
+function connectionStatus(label, status, options = {}) {
+  return {
+    id: slugify(label),
+    label,
+    status,
+    required: Boolean(options.required),
+    url: options.url || "",
+    note: options.note || ""
+  };
+}
+
+function getClientActivationConnections(client) {
+  const services = client.services || [];
+  const socials = socialPlatformMap(client.socialUrls);
+  const needsSearch = services.includes("search-intelligence");
+  const needsSocial = services.includes("content-social");
+  const needsLeads = services.includes("lead-funnel");
+  const needsReporting = services.includes("reporting") || needsSearch || needsLeads;
+  const needsBackend = Boolean(client.railwayUrl) || services.includes("lead-funnel");
+  const adsRaw = String(client.adsStatus || "").toLowerCase();
+  const adsActive = ["active", "connected", "running"].includes(adsRaw);
+  const adsPlanned = ["planned", "setup", "needed"].includes(adsRaw) || needsLeads;
+
+  return [
+    connectionStatus("Website", client.websiteUrl ? "connected" : "missing", {
+      required: true,
+      url: client.websiteUrl
+    }),
+    connectionStatus("GitHub", client.repo ? "connected" : "missing", {
+      required: true,
+      url: client.githubUrl || client.repo
+    }),
+    connectionStatus("Vercel", client.vercelUrl ? "connected" : "missing", {
+      required: true,
+      url: client.vercelUrl
+    }),
+    connectionStatus("Railway", client.railwayUrl ? "connected" : needsBackend ? "missing" : "not-needed", {
+      required: needsBackend,
+      url: client.railwayUrl
+    }),
+    connectionStatus("Google Business", client.googleBusinessUrl ? "connected" : needsSearch ? "access-needed" : "missing", {
+      required: needsSearch,
+      url: client.googleBusinessUrl
+    }),
+    connectionStatus("GEO Profile", needsSearch ? "missing" : "not-included", {
+      required: needsSearch,
+      note: needsSearch ? "Map to geo.ghostai.solutions." : "Not in current package."
+    }),
+    connectionStatus("Facebook", socials.facebook ? "connected" : needsSocial ? "access-needed" : "not-included", {
+      required: needsSocial,
+      url: socials.facebook
+    }),
+    connectionStatus("Instagram", socials.instagram ? "connected" : needsSocial ? "access-needed" : "not-included", {
+      required: needsSocial,
+      url: socials.instagram
+    }),
+    connectionStatus("LinkedIn", socials.linkedin ? "connected" : needsSocial ? "planned" : "not-included", {
+      required: false,
+      url: socials.linkedin
+    }),
+    connectionStatus("TikTok", socials.tiktok ? "connected" : needsSocial ? "planned" : "not-included", {
+      required: false,
+      url: socials.tiktok
+    }),
+    connectionStatus("YouTube", socials.youtube ? "connected" : needsSocial ? "planned" : "not-included", {
+      required: false,
+      url: socials.youtube
+    }),
+    connectionStatus("Ads", adsActive ? "active" : adsPlanned ? "planned" : "not-included", {
+      required: adsPlanned,
+      note: adsPlanned ? "Ad account access and campaign rules needed." : "Not in current package."
+    }),
+    connectionStatus("Analytics", client.analyticsUrl ? "connected" : needsReporting ? "missing" : "not-included", {
+      required: needsReporting,
+      url: client.analyticsUrl
+    }),
+    connectionStatus("Reporting", services.includes("reporting") ? "planned" : "not-included", {
+      required: services.includes("reporting")
+    }),
+    connectionStatus("Web Helper", services.includes("web-helper-care") ? "planned" : "not-included", {
+      required: services.includes("web-helper-care")
+    })
+  ];
+}
+
+function getClientActivationChecklist(client, connections) {
+  const requiredConnections = connections.filter((connection) => connection.required);
+  const connectedRequired = requiredConnections.filter((connection) =>
+    ["connected", "active", "planned"].includes(connection.status)
+  );
+  const blockers = requiredConnections.filter((connection) =>
+    ["missing", "access-needed"].includes(connection.status)
+  );
+  const percent = requiredConnections.length
+    ? Math.round((connectedRequired.length / requiredConnections.length) * 100)
+    : 100;
+
+  const checklist = [
+    { label: "Client profile", status: client.contact ? "complete" : "missing" },
+    { label: "Service map", status: client.services?.length ? "complete" : "missing" },
+    { label: "Website build setup", status: client.websiteUrl && client.repo && client.vercelUrl ? "complete" : "blocked" },
+    { label: "Search/GEO setup", status: client.services?.includes("search-intelligence") ? (client.googleBusinessUrl ? "in-progress" : "blocked") : "not-included" },
+    { label: "Social posting setup", status: client.services?.includes("content-social") ? (client.socialUrls?.length ? "in-progress" : "blocked") : "not-included" },
+    { label: "Ads setup", status: client.services?.includes("lead-funnel") ? (client.adsStatus ? "in-progress" : "blocked") : "not-included" },
+    { label: "Reporting setup", status: client.services?.includes("reporting") ? (client.analyticsUrl ? "in-progress" : "blocked") : "not-included" },
+    { label: "Web Helper activation", status: client.services?.includes("web-helper-care") ? (client.stage === "launch-handoff" ? "ready" : "planned") : "not-included" }
+  ];
+
+  return {
+    percent,
+    blockers,
+    checklist,
+    nextAction: blockers[0]
+      ? `Connect ${blockers[0].label}.`
+      : client.stage === "launch-handoff"
+        ? "Activate Web Helper and handoff scope."
+        : "Move client to next onboarding stage."
+  };
+}
+
+function buildOnboardingActivation(clients) {
+  const onboardingStages = ["lead", "deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"];
+  const activeClients = clients.filter((client) => onboardingStages.includes(client.stage));
+
+  const queue = activeClients.map((client) => {
+    const connections = getClientActivationConnections(client);
+    const activation = getClientActivationChecklist(client, connections);
+    return {
+      id: client.id,
+      clientName: client.clientName,
+      stage: client.stage,
+      stageLabel: CLIENT_PIPELINE_STAGES.find((stage) => stage.id === client.stage)?.label || client.stage,
+      plan: client.plan,
+      services: client.services,
+      progress: activation.percent,
+      blockerCount: activation.blockers.length,
+      nextAction: activation.nextAction,
+      blockers: activation.blockers,
+      checklist: activation.checklist,
+      connections
+    };
+  });
+
+  const allConnections = queue.flatMap((client) => client.connections);
+  const missingConnections = allConnections.filter((connection) =>
+    connection.required && ["missing", "access-needed"].includes(connection.status)
+  ).length;
+
+  return {
+    queue,
+    summary: {
+      activeClients: queue.length,
+      blockedClients: queue.filter((client) => client.blockerCount > 0).length,
+      readyForHandoff: queue.filter((client) => client.stage === "launch-handoff" && client.blockerCount === 0).length,
+      missingConnections
+    },
+    actions: queue.length
+      ? queue.slice(0, 6).map((client) => `${client.clientName}: ${client.nextAction}`)
+      : ["Create or move a client into onboarding to begin activation tracking."]
   };
 }
 
@@ -3605,13 +3796,19 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && url.pathname === "/mission/onboarding") {
     const blueprint = getOnboardingBlueprint();
+    const activation = buildOnboardingActivation(getAllClients());
     sendJson(request, response, 200, {
       generatedAt: new Date().toISOString(),
       summary: {
         stageCount: blueprint.stages.length,
         templateReady: blueprint.stages.filter((stage) => stage.status === "template-ready").length,
-        needsIntegration: blueprint.stages.filter((stage) => stage.status === "needs-integration").length
+        needsIntegration: blueprint.stages.filter((stage) => stage.status === "needs-integration").length,
+        activeClients: activation.summary.activeClients,
+        blockedClients: activation.summary.blockedClients,
+        readyForHandoff: activation.summary.readyForHandoff,
+        missingConnections: activation.summary.missingConnections
       },
+      activation,
       ...blueprint
     });
     return;
