@@ -2648,31 +2648,101 @@ function renderConnectionStatus(connection, clientId) {
   </div>`;
 }
 
-function renderOnboardingCard(client) {
+const onboardingBuckets = [
+  { id: "agreements", label: "Agreements" },
+  { id: "contacts", label: "Contacts" },
+  { id: "business", label: "Business Info" },
+  { id: "access", label: "Access" },
+  { id: "channels", label: "Socials" },
+  { id: "ads", label: "Ads" },
+  { id: "kickoff", label: "Kickoff" }
+];
+
+function getConnectionByLabel(client, label) {
+  return (client.connections || []).find((connection) => connection.label === label) || null;
+}
+
+function hasEmail(value) {
+  return /[^\s@]+@[^\s@]+\.[^\s@]+/.test(String(value || ""));
+}
+
+function hasPhone(value) {
+  return /(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/.test(String(value || ""));
+}
+
+function makeOnboardingTask(client, bucket, title, status, detail, options = {}) {
+  const id = options.id || slugForUi(title);
+  const skipped = isOnboardingSkipped(client.id, id);
+  return {
+    id,
+    bucket,
+    title,
+    status: skipped ? "skipped" : status,
+    detail,
+    clientId: client.id,
+    clientName: client.clientName,
+    required: Boolean(options.required),
+    skipped
+  };
+}
+
+function buildOnboardingTasks(client) {
+  const contact = client.contact || "";
+  const website = getConnectionByLabel(client, "Website");
+  const github = getConnectionByLabel(client, "GitHub");
+  const vercel = getConnectionByLabel(client, "Vercel");
+  const railway = getConnectionByLabel(client, "Railway");
+  const googleBusiness = getConnectionByLabel(client, "Google Business");
+  const facebook = getConnectionByLabel(client, "Facebook");
+  const instagram = getConnectionByLabel(client, "Instagram");
+  const linkedin = getConnectionByLabel(client, "LinkedIn");
+  const tiktok = getConnectionByLabel(client, "TikTok");
+  const youtube = getConnectionByLabel(client, "YouTube");
+  const ads = getConnectionByLabel(client, "Ads");
+  const analytics = getConnectionByLabel(client, "Analytics");
+
+  return [
+    makeOnboardingTask(client, "agreements", "Proposal agreement", "missing", "Signed proposal or scope agreement.", { required: true }),
+    makeOnboardingTask(client, "agreements", "Partnership agreement", "missing", "Signed care, posting, ads, or services agreement.", { required: true }),
+    makeOnboardingTask(client, "agreements", "Payment status", client.stage === "deposit-paid" || client.stage === "website-build" ? "complete" : "missing", "Deposit, final payment, or billing terms."),
+    makeOnboardingTask(client, "contacts", "Primary contact", contact ? "complete" : "missing", contact || "Name, role, and best contact method.", { required: true }),
+    makeOnboardingTask(client, "contacts", "Email address", hasEmail(contact) ? "complete" : "missing", "Client email for approvals and notices.", { required: true }),
+    makeOnboardingTask(client, "contacts", "Phone number", hasPhone(contact) ? "complete" : "missing", "Client phone for urgent launch or account access issues."),
+    makeOnboardingTask(client, "business", "Business profile", client.notes ? "in-progress" : "missing", "Business facts, service area, offer, audience, and brand voice.", { required: true }),
+    makeOnboardingTask(client, "business", "Google Business", googleBusiness?.status || "missing", googleBusiness?.url || "Google Business Profile access or URL."),
+    makeOnboardingTask(client, "access", "Website admin", website?.status || "missing", website?.url || "Website/admin access.", { required: true }),
+    makeOnboardingTask(client, "access", "GitHub repo", github?.status || "missing", github?.url || "Repo access for build and care.", { required: true }),
+    makeOnboardingTask(client, "access", "Vercel project", vercel?.status || "missing", vercel?.url || "Deployment/project access.", { required: true }),
+    makeOnboardingTask(client, "access", "Railway backend", railway?.status || "not-needed", railway?.url || "Backend access if part of this client scope."),
+    makeOnboardingTask(client, "channels", "Facebook page", facebook?.status || "not-included", facebook?.url || "Facebook page access for posting."),
+    makeOnboardingTask(client, "channels", "Instagram profile", instagram?.status || "not-included", instagram?.url || "Instagram access for posting."),
+    makeOnboardingTask(client, "channels", "LinkedIn page", linkedin?.status || "not-included", linkedin?.url || "LinkedIn access if included."),
+    makeOnboardingTask(client, "channels", "TikTok account", tiktok?.status || "not-included", tiktok?.url || "TikTok access if included."),
+    makeOnboardingTask(client, "channels", "YouTube channel", youtube?.status || "not-included", youtube?.url || "YouTube access if included."),
+    makeOnboardingTask(client, "ads", "Ad account", ads?.status || "not-included", ads?.note || "Ad account access, billing, and permissions."),
+    makeOnboardingTask(client, "ads", "Tracking / pixel", analytics?.status || "missing", analytics?.url || "Analytics, conversion tracking, or pixel setup."),
+    makeOnboardingTask(client, "kickoff", "Kickoff notes", client.notes ? "complete" : "missing", client.notes || "Kickoff summary, priorities, deadlines, and approvals.", { required: true }),
+    makeOnboardingTask(client, "kickoff", "Approval rules", "missing", "Who approves posts, site changes, ads, and launch handoff.", { required: true }),
+    makeOnboardingTask(client, "kickoff", "Internal handoff", client.stage === "launch-handoff" ? "ready" : "planned", "Move into Web Helper care and monthly operating rhythm.")
+  ];
+}
+
+function renderOnboardingCard(task) {
   return `<article class="onboarding-client-card">
     <div class="onboarding-client-head">
       <div>
-        <h3>${escapeHtml(client.clientName)}</h3>
-        <p>${escapeHtml(client.plan || "Launch + Care")}</p>
+        <h3>${escapeHtml(task.title)}</h3>
+        <p>${escapeHtml(task.clientName)}</p>
       </div>
-      <span class="onboarding-progress">${client.progress}%</span>
+      <span class="pill ${getStatusTone(task.status)}">${escapeHtml(task.status)}</span>
     </div>
-    <div class="progress-track"><span style="width: ${Math.max(0, Math.min(100, Number(client.progress || 0)))}%"></span></div>
-    <div class="client-warning-row">
-      ${client.blockers?.length ? client.blockers.slice(0, 4).map((blocker) => `<span class="client-warning-badge">${escapeHtml(blocker.label)}</span>`).join("") : `<span class="client-ok-badge">No required blockers</span>`}
-    </div>
-    <p>${escapeHtml(client.nextAction)}</p>
+    <p>${escapeHtml(task.detail)}</p>
     <div class="onboarding-checklist">
-      ${(client.checklist || []).map((item) => {
-        const itemId = slugForUi(item.label);
-        const skipped = isOnboardingSkipped(client.id, itemId);
-        const status = skipped ? "skipped" : item.status;
-        return `<div>
-          <span>${escapeHtml(item.label)}</span>
-          <strong class="${getStatusTone(status)}">${escapeHtml(status)}</strong>
-          <button type="button" data-onboarding-skip-client="${escapeHtml(client.id)}" data-onboarding-skip-item="${escapeHtml(itemId)}">${skipped ? "Unskip" : "Skip"}</button>
-        </div>`;
-      }).join("")}
+      <div>
+        <span>${task.required ? "Required" : "Optional"}</span>
+        <strong class="${getStatusTone(task.status)}">${escapeHtml(task.status)}</strong>
+        <button type="button" data-onboarding-skip-client="${escapeHtml(task.clientId)}" data-onboarding-skip-item="${escapeHtml(task.id)}">${task.skipped ? "Unskip" : "Skip"}</button>
+      </div>
     </div>
   </article>`;
 }
@@ -2692,22 +2762,20 @@ function renderOnboarding(payload) {
   ]);
 
   const queue = (payload?.activation?.queue || []).map(applyOnboardingSkips);
-  const kanbanStages = clientPipelineStages.filter((stage) =>
-    ["lead", "deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"].includes(stage.id)
-  );
+  const onboardingTasks = queue.flatMap(buildOnboardingTasks);
   elements.onboardingQueue.innerHTML = `<div class="onboarding-section-title">
-      <h3>Onboarding Board</h3>
-      <p>Each stage shows client activation progress, blockers, and skippable services.</p>
+      <h3>Onboarding Requirements Board</h3>
+      <p>Track agreements, contacts, access, socials, ads, kickoff details, and skippable client-specific services.</p>
     </div>
     <div class="onboarding-kanban">
-      ${kanbanStages.map((stage) => {
-        const stageClients = queue.filter((client) => client.stage === stage.id);
+      ${onboardingBuckets.map((bucket) => {
+        const bucketTasks = onboardingTasks.filter((task) => task.bucket === bucket.id && task.status !== "not-included");
         return `<section class="onboarding-column">
           <div class="onboarding-column-head">
-            <h3>${escapeHtml(stage.label)}</h3>
-            <span>${stageClients.length}</span>
+            <h3>${escapeHtml(bucket.label)}</h3>
+            <span>${bucketTasks.length}</span>
           </div>
-          ${stageClients.length ? stageClients.map(renderOnboardingCard).join("") : `<div class="pipeline-empty">No clients</div>`}
+          ${bucketTasks.length ? bucketTasks.map(renderOnboardingCard).join("") : `<div class="pipeline-empty">No items</div>`}
         </section>`;
       }).join("")}
     </div>`;
