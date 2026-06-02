@@ -282,7 +282,8 @@ const storageKeys = {
   executionSubview: "ghostMissionControl.executionSubview",
   agentsSubview: "ghostMissionControl.agentsSubview",
   focusMode: "ghostMissionControl.focusMode",
-  deferredRecommendation: "ghostMissionControl.deferredRecommendation"
+  deferredRecommendation: "ghostMissionControl.deferredRecommendation",
+  skippedOnboarding: "ghostMissionControl.skippedOnboarding"
 };
 
 const executionSubviewVisibility = {
@@ -1000,6 +1001,38 @@ function saveStoredValue(key, value) {
   } catch {
     // Ignore storage write failures (private mode or blocked storage).
   }
+}
+
+function getSkippedOnboarding() {
+  try {
+    return JSON.parse(loadStoredValue(storageKeys.skippedOnboarding) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveSkippedOnboarding(skipped) {
+  saveStoredValue(storageKeys.skippedOnboarding, JSON.stringify(skipped));
+}
+
+function getSkipKey(clientId, itemId) {
+  return `${clientId}:${itemId}`;
+}
+
+function isOnboardingSkipped(clientId, itemId) {
+  return Boolean(getSkippedOnboarding()[getSkipKey(clientId, itemId)]);
+}
+
+function toggleOnboardingSkip(clientId, itemId) {
+  const skipped = getSkippedOnboarding();
+  const key = getSkipKey(clientId, itemId);
+  if (skipped[key]) {
+    delete skipped[key];
+  } else {
+    skipped[key] = true;
+  }
+  saveSkippedOnboarding(skipped);
+  renderOnboarding(liveOnboarding);
 }
 
 function restoreSubviewPreferences() {
@@ -2180,6 +2213,13 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function slugForUi(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "item";
+}
+
 function getClientStage(client) {
   return client?.stage || client?.status || "website-build";
 }
@@ -2574,10 +2614,37 @@ function getStatusTone(status) {
   return "tone-gray";
 }
 
-function renderConnectionStatus(connection) {
-  return `<div class="connection-status ${getStatusTone(connection.status)}">
+function applyOnboardingSkips(client) {
+  const connections = (client.connections || []).map((connection) => {
+    const skipped = isOnboardingSkipped(client.id, connection.id);
+    return skipped ? { ...connection, status: "skipped", skipped: true, required: false } : connection;
+  });
+  const blockers = connections.filter((connection) =>
+    connection.required && ["missing", "access-needed"].includes(connection.status)
+  );
+  const requiredConnections = connections.filter((connection) => connection.required);
+  const readyRequired = requiredConnections.filter((connection) =>
+    ["connected", "active", "planned"].includes(connection.status)
+  );
+  const progress = requiredConnections.length ? Math.round((readyRequired.length / requiredConnections.length) * 100) : 100;
+
+  return {
+    ...client,
+    progress,
+    blockerCount: blockers.length,
+    blockers,
+    nextAction: blockers[0] ? `Connect ${blockers[0].label}.` : "No required blockers.",
+    connections
+  };
+}
+
+function renderConnectionStatus(connection, clientId) {
+  const skipped = connection.skipped || isOnboardingSkipped(clientId, connection.id);
+  const status = skipped ? "skipped" : connection.status;
+  return `<div class="connection-status ${getStatusTone(status)}">
     <span>${escapeHtml(connection.label)}</span>
-    <strong>${escapeHtml(connection.status)}</strong>
+    <strong>${escapeHtml(status)}</strong>
+    <button type="button" data-onboarding-skip-client="${escapeHtml(clientId)}" data-onboarding-skip-item="${escapeHtml(connection.id)}">${skipped ? "Unskip" : "Skip"}</button>
   </div>`;
 }
 
@@ -2595,7 +2662,7 @@ function renderOnboarding(payload) {
     { label: "Missing Connections", value: summary.missingConnections || 0 }
   ]);
 
-  const queue = payload?.activation?.queue || [];
+  const queue = (payload?.activation?.queue || []).map(applyOnboardingSkips);
   elements.onboardingQueue.innerHTML = queue.length
     ? queue.map((client) => `<article class="onboarding-client-card">
         <div class="onboarding-client-head">
@@ -2611,7 +2678,16 @@ function renderOnboarding(payload) {
         </div>
         <p>${escapeHtml(client.nextAction)}</p>
         <div class="onboarding-checklist">
-          ${(client.checklist || []).map((item) => `<div><span>${escapeHtml(item.label)}</span><strong class="${getStatusTone(item.status)}">${escapeHtml(item.status)}</strong></div>`).join("")}
+          ${(client.checklist || []).map((item) => {
+            const itemId = slugForUi(item.label);
+            const skipped = isOnboardingSkipped(client.id, itemId);
+            const status = skipped ? "skipped" : item.status;
+            return `<div>
+              <span>${escapeHtml(item.label)}</span>
+              <strong class="${getStatusTone(status)}">${escapeHtml(status)}</strong>
+              <button type="button" data-onboarding-skip-client="${escapeHtml(client.id)}" data-onboarding-skip-item="${escapeHtml(itemId)}">${skipped ? "Unskip" : "Skip"}</button>
+            </div>`;
+          }).join("")}
         </div>
       </article>`).join("")
     : `<article class="ops-card">
@@ -2625,7 +2701,7 @@ function renderOnboarding(payload) {
       <div class="connection-matrix">
         ${connectionClients.map((client) => `<article class="connection-client">
           <h3>${escapeHtml(client.clientName)}</h3>
-          <div>${(client.connections || []).map(renderConnectionStatus).join("")}</div>
+          <div>${(client.connections || []).map((connection) => renderConnectionStatus(connection, client.id)).join("")}</div>
         </article>`).join("")}
       </div>`
     : "";
@@ -3027,6 +3103,14 @@ async function init() {
     if (event.target === elements.clientOnboardModal) {
       closeClientModal();
     }
+  });
+  elements.onboardingPanel?.addEventListener("click", (event) => {
+    const skipButton = event.target.closest("[data-onboarding-skip-client][data-onboarding-skip-item]");
+    if (!skipButton) {
+      return;
+    }
+
+    toggleOnboardingSkip(skipButton.dataset.onboardingSkipClient, skipButton.dataset.onboardingSkipItem);
   });
 
   setInterval(async () => {

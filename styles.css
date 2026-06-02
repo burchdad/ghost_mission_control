@@ -1338,6 +1338,7 @@ padding: 0.62rem;
 
 .onboarding-checklist div {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
   border-radius: 6px;
@@ -1348,6 +1349,25 @@ padding: 0.62rem;
 
 .onboarding-checklist span {
   color: var(--muted);
+}
+
+.onboarding-checklist button,
+.connection-status button {
+  border: 1px solid rgba(177, 194, 163, 0.2);
+  border-radius: 999px;
+  background: rgba(7, 10, 7, 0.72);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 800;
+  padding: 0.16rem 0.42rem;
+}
+
+.onboarding-checklist button:hover,
+.connection-status button:hover {
+  border-color: rgba(124, 255, 155, 0.42);
+  color: #caffd5;
 }
 
 .onboarding-section-title {
@@ -1413,6 +1433,10 @@ padding: 0.62rem;
   display: block;
   margin-top: 0.18rem;
   font-size: 0.74rem;
+}
+
+.connection-status button {
+  margin-top: 0.42rem;
 }
 
 .client-onboard-form {
