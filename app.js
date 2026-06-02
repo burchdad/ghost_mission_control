@@ -3100,12 +3100,12 @@ function renderServiceCard(service) {
     </div>
     <div class="service-card-grid">
       <div>
-        <span>Triggers</span>
-        ${(service.triggers || []).map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
+        <span>Trigger</span>
+        <p>${escapeHtml((service.triggers || [])[0] || "Manual dispatch")}</p>
       </div>
       <div>
-        <span>Next Actions</span>
-        ${(service.nextActions || []).map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
+        <span>Next Action</span>
+        <p>${escapeHtml((service.nextActions || [])[0] || "Define service workflow")}</p>
       </div>
     </div>
   </article>`;
