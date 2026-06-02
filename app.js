@@ -2824,7 +2824,17 @@ function clientMatchesOnboardingFilters(client, filters, clientTasks) {
   return !filters.query || haystack.includes(filters.query) || clientTasks.some((task) => taskMatchesOnboardingFilters(task, filters));
 }
 
+function getSkippedOnboardingCount(tasks) {
+  return tasks.filter((task) => task.skipped || task.status === "skipped").length;
+}
+
 function renderOnboarding(payload) {
+  const filters = getOnboardingFilters();
+  const rawQueue = (payload?.activation?.queue || []).map(applyOnboardingSkips);
+  const tasksByClient = new Map(rawQueue.map((client) => [client.id, buildOnboardingTasks(client)]));
+  const queue = rawQueue.filter((client) => clientMatchesOnboardingFilters(client, filters, tasksByClient.get(client.id) || []));
+  const onboardingTasks = queue.flatMap((client) => tasksByClient.get(client.id) || []);
+  const visibleTasks = onboardingTasks.filter((task) => task.status !== "not-included" && taskMatchesOnboardingFilters(task, filters));
   const summary = payload?.summary || {
     activeClients: 0,
     blockedClients: 0,
@@ -2835,19 +2845,22 @@ function renderOnboarding(payload) {
     { label: "Active Onboarding", value: summary.activeClients || 0 },
     { label: "Blocked Clients", value: summary.blockedClients || 0 },
     { label: "Ready Handoff", value: summary.readyForHandoff || 0 },
-    { label: "Missing Connections", value: summary.missingConnections || 0 }
+    { label: "Missing Connections", value: summary.missingConnections || 0 },
+    { label: "Skipped Items", value: getSkippedOnboardingCount(onboardingTasks) }
   ]);
 
-  const filters = getOnboardingFilters();
-  const rawQueue = (payload?.activation?.queue || []).map(applyOnboardingSkips);
-  const tasksByClient = new Map(rawQueue.map((client) => [client.id, buildOnboardingTasks(client)]));
-  const queue = rawQueue.filter((client) => clientMatchesOnboardingFilters(client, filters, tasksByClient.get(client.id) || []));
-  const onboardingTasks = queue.flatMap((client) => tasksByClient.get(client.id) || []);
-  const visibleTasks = onboardingTasks.filter((task) => task.status !== "not-included" && taskMatchesOnboardingFilters(task, filters));
+  const boardEmptyCopy = rawQueue.length
+    ? "No matching items for the current filters."
+    : "Start onboarding to generate agreement, contact, access, social, ads, and kickoff cards.";
   elements.onboardingQueue.innerHTML = `<div class="onboarding-section-title">
       <h3>Onboarding Requirements Board</h3>
       <p>Track agreements, contacts, access, socials, ads, kickoff details, and skippable client-specific services.</p>
     </div>
+    ${visibleTasks.length ? "" : `<article class="onboarding-empty-state">
+      <h3>No active requirement cards</h3>
+      <p>${escapeHtml(boardEmptyCopy)}</p>
+      <button class="new-client-button" type="button" data-start-onboarding-empty>Start Onboarding</button>
+    </article>`}
     <div class="onboarding-kanban">
       ${onboardingBuckets.map((bucket) => {
         const bucketTasks = visibleTasks.filter((task) => task.bucket === bucket.id);
@@ -2856,7 +2869,7 @@ function renderOnboarding(payload) {
             <h3>${escapeHtml(bucket.label)}</h3>
             <span>${bucketTasks.length}</span>
           </div>
-          ${bucketTasks.length ? bucketTasks.map(renderOnboardingCard).join("") : `<div class="pipeline-empty">No items</div>`}
+          ${bucketTasks.length ? bucketTasks.map(renderOnboardingCard).join("") : `<div class="pipeline-empty">${escapeHtml(rawQueue.length ? "No matches" : "Waiting")}</div>`}
         </section>`;
       }).join("")}
     </div>`;
@@ -2874,16 +2887,24 @@ function renderOnboarding(payload) {
 
   const stages = payload?.stages?.length ? payload.stages : fallbackOnboardingStages;
   elements.onboardingStages.innerHTML = stages.length
-    ? `<div class="onboarding-section-title"><h3>Activation Blueprint</h3><p>The standard path every client should pass before ongoing operations.</p></div>
-      ${stages.map((stage) => `<article class="ops-card">
-        <div class="ops-card-head">
-          <h3>${escapeHtml(stage.name)}</h3>
-          <span class="pill ${stage.status === "needs-integration" ? "tone-yellow" : "tone-green"}">${escapeHtml(stage.status)}</span>
+    ? `<details class="onboarding-blueprint" ${rawQueue.length ? "" : "open"}>
+        <summary>
+          <span>Standard Blueprint</span>
+          <strong>${stages.length} phases</strong>
+        </summary>
+        <p>The reusable onboarding path every client passes before ongoing operations.</p>
+        <div class="onboarding-blueprint-grid">
+          ${stages.map((stage) => `<article class="ops-card">
+            <div class="ops-card-head">
+              <h3>${escapeHtml(stage.name)}</h3>
+              <span class="pill ${stage.status === "needs-integration" ? "tone-yellow" : "tone-green"}">${escapeHtml(stage.status)}</span>
+            </div>
+            <p>${escapeHtml(stage.description)}</p>
+            <div class="ops-chip-row">${stage.requiredArtifacts.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
+            <div class="ops-mini-list">${stage.automations.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
+          </article>`).join("")}
         </div>
-        <p>${escapeHtml(stage.description)}</p>
-        <div class="ops-chip-row">${stage.requiredArtifacts.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
-        <div class="ops-mini-list">${stage.automations.map((item) => `<p>${escapeHtml(item)}</p>`).join("")}</div>
-      </article>`).join("")}`
+      </details>`
     : `<article class="ops-card"><h3>No onboarding blueprint</h3><p>Onboarding stages will appear when the backend is available.</p></article>`;
 
   const fallbackActions = rawQueue.length
@@ -3286,6 +3307,12 @@ async function init() {
     }
   });
   elements.onboardingPanel?.addEventListener("click", (event) => {
+    const startButton = event.target.closest("[data-start-onboarding-empty]");
+    if (startButton) {
+      openClientModal({ title: "Start Onboarding", stage: "lead" });
+      return;
+    }
+
     const skipButton = event.target.closest("[data-onboarding-skip-client][data-onboarding-skip-item]");
     if (!skipButton) {
       return;

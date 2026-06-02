@@ -1279,6 +1279,40 @@ padding: 0.62rem;
 
 .onboarding-filter-row {
   margin-top: 0.7rem;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(160px, 220px) minmax(150px, 210px);
+  gap: 0.5rem;
+}
+
+.onboarding-filter-row input,
+.onboarding-filter-row select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(177, 194, 163, 0.24);
+  border-radius: 7px;
+  background: rgba(7, 10, 7, 0.88);
+  color: var(--text);
+  padding: 0.6rem 0.68rem;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.onboarding-empty-state {
+  border: 1px solid rgba(124, 255, 155, 0.24);
+  border-radius: 8px;
+  background: rgba(17, 28, 17, 0.78);
+  padding: 0.78rem;
+}
+
+.onboarding-empty-state h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.onboarding-empty-state p {
+  margin: 0.3rem 0 0.65rem;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .onboarding-kanban {
@@ -1508,6 +1542,56 @@ padding: 0.62rem;
 
 .connection-status button {
   margin-top: 0.42rem;
+}
+
+.onboarding-blueprint {
+  grid-column: 1 / -1;
+  margin-top: 0.8rem;
+  border: 1px solid rgba(177, 194, 163, 0.16);
+  border-radius: 8px;
+  background: rgba(12, 18, 12, 0.72);
+  padding: 0.7rem;
+}
+
+.onboarding-blueprint summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  color: #f0faed;
+  font-weight: 900;
+  list-style: none;
+}
+
+.onboarding-blueprint summary::-webkit-details-marker {
+  display: none;
+}
+
+.onboarding-blueprint summary strong {
+  border: 1px solid rgba(124, 255, 155, 0.28);
+  border-radius: 999px;
+  color: var(--green);
+  padding: 0.18rem 0.48rem;
+  font-size: 0.72rem;
+}
+
+.onboarding-blueprint > p {
+  margin: 0.4rem 0 0.65rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.onboarding-blueprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.6rem;
+}
+
+@media (max-width: 760px) {
+  .onboarding-filter-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .client-onboard-form {
