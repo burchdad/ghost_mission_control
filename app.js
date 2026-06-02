@@ -59,6 +59,9 @@ const elements = {
   clientPipeline: document.getElementById("clientPipeline"),
   clientCards: document.getElementById("clientCards"),
   clientActions: document.getElementById("clientActions"),
+  openClientModalButton: document.getElementById("openClientModalButton"),
+  closeClientModalButton: document.getElementById("closeClientModalButton"),
+  clientOnboardModal: document.getElementById("clientOnboardModal"),
   clientOnboardForm: document.getElementById("clientOnboardForm"),
   clientNameInput: document.getElementById("clientNameInput"),
   clientStageInput: document.getElementById("clientStageInput"),
@@ -88,7 +91,6 @@ const elements = {
   webHelperRequests: document.getElementById("webHelperRequests"),
   operationsPanel: document.getElementById("operationsPanel"),
   clientsPanel: document.getElementById("clientsPanel"),
-  clientOnboardPanel: document.getElementById("clientOnboardPanel"),
   clientActionsPanel: document.getElementById("clientActionsPanel"),
   onboardingPanel: document.getElementById("onboardingPanel"),
   onboardingActionsPanel: document.getElementById("onboardingActionsPanel"),
@@ -294,7 +296,7 @@ const viewVisibility = {
     "crossSystemPanel",
     "activityPanel"
   ],
-  clients: ["clientsPanel", "clientOnboardPanel", "clientActionsPanel"],
+  clients: ["clientsPanel", "clientActionsPanel"],
   onboarding: ["onboardingPanel", "onboardingActionsPanel", "commandPlanPanel"],
   services: ["servicesPanel", "serviceActionsPanel", "commandPlanPanel"],
   execution: [
@@ -329,7 +331,6 @@ function setActiveView(view) {
   const shellPanels = [
     "operationsPanel",
     "clientsPanel",
-    "clientOnboardPanel",
     "clientActionsPanel",
     "onboardingPanel",
     "onboardingActionsPanel",
@@ -398,7 +399,6 @@ function setActiveView(view) {
 
   const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel"];
   const sideColumnPanels = [
-    "clientOnboardPanel",
     "clientActionsPanel",
     "onboardingActionsPanel",
     "serviceActionsPanel",
@@ -889,6 +889,26 @@ function closeCommandPalette() {
   elements.commandPalette.classList.add("view-hidden");
 }
 
+function openClientModal() {
+  if (!elements.clientOnboardModal) {
+    return;
+  }
+
+  elements.clientOnboardModal.classList.remove("view-hidden");
+  if (elements.clientFormResponse) {
+    elements.clientFormResponse.textContent = "";
+  }
+  elements.clientNameInput?.focus();
+}
+
+function closeClientModal() {
+  if (!elements.clientOnboardModal) {
+    return;
+  }
+
+  elements.clientOnboardModal.classList.add("view-hidden");
+}
+
 function setupCommandPalette() {
   if (!elements.commandPalette || !elements.paletteInput) {
     return;
@@ -909,7 +929,12 @@ function setupCommandPalette() {
     }
 
     const paletteOpen = !elements.commandPalette.classList.contains("view-hidden");
+    const clientModalOpen = elements.clientOnboardModal && !elements.clientOnboardModal.classList.contains("view-hidden");
     if (!paletteOpen) {
+      if (key === "escape" && clientModalOpen) {
+        closeClientModal();
+        return;
+      }
       if (key === "escape" && isFocusMode) {
         setFocusMode(false);
       }
@@ -2326,6 +2351,7 @@ async function submitClientOnboarding(event) {
       elements.clientStageInput.value = "website-build";
     }
     elements.clientFormResponse.textContent = `Created ${result.created.clientName}.`;
+    closeClientModal();
   } catch (error) {
     elements.clientFormResponse.textContent = String(error.message || error);
   }
@@ -2731,6 +2757,14 @@ async function init() {
   if (elements.clientOnboardForm) {
     elements.clientOnboardForm.addEventListener("submit", submitClientOnboarding);
   }
+
+  elements.openClientModalButton?.addEventListener("click", openClientModal);
+  elements.closeClientModalButton?.addEventListener("click", closeClientModal);
+  elements.clientOnboardModal?.addEventListener("click", (event) => {
+    if (event.target === elements.clientOnboardModal) {
+      closeClientModal();
+    }
+  });
 
   setInterval(async () => {
     const previousSiteId = activeSiteId;

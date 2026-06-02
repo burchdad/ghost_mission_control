@@ -1179,6 +1179,65 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
+.panel-action-button {
+  justify-self: end;
+  width: auto;
+  min-width: 132px;
+}
+
+.client-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(2, 7, 5, 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.client-modal.view-hidden {
+  display: none;
+}
+
+.client-modal-panel {
+  width: min(760px, 100%);
+  max-height: min(88vh, 920px);
+  overflow-y: auto;
+  border: 1px solid rgba(124, 255, 155, 0.26);
+  border-radius: 12px;
+  background: rgba(12, 20, 13, 0.98);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+  padding: 0.9rem;
+}
+
+.client-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgba(177, 194, 163, 0.24);
+  border-radius: 8px;
+  background: rgba(7, 10, 7, 0.9);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
 .perception-next,
 .trust-explanation {
   display: grid;
@@ -2643,6 +2702,33 @@ body:not(.focus-mode) .kpi-section.view-hidden {
 
 body:not(.focus-mode) .topbar.view-hidden {
   display: grid !important;
+}
+
+.client-pipeline {
+  grid-auto-columns: 202px;
+  overflow-x: scroll;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: rgba(124, 255, 155, 0.72) rgba(177, 194, 163, 0.12);
+  scrollbar-width: thin;
+}
+
+.client-pipeline::-webkit-scrollbar {
+  height: 11px;
+}
+
+.client-pipeline::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(177, 194, 163, 0.12);
+}
+
+.client-pipeline::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(10, 16, 10, 0.96);
+  border-radius: 999px;
+  background: rgba(124, 255, 155, 0.72);
+}
+
+.client-modal.view-hidden {
+  display: none !important;
 }
 
 @media (max-width: 1280px) {

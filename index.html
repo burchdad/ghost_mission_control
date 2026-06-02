@@ -107,8 +107,11 @@
         <div class="main-column">
           <section class="module-panel view-panel" id="clientsPanel" aria-label="Client registry">
             <div class="panel-header">
-              <h2>Client Pipeline</h2>
-              <p>Move each client from deposit and build through launch, Web Helper care, GEO growth, and long-term operations.</p>
+              <div>
+                <h2>Client Pipeline</h2>
+                <p>Move each client from deposit and build through launch, Web Helper care, GEO growth, and long-term operations.</p>
+              </div>
+              <button id="openClientModalButton" class="command-send panel-action-button" type="button">New Client</button>
             </div>
             <div id="clientSummary" class="ops-summary"></div>
             <div id="clientPipeline" class="client-pipeline"></div>
@@ -169,90 +172,6 @@
         </div>
 
         <aside class="side-column">
-          <section class="module-panel view-panel" id="clientOnboardPanel" aria-label="Onboard client form">
-            <div class="panel-header compact">
-              <h2>Onboard Client</h2>
-            </div>
-            <form id="clientOnboardForm" class="client-onboard-form">
-              <label>
-                <span>Client Name</span>
-                <input id="clientNameInput" name="clientName" type="text" placeholder="Acme Dental" required />
-              </label>
-              <label>
-                <span>Pipeline Stage</span>
-                <select id="clientStageInput" name="stage">
-                  <option value="lead">Lead / Prospect</option>
-                  <option value="deposit-paid">Deposit Paid</option>
-                  <option value="website-build" selected>Website Build</option>
-                  <option value="client-review">Client Review</option>
-                  <option value="final-payment">Final Payment</option>
-                  <option value="launch-handoff">Launch / Handoff</option>
-                  <option value="web-helper-care">Web Helper Care</option>
-                  <option value="growth-services">Growth Services</option>
-                  <option value="paused-archived">Paused / Archived</option>
-                </select>
-              </label>
-              <label>
-                <span>Website URL</span>
-                <input id="clientWebsiteInput" name="websiteUrl" type="url" placeholder="https://example.com" />
-              </label>
-              <label>
-                <span>GitHub Repo / URL</span>
-                <input id="clientRepoInput" name="repo" type="text" placeholder="burchdad/client-site" />
-              </label>
-              <label>
-                <span>Railway Backend URL</span>
-                <input id="clientRailwayInput" name="railwayUrl" type="url" placeholder="https://backend.up.railway.app" />
-              </label>
-              <label>
-                <span>Vercel URL</span>
-                <input id="clientVercelInput" name="vercelUrl" type="url" placeholder="https://client-site.vercel.app" />
-              </label>
-              <label>
-                <span>Mobile App URL</span>
-                <input id="clientMobileAppInput" name="mobileAppUrl" type="url" placeholder="https://apps.apple.com/app/..." />
-              </label>
-              <label>
-                <span>Google Business Profile</span>
-                <input id="clientGoogleBusinessInput" name="googleBusinessUrl" type="url" placeholder="https://g.page/r/..." />
-              </label>
-              <label>
-                <span>Social URLs</span>
-                <textarea id="clientSocialsInput" name="socialUrls" rows="3" placeholder="One Facebook, Instagram, LinkedIn, TikTok, or YouTube URL per line"></textarea>
-              </label>
-              <label>
-                <span>Plan</span>
-                <select id="clientPlanInput" name="plan">
-                  <option>Launch + Care</option>
-                  <option>Website Care</option>
-                  <option>SEO / AEO / GEO</option>
-                  <option>Full Growth Stack</option>
-                </select>
-              </label>
-              <label>
-                <span>Services</span>
-                <select id="clientServicesInput" name="services" multiple>
-                  <option value="website-build">Website Build</option>
-                  <option value="web-helper-care">Web Helper Care</option>
-                  <option value="search-intelligence">SEO / AEO / GEO</option>
-                  <option value="lead-funnel">Lead Funnel</option>
-                  <option value="content-social">Content + Social</option>
-                  <option value="reporting">Client Reporting</option>
-                </select>
-              </label>
-              <label>
-                <span>Primary Contact</span>
-                <input id="clientContactInput" name="contact" type="text" placeholder="Name, email, or phone" />
-              </label>
-              <label>
-                <span>Notes</span>
-                <textarea id="clientNotesInput" name="notes" rows="3" placeholder="Anything the agent should know first..."></textarea>
-              </label>
-              <button class="command-send" type="submit">Create Client</button>
-              <p id="clientFormResponse" class="command-response" aria-live="polite"></p>
-            </form>
-          </section>
-
           <section class="module-panel view-panel" id="clientActionsPanel" aria-label="Client actions">
             <div class="panel-header compact">
               <h2>Client Actions</h2>
@@ -398,6 +317,96 @@
         <input id="paletteInput" type="text" placeholder="Type a command..." aria-label="Command palette input" />
         <div id="paletteList" class="palette-list"></div>
         <p class="palette-hint">Enter to run • Esc to close</p>
+      </div>
+    </div>
+
+    <div id="clientOnboardModal" class="client-modal view-hidden" role="dialog" aria-modal="true" aria-labelledby="clientModalTitle">
+      <div class="client-modal-panel">
+        <div class="panel-header compact client-modal-header">
+          <div>
+            <h2 id="clientModalTitle">New Client</h2>
+            <p>Add the client profile, services, and operating links.</p>
+          </div>
+          <button id="closeClientModalButton" class="icon-button" type="button" aria-label="Close new client modal">X</button>
+        </div>
+        <form id="clientOnboardForm" class="client-onboard-form">
+          <label>
+            <span>Client Name</span>
+            <input id="clientNameInput" name="clientName" type="text" placeholder="Acme Dental" required />
+          </label>
+          <label>
+            <span>Pipeline Stage</span>
+            <select id="clientStageInput" name="stage">
+              <option value="lead">Lead / Prospect</option>
+              <option value="deposit-paid">Deposit Paid</option>
+              <option value="website-build" selected>Website Build</option>
+              <option value="client-review">Client Review</option>
+              <option value="final-payment">Final Payment</option>
+              <option value="launch-handoff">Launch / Handoff</option>
+              <option value="web-helper-care">Web Helper Care</option>
+              <option value="growth-services">Growth Services</option>
+              <option value="paused-archived">Paused / Archived</option>
+            </select>
+          </label>
+          <label>
+            <span>Website URL</span>
+            <input id="clientWebsiteInput" name="websiteUrl" type="url" placeholder="https://example.com" />
+          </label>
+          <label>
+            <span>GitHub Repo / URL</span>
+            <input id="clientRepoInput" name="repo" type="text" placeholder="burchdad/client-site" />
+          </label>
+          <label>
+            <span>Railway Backend URL</span>
+            <input id="clientRailwayInput" name="railwayUrl" type="url" placeholder="https://backend.up.railway.app" />
+          </label>
+          <label>
+            <span>Vercel URL</span>
+            <input id="clientVercelInput" name="vercelUrl" type="url" placeholder="https://client-site.vercel.app" />
+          </label>
+          <label>
+            <span>Mobile App URL</span>
+            <input id="clientMobileAppInput" name="mobileAppUrl" type="url" placeholder="https://apps.apple.com/app/..." />
+          </label>
+          <label>
+            <span>Google Business Profile</span>
+            <input id="clientGoogleBusinessInput" name="googleBusinessUrl" type="url" placeholder="https://g.page/r/..." />
+          </label>
+          <label>
+            <span>Social URLs</span>
+            <textarea id="clientSocialsInput" name="socialUrls" rows="3" placeholder="One Facebook, Instagram, LinkedIn, TikTok, or YouTube URL per line"></textarea>
+          </label>
+          <label>
+            <span>Plan</span>
+            <select id="clientPlanInput" name="plan">
+              <option>Launch + Care</option>
+              <option>Website Care</option>
+              <option>SEO / AEO / GEO</option>
+              <option>Full Growth Stack</option>
+            </select>
+          </label>
+          <label>
+            <span>Services</span>
+            <select id="clientServicesInput" name="services" multiple>
+              <option value="website-build">Website Build</option>
+              <option value="web-helper-care">Web Helper Care</option>
+              <option value="search-intelligence">SEO / AEO / GEO</option>
+              <option value="lead-funnel">Lead Funnel</option>
+              <option value="content-social">Content + Social</option>
+              <option value="reporting">Client Reporting</option>
+            </select>
+          </label>
+          <label>
+            <span>Primary Contact</span>
+            <input id="clientContactInput" name="contact" type="text" placeholder="Name, email, or phone" />
+          </label>
+          <label>
+            <span>Notes</span>
+            <textarea id="clientNotesInput" name="notes" rows="3" placeholder="Anything the agent should know first..."></textarea>
+          </label>
+          <button class="command-send" type="submit">Create Client</button>
+          <p id="clientFormResponse" class="command-response" aria-live="polite"></p>
+        </form>
       </div>
     </div>
 
