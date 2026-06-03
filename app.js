@@ -306,7 +306,7 @@ const storageKeys = {
 const executionSubviewVisibility = {
   overview: ["executionPanel", "executionActionsPanel"],
   active: ["executionPanel", "executionActionsPanel", "agentCollabPanel"],
-  history: ["executionPanel", "commandMemoryPanel", "activityPanel"],
+  history: ["executionPanel", "executionActionsPanel", "commandMemoryPanel", "activityPanel"],
   failures: ["executionPanel", "executionActionsPanel", "alertsPanel"]
 };
 
