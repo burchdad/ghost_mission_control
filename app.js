@@ -36,6 +36,8 @@ const elements = {
   activityFeed: document.getElementById("activityFeed"),
   crossSystemInsights: document.getElementById("crossSystemInsights"),
   agentSnapshot: document.getElementById("agentSnapshot"),
+  agentOpsSummary: document.getElementById("agentOpsSummary"),
+  agentOpsBoard: document.getElementById("agentOpsBoard"),
   agentCollabFeed: document.getElementById("agentCollabFeed"),
   predictiveAlerts: document.getElementById("predictiveAlerts"),
   strategicGoals: document.getElementById("strategicGoals"),
@@ -139,6 +141,7 @@ const elements = {
   predictivePanel: document.getElementById("predictivePanel"),
   crossSystemPanel: document.getElementById("crossSystemPanel"),
   agentsPanel: document.getElementById("agentsPanel"),
+  agentOpsPanel: document.getElementById("agentOpsPanel"),
   navItems: [...document.querySelectorAll(".nav-item")],
   executionTabItems: [...document.querySelectorAll("[data-exec-tab]")],
   agentsTabItems: [...document.querySelectorAll("[data-agents-tab]")]
@@ -311,9 +314,9 @@ const executionSubviewVisibility = {
 };
 
 const agentsSubviewVisibility = {
-  rankings: ["agentsPanel"],
-  logs: ["activityPanel", "commandMemoryPanel"],
-  collaboration: ["agentsPanel", "agentCollabPanel"]
+  rankings: ["agentOpsPanel", "agentsPanel"],
+  logs: ["agentOpsPanel", "agentsPanel", "activityPanel", "commandMemoryPanel"],
+  collaboration: ["agentOpsPanel", "agentsPanel", "agentCollabPanel"]
 };
 
 const viewVisibility = {
@@ -332,7 +335,7 @@ const viewVisibility = {
     "executionPanel",
     "executionActionsPanel"
   ],
-  agents: ["agentsPanel", "agentCollabPanel", "perceptionPanel", "activityPanel"],
+  agents: ["agentOpsPanel", "agentsPanel"],
   "web-helpers": ["webHelpersPanel", "webHelperRequestsPanel"],
   tools: ["toolsPanel", "toolActionsPanel", "commandPlanPanel"],
   intelligence: ["predictivePanel", "crossSystemPanel", "perceptionPanel", "alertsPanel", "activityPanel"],
@@ -367,6 +370,7 @@ function setActiveView(view) {
     "buildQueuePanel",
     "webHelpersPanel",
     "executionPanel",
+    "agentOpsPanel",
     "executionActionsPanel",
     "webHelperRequestsPanel",
     "alertsPanel",
@@ -425,7 +429,7 @@ function setActiveView(view) {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
 
-  const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "executionPanel"];
+  const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "executionPanel", "agentOpsPanel"];
   const sideColumnPanels = [
     "clientActionsPanel",
     "onboardingActionsPanel",
@@ -1664,6 +1668,181 @@ function renderActivity(site) {
     .join("");
 }
 
+const fallbackAgentRoster = [
+  {
+    name: "Automation Supervisor",
+    role: "Command routing, action ranking, and approval control.",
+    service: "Execution",
+    status: "ready",
+    tone: "green",
+    triggers: ["Mission command", "Risk review", "Fallback routing"],
+    responsibilities: ["Rank next actions", "Assign operators", "Escalate owner approval"]
+  },
+  {
+    name: "Web Helper Agent",
+    role: "Client site updates, fixes, safe deploy notes, and reply drafts.",
+    service: "Web Helper Care",
+    status: "ready",
+    tone: "green",
+    triggers: ["Client request", "Final payment", "Site issue"],
+    responsibilities: ["Classify request", "Prepare code change", "Draft client response"]
+  },
+  {
+    name: "Search Intelligence Agent",
+    role: "SEO, AEO, GEO readiness, visibility checks, and content recommendations.",
+    service: "SEO / AEO / GEO",
+    status: "integration-needed",
+    tone: "yellow",
+    triggers: ["GEO profile connected", "Visibility drop", "Topic gap"],
+    responsibilities: ["Import GEO signals", "Create site tasks", "Recommend content"]
+  },
+  {
+    name: "Funnel Monitor Agent",
+    role: "Lead forms, conversion paths, CRM handoff, and follow-up health.",
+    service: "Lead Funnel",
+    status: "planned",
+    tone: "blue",
+    triggers: ["Lead drop", "Form issue", "Campaign launch"],
+    responsibilities: ["Probe forms", "Map conversion events", "Route CRM follow-up"]
+  },
+  {
+    name: "Content Operator",
+    role: "Business page posting, social queue, campaign calendar, and briefs.",
+    service: "Content + Social",
+    status: "planned",
+    tone: "blue",
+    triggers: ["Calendar due", "Business update", "GEO opportunity"],
+    responsibilities: ["Build monthly plan", "Queue posts", "Hold approvals"]
+  },
+  {
+    name: "Reporting Agent",
+    role: "Monthly summaries, service outcomes, site health, and renewal cues.",
+    service: "Client Reporting",
+    status: "planned",
+    tone: "blue",
+    triggers: ["Report due", "Client check-in", "Renewal window"],
+    responsibilities: ["Collect outcomes", "Prepare report", "Surface next-best work"]
+  }
+];
+
+function normalizeAgentStatus(status = "") {
+  return status.toString().toLowerCase().replace(/\s+/g, "-");
+}
+
+function renderAgentOpsCard(agent) {
+  const status = normalizeAgentStatus(agent.status || "planned");
+  return `<article class="agent-ops-card">
+    <div class="agent-card-head">
+      <div>
+        <h3>${agent.name}</h3>
+        <p>${agent.role || agent.statline || "Service operator ready for routing."}</p>
+      </div>
+      <span class="pill ${toneClass[agent.tone] ?? "tone-gray"}">${status}</span>
+    </div>
+    <p class="agent-service">${agent.service || "Mission Ops"}</p>
+    <div class="agent-card-meta">
+      <div>
+        <strong>Triggers</strong>
+        <span>${(agent.triggers || ["Mission command"]).join(", ")}</span>
+      </div>
+      <div>
+        <strong>Owns</strong>
+        <span>${(agent.responsibilities || ["Prepare next action"]).join(", ")}</span>
+      </div>
+    </div>
+  </article>`;
+}
+
+function renderAgentOps(rankedAgents = []) {
+  if (!elements.agentOpsSummary || !elements.agentOpsBoard) {
+    return;
+  }
+
+  const liveOps = rankedAgents.map((agent) => ({
+    ...agent,
+    role: agent.dynamicOutcome || agent.statline || "Live operator from command telemetry.",
+    service: agent.service || "Live Agent",
+    status: agent.status || "active",
+    triggers: ["Live command", "Monitoring cycle"],
+    responsibilities: ["Respond to assigned actions", "Report confidence"]
+  }));
+  const opsAgents = liveOps.length ? liveOps : fallbackAgentRoster;
+  const activeCount = opsAgents.filter((agent) => ["active", "ready"].includes(normalizeAgentStatus(agent.status))).length;
+  const integrationCount = opsAgents.filter((agent) => normalizeAgentStatus(agent.status).includes("integration")).length;
+  const plannedCount = opsAgents.filter((agent) => normalizeAgentStatus(agent.status) === "planned").length;
+  const degradedCount = opsAgents.filter((agent) => ["blocked", "degraded", "offline"].includes(normalizeAgentStatus(agent.status))).length;
+
+  elements.agentOpsSummary.innerHTML = [
+    ["agents", opsAgents.length],
+    ["ready / active", activeCount],
+    ["integration needed", integrationCount],
+    ["planned", plannedCount],
+    ["degraded", degradedCount]
+  ]
+    .map(
+      ([label, value]) => `<article class="summary-card">
+        <span>${label}</span>
+        <strong>${value}</strong>
+      </article>`
+    )
+    .join("");
+
+  elements.agentOpsBoard.innerHTML = `
+    <section class="agent-command-strip" aria-label="Agent operating model">
+      <article>
+        <span class="section-kicker">Operating Model</span>
+        <h3>Owner-supervised automation</h3>
+        <p>Agents can prepare client updates, service work, reports, and investigation plans while deploys, billing, ads, forms, and sensitive client replies stay approval-gated.</p>
+      </article>
+      <article>
+        <span class="section-kicker">Service Routing</span>
+        <h3>Client -> Service -> Agent -> Approval</h3>
+        <p>Every client service should map to an operator, required tools, trigger conditions, next actions, and a clear handoff record.</p>
+      </article>
+    </section>
+
+    <section>
+      <div class="section-heading-row">
+        <div>
+          <h3>Agent Roster</h3>
+          <p>Mission operators prepared for client services and internal routing.</p>
+        </div>
+        <span class="count-pill">${opsAgents.length}</span>
+      </div>
+      <div class="agent-roster-grid">
+        ${opsAgents.map(renderAgentOpsCard).join("")}
+      </div>
+    </section>
+
+    <section>
+      <div class="section-heading-row">
+        <div>
+          <h3>Routing Rules</h3>
+          <p>Guardrails that keep agent work useful without letting risky changes run loose.</p>
+        </div>
+      </div>
+      <div class="agent-routing-grid">
+        <article class="agent-routing-card">
+          <h3>Client request</h3>
+          <p>Route to Web Helper triage, classify urgency, attach client/site context, and draft the reply.</p>
+        </article>
+        <article class="agent-routing-card">
+          <h3>GEO signal</h3>
+          <p>Route geo.ghostai.solutions output into Search Intelligence, then generate site/content tasks.</p>
+        </article>
+        <article class="agent-routing-card">
+          <h3>Risky change</h3>
+          <p>Deploy, billing, forms, ads, and public client replies require owner approval before execution.</p>
+        </article>
+        <article class="agent-routing-card">
+          <h3>Low confidence</h3>
+          <p>Escalate to Automation Supervisor, record the reason, and keep the action in pending review.</p>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
 function renderAgents(site) {
   const baseAgents = site.agents || [];
   const byName = new Map(liveAgentIntelligence.map((entry) => [entry.name, entry]));
@@ -1710,11 +1889,13 @@ function renderAgents(site) {
     .sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99))
     .slice(0, 6);
 
+  renderAgentOps(rankedAgents);
+
   if (!rankedAgents.length) {
     elements.agentSnapshot.innerHTML = `
       <article class="agent-item">
-        <h3>No active agent telemetry</h3>
-        <p class="statline">Agents will populate after live command execution and monitoring cycles.</p>
+        <h3>Agent roster ready</h3>
+        <p class="statline">Live rankings, logs, and collaboration populate after command execution and monitoring cycles.</p>
       </article>
     `;
     updateNavBadges();
