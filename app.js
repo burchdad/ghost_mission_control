@@ -1725,6 +1725,51 @@ const fallbackAgentRoster = [
   }
 ];
 
+const recommendedAgentBacklog = [
+  {
+    name: "Reputation Manager Agent",
+    priority: "high",
+    service: "Google Business + Social",
+    why: "Monitor reviews, business profile questions, testimonial opportunities, and owner-approved response drafts.",
+    prerequisites: ["Google Business access", "Approved response tone", "Escalation rules"]
+  },
+  {
+    name: "Ads Optimizer Agent",
+    priority: "high",
+    service: "Paid Ads",
+    why: "Track campaign spend, conversion drops, landing page issues, and weekly performance actions.",
+    prerequisites: ["Meta/Google Ads", "Budget rules", "Conversion tracking"]
+  },
+  {
+    name: "CRM Follow-Up Agent",
+    priority: "medium",
+    service: "Lead Funnel",
+    why: "Watch lead status, missed follow-ups, form submissions, and handoff gaps after new inquiries.",
+    prerequisites: ["CRM access", "Lead stages", "Follow-up rules"]
+  },
+  {
+    name: "Site Health Sentinel",
+    priority: "medium",
+    service: "Web Helper Care",
+    why: "Monitor uptime, forms, broken links, deploy regressions, and urgent client-facing failures.",
+    prerequisites: ["Website URL", "Form probes", "Deploy logs"]
+  },
+  {
+    name: "Billing + Renewal Agent",
+    priority: "medium",
+    service: "Client Reporting",
+    why: "Track final payments, recurring care plans, renewal windows, and service value summaries.",
+    prerequisites: ["Plan terms", "Payment status", "Renewal dates"]
+  },
+  {
+    name: "Mobile App Support Agent",
+    priority: "low",
+    service: "Mobile App",
+    why: "Only activates for clients with apps; tracks store links, app issues, release notes, and support requests.",
+    prerequisites: ["App store links", "Repo access", "Release process"]
+  }
+];
+
 function normalizeAgentStatus(status = "") {
   return status.toString().toLowerCase().replace(/\s+/g, "-");
 }
@@ -1789,6 +1834,22 @@ function renderAgentOpsCard(agent) {
   </article>`;
 }
 
+function renderRecommendedAgentCard(agent) {
+  return `<article class="recommended-agent-card">
+    <div class="agent-card-head">
+      <div>
+        <h3>${agent.name}</h3>
+        <p>${agent.why}</p>
+      </div>
+      <span class="priority-badge priority-${agent.priority}">${agent.priority}</span>
+    </div>
+    <p class="agent-service">${agent.service}</p>
+    <div class="ops-chip-row">
+      ${agent.prerequisites.map((item) => `<span>${item}</span>`).join("")}
+    </div>
+  </article>`;
+}
+
 function renderAgentOps(rankedAgents = []) {
   if (!elements.agentOpsSummary || !elements.agentOpsBoard) {
     return;
@@ -1813,13 +1874,16 @@ function renderAgentOps(rankedAgents = []) {
     planned: opsAgents.filter((agent) => agentLaneForStatus(agent.status) === "planned")
   };
   const nextAgent = laneGroups.setup[0] || laneGroups.planned[0] || laneGroups.ready[0];
+  const existingAgentNames = new Set(opsAgents.map((agent) => agent.name.toLowerCase()));
+  const recommendedAgents = recommendedAgentBacklog.filter((agent) => !existingAgentNames.has(agent.name.toLowerCase()));
 
   elements.agentOpsSummary.innerHTML = [
     ["agents", opsAgents.length],
     ["ready / active", activeCount],
     ["integration needed", integrationCount],
     ["planned", plannedCount],
-    ["degraded", degradedCount]
+    ["degraded", degradedCount],
+    ["recommended", recommendedAgents.length]
   ]
     .map(
       ([label, value]) => `<article class="summary-card">
@@ -1879,6 +1943,19 @@ function renderAgentOps(rankedAgents = []) {
             ${laneGroups.planned.length ? laneGroups.planned.map(renderAgentOpsCard).join("") : `<p class="empty-lane">No planned agents.</p>`}
           </div>
         </article>
+      </div>
+    </section>
+
+    <section>
+      <div class="section-heading-row">
+        <div>
+          <h3>Recommended Agent Builds</h3>
+          <p>Suggested operators to create as the client services stack expands.</p>
+        </div>
+        <span class="count-pill">${recommendedAgents.length}</span>
+      </div>
+      <div class="recommended-agent-grid">
+        ${recommendedAgents.map(renderRecommendedAgentCard).join("")}
       </div>
     </section>
 

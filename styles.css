@@ -723,6 +723,24 @@ color: #ffe3a0;
   border-color: rgba(244, 199, 96, 0.46);
 }
 
+.priority-high {
+  color: #ffe3a0;
+  background: rgba(244, 199, 96, 0.14);
+  border-color: rgba(244, 199, 96, 0.46);
+}
+
+.priority-medium {
+  color: #baffc8;
+  background: rgba(124, 255, 155, 0.11);
+  border-color: rgba(124, 255, 155, 0.42);
+}
+
+.priority-low {
+  color: #d1eaff;
+  background: rgba(110, 184, 255, 0.11);
+  border-color: rgba(110, 184, 255, 0.38);
+}
+
 .heat-growth {
 color: #caffd5;
   background: rgba(124, 255, 155, 0.12);
@@ -1810,6 +1828,7 @@ padding: 0.62rem;
 .agent-next-strip article,
 .agent-lane,
 .agent-ops-card,
+.recommended-agent-card,
 .agent-routing-card {
   border: 1px solid rgba(177, 194, 163, 0.16);
   border-radius: 8px;
@@ -1832,6 +1851,7 @@ padding: 0.62rem;
 .section-heading-row h3,
 .agent-lane-head h3,
 .agent-ops-card h3,
+.recommended-agent-card h3,
 .agent-routing-card h3 {
   margin: 0.2rem 0 0;
   color: #f0faed;
@@ -1842,6 +1862,7 @@ padding: 0.62rem;
 .agent-next-strip p,
 .section-heading-row p,
 .agent-ops-card p,
+.recommended-agent-card p,
 .agent-routing-card p,
 .agent-quick-list dd,
 .empty-lane {
@@ -1871,6 +1892,7 @@ padding: 0.62rem;
 }
 
 .agent-lane-grid,
+.recommended-agent-grid,
 .agent-routing-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -1945,6 +1967,19 @@ padding: 0.62rem;
 
 .agent-quick-list dd {
   display: block;
+  overflow-wrap: anywhere;
+}
+
+.recommended-agent-card {
+  border-color: rgba(124, 255, 155, 0.2);
+}
+
+.recommended-agent-card .ops-chip-row {
+  margin-top: 0.58rem;
+}
+
+.recommended-agent-card .ops-chip-row span {
+  max-width: 100%;
   overflow-wrap: anywhere;
 }
 
