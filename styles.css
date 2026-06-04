@@ -1799,13 +1799,16 @@ padding: 0.62rem;
   margin-top: 0.75rem;
 }
 
-.agent-command-strip {
+.agent-command-strip,
+.agent-next-strip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.65rem;
 }
 
 .agent-command-strip article,
+.agent-next-strip article,
+.agent-lane,
 .agent-ops-card,
 .agent-routing-card {
   border: 1px solid rgba(177, 194, 163, 0.16);
@@ -1816,7 +1819,7 @@ padding: 0.62rem;
 
 .section-kicker,
 .agent-service,
-.agent-card-meta strong {
+.agent-quick-list dt {
   display: block;
   color: var(--muted);
   font-size: 0.68rem;
@@ -1825,7 +1828,9 @@ padding: 0.62rem;
 }
 
 .agent-command-strip h3,
+.agent-next-strip h3,
 .section-heading-row h3,
+.agent-lane-head h3,
 .agent-ops-card h3,
 .agent-routing-card h3 {
   margin: 0.2rem 0 0;
@@ -1834,10 +1839,12 @@ padding: 0.62rem;
 }
 
 .agent-command-strip p,
+.agent-next-strip p,
 .section-heading-row p,
 .agent-ops-card p,
 .agent-routing-card p,
-.agent-card-meta span {
+.agent-quick-list dd,
+.empty-lane {
   margin: 0.34rem 0 0;
   color: var(--muted);
   font-size: 0.8rem;
@@ -1863,11 +1870,47 @@ padding: 0.62rem;
   font-weight: 900;
 }
 
-.agent-roster-grid,
+.agent-lane-grid,
 .agent-routing-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 0.65rem;
+}
+
+.agent-lane {
+  display: grid;
+  align-content: start;
+  gap: 0.62rem;
+  padding: 0.58rem;
+}
+
+.agent-lane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.agent-lane-head h3 {
+  margin: 0;
+}
+
+.agent-lane-head span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  background: rgba(111, 247, 143, 0.14);
+  color: var(--green);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.agent-card-stack {
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
 }
 
 .agent-card-head {
@@ -1879,6 +1922,7 @@ padding: 0.62rem;
 
 .agent-card-head .pill {
   flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .agent-service {
@@ -1886,21 +1930,20 @@ padding: 0.62rem;
   color: var(--green);
 }
 
-.agent-card-meta {
+.agent-quick-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
-  margin-top: 0.65rem;
+  gap: 0.42rem;
+  margin: 0.62rem 0 0;
 }
 
-.agent-card-meta div {
+.agent-quick-list div {
   min-width: 0;
   border-radius: 7px;
   background: rgba(255, 255, 255, 0.03);
-  padding: 0.48rem;
+  padding: 0.44rem;
 }
 
-.agent-card-meta span {
+.agent-quick-list dd {
   display: block;
   overflow-wrap: anywhere;
 }

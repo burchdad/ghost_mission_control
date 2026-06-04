@@ -1729,27 +1729,63 @@ function normalizeAgentStatus(status = "") {
   return status.toString().toLowerCase().replace(/\s+/g, "-");
 }
 
+function agentStatusLabel(status = "") {
+  const normalized = normalizeAgentStatus(status);
+  if (normalized.includes("integration")) {
+    return "needs setup";
+  }
+
+  if (normalized === "active") {
+    return "active";
+  }
+
+  if (normalized === "ready") {
+    return "ready";
+  }
+
+  if (normalized === "planned") {
+    return "planned";
+  }
+
+  return normalized || "planned";
+}
+
+function agentLaneForStatus(status = "") {
+  const normalized = normalizeAgentStatus(status);
+  if (["active", "ready"].includes(normalized)) {
+    return "ready";
+  }
+
+  if (normalized.includes("integration") || ["blocked", "degraded", "offline"].includes(normalized)) {
+    return "setup";
+  }
+
+  return "planned";
+}
+
 function renderAgentOpsCard(agent) {
   const status = normalizeAgentStatus(agent.status || "planned");
+  const triggerLine = (agent.triggers || ["Mission command"]).slice(0, 2).join(", ");
+  const ownsLine = (agent.responsibilities || ["Prepare next action"]).slice(0, 2).join(", ");
   return `<article class="agent-ops-card">
     <div class="agent-card-head">
       <div>
         <h3>${agent.name}</h3>
         <p>${agent.role || agent.statline || "Service operator ready for routing."}</p>
       </div>
-      <span class="pill ${toneClass[agent.tone] ?? "tone-gray"}">${status}</span>
+      <span class="pill ${toneClass[agent.tone] ?? "tone-gray"}">${agentStatusLabel(status)}</span>
     </div>
     <p class="agent-service">${agent.service || "Mission Ops"}</p>
-    <div class="agent-card-meta">
+    <dl class="agent-quick-list">
       <div>
-        <strong>Triggers</strong>
-        <span>${(agent.triggers || ["Mission command"]).join(", ")}</span>
+        <dt>Triggers</dt>
+        <dd>${triggerLine}</dd>
       </div>
       <div>
-        <strong>Owns</strong>
-        <span>${(agent.responsibilities || ["Prepare next action"]).join(", ")}</span>
+        <dt>Owns</dt>
+        <dd>${ownsLine}</dd>
       </div>
-    </div>
+    </dl>
   </article>`;
 }
 
@@ -1771,6 +1807,12 @@ function renderAgentOps(rankedAgents = []) {
   const integrationCount = opsAgents.filter((agent) => normalizeAgentStatus(agent.status).includes("integration")).length;
   const plannedCount = opsAgents.filter((agent) => normalizeAgentStatus(agent.status) === "planned").length;
   const degradedCount = opsAgents.filter((agent) => ["blocked", "degraded", "offline"].includes(normalizeAgentStatus(agent.status))).length;
+  const laneGroups = {
+    ready: opsAgents.filter((agent) => agentLaneForStatus(agent.status) === "ready"),
+    setup: opsAgents.filter((agent) => agentLaneForStatus(agent.status) === "setup"),
+    planned: opsAgents.filter((agent) => agentLaneForStatus(agent.status) === "planned")
+  };
+  const nextAgent = laneGroups.setup[0] || laneGroups.planned[0] || laneGroups.ready[0];
 
   elements.agentOpsSummary.innerHTML = [
     ["agents", opsAgents.length],
@@ -1805,13 +1847,52 @@ function renderAgentOps(rankedAgents = []) {
       <div class="section-heading-row">
         <div>
           <h3>Agent Roster</h3>
-          <p>Mission operators prepared for client services and internal routing.</p>
+          <p>Mission operators grouped by what can run now, what needs integration, and what comes next.</p>
         </div>
         <span class="count-pill">${opsAgents.length}</span>
       </div>
-      <div class="agent-roster-grid">
-        ${opsAgents.map(renderAgentOpsCard).join("")}
+      <div class="agent-lane-grid">
+        <article class="agent-lane">
+          <div class="agent-lane-head">
+            <h3>Ready</h3>
+            <span>${laneGroups.ready.length}</span>
+          </div>
+          <div class="agent-card-stack">
+            ${laneGroups.ready.length ? laneGroups.ready.map(renderAgentOpsCard).join("") : `<p class="empty-lane">No ready agents yet.</p>`}
+          </div>
+        </article>
+        <article class="agent-lane">
+          <div class="agent-lane-head">
+            <h3>Needs Setup</h3>
+            <span>${laneGroups.setup.length}</span>
+          </div>
+          <div class="agent-card-stack">
+            ${laneGroups.setup.length ? laneGroups.setup.map(renderAgentOpsCard).join("") : `<p class="empty-lane">No setup blockers.</p>`}
+          </div>
+        </article>
+        <article class="agent-lane">
+          <div class="agent-lane-head">
+            <h3>Planned</h3>
+            <span>${laneGroups.planned.length}</span>
+          </div>
+          <div class="agent-card-stack">
+            ${laneGroups.planned.length ? laneGroups.planned.map(renderAgentOpsCard).join("") : `<p class="empty-lane">No planned agents.</p>`}
+          </div>
+        </article>
       </div>
+    </section>
+
+    <section class="agent-next-strip">
+      <article>
+        <span class="section-kicker">Next Activation</span>
+        <h3>${nextAgent?.name || "Agent roster waiting"}</h3>
+        <p>${nextAgent ? `${agentStatusLabel(nextAgent.status)} | ${nextAgent.service}` : "Create or connect the first agent profile."}</p>
+      </article>
+      <article>
+        <span class="section-kicker">Activation Rule</span>
+        <h3>Connect tools before autonomy</h3>
+        <p>Every agent needs client scope, approved contacts, connected systems, and owner approval rules before it can act.</p>
+      </article>
     </section>
 
     <section>
@@ -1896,6 +1977,10 @@ function renderAgents(site) {
       <article class="agent-item">
         <h3>Agent roster ready</h3>
         <p class="statline">Live rankings, logs, and collaboration populate after command execution and monitoring cycles.</p>
+      </article>
+      <article class="agent-item">
+        <h3>Next agent to activate</h3>
+        <p class="statline">Search Intelligence Agent needs the geo.ghostai.solutions API connection before it can route GEO service work.</p>
       </article>
     `;
     updateNavBadges();
