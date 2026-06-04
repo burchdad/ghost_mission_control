@@ -529,6 +529,63 @@
       </div>
     </aside>
 
+    <div id="agentBuildModal" class="client-modal view-hidden" role="dialog" aria-modal="true" aria-labelledby="agentBuildModalTitle">
+      <div class="client-modal-panel agent-build-modal-panel">
+        <div class="panel-header compact client-modal-header">
+          <div>
+            <h2 id="agentBuildModalTitle">Draft Agent Build</h2>
+            <p>Prepare the agent spec for Codex or a build-session operator.</p>
+          </div>
+          <button id="closeAgentBuildModalButton" class="icon-button" type="button" aria-label="Close agent build modal">X</button>
+        </div>
+        <form id="agentBuildForm" class="client-onboard-form">
+          <div class="agent-build-grid">
+            <label>
+              <span>Agent Name</span>
+              <input id="agentBuildNameInput" name="agentName" type="text" required />
+            </label>
+            <label>
+              <span>Service Area</span>
+              <input id="agentBuildServiceInput" name="service" type="text" required />
+            </label>
+            <label>
+              <span>Priority</span>
+              <select id="agentBuildPriorityInput" name="priority">
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+            </label>
+            <label>
+              <span>Build Target</span>
+              <select id="agentBuildTargetInput" name="target">
+                <option value="codex">Codex build session</option>
+                <option value="backend-worker">Backend worker / endpoint</option>
+                <option value="client-helper">Client Web Helper template</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            <span>Purpose</span>
+            <textarea id="agentBuildPurposeInput" name="purpose" rows="3"></textarea>
+          </label>
+          <label>
+            <span>Required Access / Prerequisites</span>
+            <textarea id="agentBuildPrerequisitesInput" name="prerequisites" rows="3"></textarea>
+          </label>
+          <label>
+            <span>Build Prompt</span>
+            <textarea id="agentBuildPromptInput" name="buildPrompt" rows="8"></textarea>
+          </label>
+          <div class="agent-build-actions">
+            <button class="command-send" type="submit">Queue Draft Build</button>
+            <button id="copyAgentBuildPromptButton" class="new-client-button secondary-button" type="button">Copy Prompt</button>
+          </div>
+          <p id="agentBuildResponse" class="command-response" aria-live="polite"></p>
+        </form>
+      </div>
+    </div>
+
     <script src="app.js" defer></script>
   </body>
 </html>

@@ -1,4 +1,6 @@
 let missionData = { websites: [] };
+let draftedAgentBuilds = [];
+let currentRecommendedAgents = [];
 const toneClass = {
   green: "tone-green",
   yellow: "tone-yellow",
@@ -99,6 +101,18 @@ const elements = {
   clientContactInput: document.getElementById("clientContactInput"),
   clientNotesInput: document.getElementById("clientNotesInput"),
   clientFormResponse: document.getElementById("clientFormResponse"),
+  agentBuildModal: document.getElementById("agentBuildModal"),
+  closeAgentBuildModalButton: document.getElementById("closeAgentBuildModalButton"),
+  agentBuildForm: document.getElementById("agentBuildForm"),
+  agentBuildNameInput: document.getElementById("agentBuildNameInput"),
+  agentBuildServiceInput: document.getElementById("agentBuildServiceInput"),
+  agentBuildPriorityInput: document.getElementById("agentBuildPriorityInput"),
+  agentBuildTargetInput: document.getElementById("agentBuildTargetInput"),
+  agentBuildPurposeInput: document.getElementById("agentBuildPurposeInput"),
+  agentBuildPrerequisitesInput: document.getElementById("agentBuildPrerequisitesInput"),
+  agentBuildPromptInput: document.getElementById("agentBuildPromptInput"),
+  copyAgentBuildPromptButton: document.getElementById("copyAgentBuildPromptButton"),
+  agentBuildResponse: document.getElementById("agentBuildResponse"),
   onboardingSummary: document.getElementById("onboardingSummary"),
   onboardingSearchInput: document.getElementById("onboardingSearchInput"),
   onboardingBucketFilter: document.getElementById("onboardingBucketFilter"),
@@ -952,6 +966,99 @@ function closeClientModal() {
   }
 }
 
+function buildAgentDraftPrompt(agent, target = "codex") {
+  const targetLabel = {
+    codex: "Codex build session",
+    "backend-worker": "backend worker or API endpoint",
+    "client-helper": "client Web Helper template"
+  }[target] || target;
+
+  return [
+    `Create a Ghost Mission Control agent named "${agent.name}".`,
+    `Build target: ${targetLabel}.`,
+    `Service area: ${agent.service}.`,
+    `Priority: ${agent.priority}.`,
+    `Purpose: ${agent.why}`,
+    `Required access/prerequisites: ${agent.prerequisites.join(", ")}.`,
+    "The agent should include a reusable spec, operating prompt, required tools, approval rules, routing triggers, and a UI/status card.",
+    "Keep risky client-facing actions owner-approved, including deploys, billing, ad spend, form changes, public replies, and credential handling.",
+    "Return an implementation plan first, then code changes only after approval."
+  ].join("\n");
+}
+
+function openAgentBuildModal(agentIndex) {
+  if (!elements.agentBuildModal) {
+    return;
+  }
+
+  const agent = currentRecommendedAgents[Number(agentIndex)];
+  if (!agent) {
+    return;
+  }
+
+  elements.agentBuildNameInput.value = agent.name;
+  elements.agentBuildServiceInput.value = agent.service;
+  elements.agentBuildPriorityInput.value = agent.priority;
+  elements.agentBuildTargetInput.value = "codex";
+  elements.agentBuildPurposeInput.value = agent.why;
+  elements.agentBuildPrerequisitesInput.value = agent.prerequisites.join("\n");
+  elements.agentBuildPromptInput.value = buildAgentDraftPrompt(agent, "codex");
+  if (elements.agentBuildResponse) {
+    elements.agentBuildResponse.textContent = "";
+  }
+
+  elements.agentBuildModal.classList.remove("view-hidden");
+  elements.agentBuildNameInput?.focus();
+}
+
+function closeAgentBuildModal() {
+  elements.agentBuildModal?.classList.add("view-hidden");
+}
+
+function submitAgentBuildDraft(event) {
+  event.preventDefault();
+  const draft = {
+    id: `agent-draft-${Date.now()}`,
+    name: elements.agentBuildNameInput.value.trim(),
+    service: elements.agentBuildServiceInput.value.trim(),
+    priority: elements.agentBuildPriorityInput.value,
+    target: elements.agentBuildTargetInput.value,
+    purpose: elements.agentBuildPurposeInput.value.trim(),
+    prerequisites: elements.agentBuildPrerequisitesInput.value
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean),
+    prompt: elements.agentBuildPromptInput.value.trim(),
+    status: "queued",
+    createdAt: new Date().toISOString()
+  };
+
+  draftedAgentBuilds = [draft, ...draftedAgentBuilds].slice(0, 6);
+  if (elements.agentBuildResponse) {
+    elements.agentBuildResponse.textContent = `${draft.name} build draft queued for ${draft.target}.`;
+  }
+  renderAgents(getActiveSite());
+}
+
+async function copyAgentBuildPrompt() {
+  const prompt = elements.agentBuildPromptInput?.value || "";
+  if (!prompt) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(prompt);
+    if (elements.agentBuildResponse) {
+      elements.agentBuildResponse.textContent = "Build prompt copied.";
+    }
+  } catch {
+    elements.agentBuildPromptInput?.select();
+    if (elements.agentBuildResponse) {
+      elements.agentBuildResponse.textContent = "Prompt selected. Copy it with Ctrl+C.";
+    }
+  }
+}
+
 function setupCommandPalette() {
   if (!elements.commandPalette || !elements.paletteInput) {
     return;
@@ -973,7 +1080,12 @@ function setupCommandPalette() {
 
     const paletteOpen = !elements.commandPalette.classList.contains("view-hidden");
     const clientModalOpen = elements.clientOnboardModal && !elements.clientOnboardModal.classList.contains("view-hidden");
+    const agentBuildModalOpen = elements.agentBuildModal && !elements.agentBuildModal.classList.contains("view-hidden");
     if (!paletteOpen) {
+      if (key === "escape" && agentBuildModalOpen) {
+        closeAgentBuildModal();
+        return;
+      }
       if (key === "escape" && clientModalOpen) {
         closeClientModal();
         return;
@@ -1834,7 +1946,7 @@ function renderAgentOpsCard(agent) {
   </article>`;
 }
 
-function renderRecommendedAgentCard(agent) {
+function renderRecommendedAgentCard(agent, index) {
   return `<article class="recommended-agent-card">
     <div class="agent-card-head">
       <div>
@@ -1847,7 +1959,29 @@ function renderRecommendedAgentCard(agent) {
     <div class="ops-chip-row">
       ${agent.prerequisites.map((item) => `<span>${item}</span>`).join("")}
     </div>
+    <button class="agent-build-button" type="button" data-agent-build-index="${index}">Draft Agent Build</button>
   </article>`;
+}
+
+function renderAgentBuildDraftSnapshot() {
+  if (!draftedAgentBuilds.length) {
+    return "";
+  }
+
+  return `<article class="agent-item">
+    <h3>Draft builds queued</h3>
+    <p class="statline">${draftedAgentBuilds.length} agent build ${draftedAgentBuilds.length === 1 ? "request" : "requests"} ready for Codex/build handoff.</p>
+  </article>
+  ${draftedAgentBuilds
+    .slice(0, 2)
+    .map(
+      (draft) => `<article class="agent-item">
+        <h3>${draft.name}</h3>
+        <p class="pill priority-${draft.priority}">${draft.priority}</p>
+        <p class="statline">${draft.service} | ${draft.target}</p>
+      </article>`
+    )
+    .join("")}`;
 }
 
 function renderAgentOps(rankedAgents = []) {
@@ -1876,6 +2010,7 @@ function renderAgentOps(rankedAgents = []) {
   const nextAgent = laneGroups.setup[0] || laneGroups.planned[0] || laneGroups.ready[0];
   const existingAgentNames = new Set(opsAgents.map((agent) => agent.name.toLowerCase()));
   const recommendedAgents = recommendedAgentBacklog.filter((agent) => !existingAgentNames.has(agent.name.toLowerCase()));
+  currentRecommendedAgents = recommendedAgents;
 
   elements.agentOpsSummary.innerHTML = [
     ["agents", opsAgents.length],
@@ -2059,6 +2194,7 @@ function renderAgents(site) {
         <h3>Next agent to activate</h3>
         <p class="statline">Search Intelligence Agent needs the geo.ghostai.solutions API connection before it can route GEO service work.</p>
       </article>
+      ${renderAgentBuildDraftSnapshot()}
     `;
     updateNavBadges();
     return;
@@ -2078,7 +2214,7 @@ function renderAgents(site) {
         </div>
       </article>`
     )
-    .join("");
+    .join("") + renderAgentBuildDraftSnapshot();
 
   updateNavBadges();
   renderExecutionConsole();
@@ -4003,10 +4139,28 @@ async function init() {
   if (elements.clientOnboardForm) {
     elements.clientOnboardForm.addEventListener("submit", submitClientOnboarding);
   }
+  if (elements.agentBuildForm) {
+    elements.agentBuildForm.addEventListener("submit", submitAgentBuildDraft);
+  }
 
   elements.openClientModalButton?.addEventListener("click", () => openClientModal());
   elements.startOnboardingButton?.addEventListener("click", () => openClientModal({ title: "Start Onboarding", stage: "lead" }));
   elements.closeClientModalButton?.addEventListener("click", closeClientModal);
+  elements.closeAgentBuildModalButton?.addEventListener("click", closeAgentBuildModal);
+  elements.copyAgentBuildPromptButton?.addEventListener("click", copyAgentBuildPrompt);
+  elements.agentBuildTargetInput?.addEventListener("change", () => {
+    const agent = {
+      name: elements.agentBuildNameInput.value,
+      service: elements.agentBuildServiceInput.value,
+      priority: elements.agentBuildPriorityInput.value,
+      why: elements.agentBuildPurposeInput.value,
+      prerequisites: elements.agentBuildPrerequisitesInput.value
+        .split("\n")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    };
+    elements.agentBuildPromptInput.value = buildAgentDraftPrompt(agent, elements.agentBuildTargetInput.value);
+  });
   elements.closeClientDetailButton?.addEventListener("click", closeClientDetail);
   elements.clientSearchInput?.addEventListener("input", () => renderClients(liveClients));
   elements.clientStageFilter?.addEventListener("change", () => renderClients(liveClients));
@@ -4030,6 +4184,19 @@ async function init() {
     if (event.target === elements.clientOnboardModal) {
       closeClientModal();
     }
+  });
+  elements.agentBuildModal?.addEventListener("click", (event) => {
+    if (event.target === elements.agentBuildModal) {
+      closeAgentBuildModal();
+    }
+  });
+  elements.agentOpsPanel?.addEventListener("click", (event) => {
+    const buildButton = event.target.closest("[data-agent-build-index]");
+    if (!buildButton) {
+      return;
+    }
+
+    openAgentBuildModal(buildButton.dataset.agentBuildIndex);
   });
   elements.onboardingPanel?.addEventListener("click", (event) => {
     const skipButton = event.target.closest("[data-onboarding-skip-client][data-onboarding-skip-item]");
