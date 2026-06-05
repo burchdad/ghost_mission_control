@@ -1,7 +1,7 @@
 let missionData = { websites: [] };
 let draftedAgentBuilds = [];
 let currentRecommendedAgents = [];
-const configuredApiBase = String(window.GHOST_API_BASE_URL || "").trim().replace(/\/+$/, "");
+const configuredApiBase = normalizeApiBase(window.GHOST_API_BASE_URL);
 const API_BASE_URL = configuredApiBase && !configuredApiBase.includes("__GHOST_API_BASE_URL__") ? configuredApiBase : "";
 const toneClass = {
   green: "tone-green",
@@ -11,6 +11,19 @@ const toneClass = {
   violet: "tone-violet",
   gray: "tone-gray"
 };
+
+function normalizeApiBase(value) {
+  const trimmedValue = String(value || "").trim().replace(/\/+$/, "");
+  if (!trimmedValue || trimmedValue.includes("__GHOST_API_BASE_URL__")) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(trimmedValue)) {
+    return trimmedValue;
+  }
+
+  return `https://${trimmedValue}`;
+}
 
 function apiUrl(path) {
   const normalizedPath = String(path || "").startsWith("/") ? String(path || "") : `/${path || ""}`;
