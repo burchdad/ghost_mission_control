@@ -37,6 +37,8 @@ const elements = {
   trustExplanation: document.getElementById("trustExplanation"),
   activityFeed: document.getElementById("activityFeed"),
   crossSystemInsights: document.getElementById("crossSystemInsights"),
+  intelligenceSummary: document.getElementById("intelligenceSummary"),
+  intelligenceBoard: document.getElementById("intelligenceBoard"),
   agentSnapshot: document.getElementById("agentSnapshot"),
   agentOpsSummary: document.getElementById("agentOpsSummary"),
   agentOpsBoard: document.getElementById("agentOpsBoard"),
@@ -154,6 +156,7 @@ const elements = {
   scenarioPanel: document.getElementById("scenarioPanel"),
   predictivePanel: document.getElementById("predictivePanel"),
   crossSystemPanel: document.getElementById("crossSystemPanel"),
+  intelligencePanel: document.getElementById("intelligencePanel"),
   agentsPanel: document.getElementById("agentsPanel"),
   agentOpsPanel: document.getElementById("agentOpsPanel"),
   navItems: [...document.querySelectorAll(".nav-item")],
@@ -352,7 +355,7 @@ const viewVisibility = {
   agents: ["agentOpsPanel", "agentsPanel"],
   "web-helpers": ["webHelpersPanel", "webHelperRequestsPanel"],
   tools: ["toolsPanel", "toolActionsPanel", "commandPlanPanel"],
-  intelligence: ["predictivePanel", "crossSystemPanel", "perceptionPanel", "alertsPanel", "activityPanel"],
+  intelligence: ["intelligencePanel", "predictivePanel", "crossSystemPanel", "perceptionPanel", "alertsPanel", "activityPanel"],
   strategy: ["strategicPanel", "perceptionPanel", "commandPlanPanel", "commandMemoryPanel"],
   simulation: ["scenarioPanel", "strategicPanel", "predictivePanel"],
   autonomy: ["autonomyPanel", "scenarioPanel", "strategicPanel", "perceptionPanel"],
@@ -383,6 +386,7 @@ function setActiveView(view) {
     "toolActionsPanel",
     "buildQueuePanel",
     "webHelpersPanel",
+    "intelligencePanel",
     "executionPanel",
     "agentOpsPanel",
     "executionActionsPanel",
@@ -443,7 +447,7 @@ function setActiveView(view) {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
 
-  const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "executionPanel", "agentOpsPanel"];
+  const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "intelligencePanel", "executionPanel", "agentOpsPanel"];
   const sideColumnPanels = [
     "clientActionsPanel",
     "onboardingActionsPanel",
@@ -2197,6 +2201,7 @@ function renderAgents(site) {
       ${renderAgentBuildDraftSnapshot()}
     `;
     updateNavBadges();
+    renderIntelligenceCore(getActiveSite());
     return;
   }
 
@@ -2217,6 +2222,7 @@ function renderAgents(site) {
     .join("") + renderAgentBuildDraftSnapshot();
 
   updateNavBadges();
+  renderIntelligenceCore(getActiveSite());
   renderExecutionConsole();
 }
 
@@ -2287,6 +2293,7 @@ function renderPredictiveAlerts(signals) {
     .join("");
 
   updateNavBadges();
+  renderIntelligenceCore(getActiveSite());
 }
 
 async function loadStrategicGoals(siteId = activeSiteId) {
@@ -2621,6 +2628,187 @@ function renderCrossSystemInsights(site) {
       </article>`
     )
     .join("");
+}
+
+function getSignalSeverityCounts(signals) {
+  return (signals || []).reduce(
+    (totals, signal) => {
+      if (signal.severity === "critical") {
+        totals.critical += 1;
+      } else if (signal.severity === "warning") {
+        totals.warning += 1;
+      } else {
+        totals.info += 1;
+      }
+
+      return totals;
+    },
+    { critical: 0, warning: 0, info: 0 }
+  );
+}
+
+function renderIntelligenceCore(site = getActiveSite() || getEmptySiteState()) {
+  if (!elements.intelligenceSummary || !elements.intelligenceBoard) {
+    return;
+  }
+
+  const monitoredPages = site.pages || [];
+  const failedPages = monitoredPages.filter((page) => !page.ok);
+  const slowPages = monitoredPages.filter((page) => page.ok && Number(page.latencyMs || 0) >= 1500);
+  const healthyPages = monitoredPages.filter((page) => page.ok && Number(page.latencyMs || 0) < 1500);
+  const signals = livePredictiveSignals || [];
+  const signalCounts = getSignalSeverityCounts(signals);
+  const agents = liveAgentIntelligence || [];
+  const degradedAgents = agents.filter((agent) => Number(agent.confidence || 0) < 70 || agent.status === "degraded");
+  const crossInsights = site.crossInsights || [];
+  const alerts = site.alerts || [];
+  const modules = site.modules || [];
+  const activeModules = modules.filter((module) => module.status && module.status !== "offline");
+
+  const perceptionScore = Math.max(
+    0,
+    Math.min(
+      100,
+      92 - failedPages.length * 18 - slowPages.length * 6 - signalCounts.critical * 16 - signalCounts.warning * 7 - degradedAgents.length * 5
+    )
+  );
+  const coverageScore = monitoredPages.length
+    ? Math.round((healthyPages.length / monitoredPages.length) * 100)
+    : 0;
+  const confidenceScore = agents.length
+    ? Math.round(agents.reduce((sum, agent) => sum + Number(agent.confidence || 0), 0) / agents.length)
+    : perceptionScore;
+  const decisionCount = alerts.length + signalCounts.critical + degradedAgents.length;
+
+  renderOpsSummary(elements.intelligenceSummary, [
+    { label: "Perception Score", value: `${perceptionScore}` },
+    { label: "Coverage", value: `${coverageScore}%` },
+    { label: "Confidence", value: `${confidenceScore}%` },
+    { label: "Decisions", value: decisionCount }
+  ]);
+
+  const targetRows = monitoredPages.length
+    ? monitoredPages.slice(0, 6).map((page) => {
+        const tone = page.ok ? (Number(page.latencyMs || 0) >= 1500 ? "tone-yellow" : "tone-green") : "tone-red";
+        const status = page.ok ? `${page.statusCode || 200} / ${page.latencyMs || 0}ms` : `failed / ${page.error || "unreachable"}`;
+        return `<article class="intel-row">
+          <div>
+            <h3>${escapeHtml(page.label || page.url)}</h3>
+            <p>${escapeHtml(page.url)}</p>
+          </div>
+          <span class="pill ${tone}">${escapeHtml(status)}</span>
+        </article>`;
+      }).join("")
+    : `<article class="intel-empty">
+        <h3>No monitored targets</h3>
+        <p>Backend has no website/page configuration for monitoring.</p>
+      </article>`;
+
+  const signalRows = signals.length
+    ? signals.slice(0, 5).map((signal) => `<article class="intel-row">
+        <div>
+          <h3>${escapeHtml(signal.type || "Signal").replaceAll("_", " ")}</h3>
+          <p>${escapeHtml(signal.message || signal.predictedOutcome || "No signal detail available.")}</p>
+        </div>
+        <span class="pill ${signal.severity === "critical" ? "tone-red" : "tone-yellow"}">${escapeHtml(signal.severity || "watch")}</span>
+      </article>`).join("")
+    : `<article class="intel-empty">
+        <h3>No predictive risks</h3>
+        <p>Signal layer is clear for the selected site.</p>
+      </article>`;
+
+  const decisionRows = [
+    ...alerts.map((alert) => ({
+      title: alert.title,
+      detail: alert.detail,
+      tone: alert.tone === "red" ? "tone-red" : alert.tone === "yellow" ? "tone-yellow" : "tone-blue"
+    })),
+    ...degradedAgents.map((agent) => ({
+      title: `${agent.name || "Agent"} confidence review`,
+      detail: agent.role || agent.service || "Agent requires attention before more autonomous routing.",
+      tone: "tone-yellow"
+    }))
+  ];
+
+  const decisionsMarkup = decisionRows.length
+    ? decisionRows.slice(0, 5).map((item) => `<article class="intel-decision ${item.tone}">
+        <h3>${escapeHtml(item.title)}</h3>
+        <p>${escapeHtml(item.detail)}</p>
+      </article>`).join("")
+    : `<article class="intel-decision tone-green">
+        <h3>Decision queue clear</h3>
+        <p>No critical owner intervention is required for the current site.</p>
+      </article>`;
+
+  const authoritySources = [
+    { label: "AI Search", value: perceptionScore >= 80 ? "stable" : "review" },
+    { label: "Citation Coverage", value: crossInsights.length ? `${crossInsights.length} signals` : "waiting" },
+    { label: "Entity Authority", value: activeModules.length ? "mapped" : "unmapped" },
+    { label: "Competitor Layer", value: site.domain && site.domain !== "n/a" ? "watching" : "needs target" }
+  ];
+
+  elements.intelligenceBoard.innerHTML = `
+    <section class="intelligence-grid">
+      <article class="intelligence-card intelligence-card-wide">
+        <div class="intel-card-head">
+          <div>
+            <span class="intel-kicker">Now Watching</span>
+            <h3>${escapeHtml(site.name || "Ghost Ops")}</h3>
+          </div>
+          <span class="pill ${failedPages.length ? "tone-red" : slowPages.length ? "tone-yellow" : "tone-green"}">
+            ${failedPages.length ? "action" : slowPages.length ? "watch" : "clear"}
+          </span>
+        </div>
+        <div class="intel-target-list">${targetRows}</div>
+      </article>
+      <article class="intelligence-card">
+        <div class="intel-card-head">
+          <div>
+            <span class="intel-kicker">Signal Radar</span>
+            <h3>Predictive Layer</h3>
+          </div>
+          <span class="pill ${signalCounts.critical ? "tone-red" : signalCounts.warning ? "tone-yellow" : "tone-green"}">
+            ${signals.length} signals
+          </span>
+        </div>
+        <div class="intel-target-list">${signalRows}</div>
+      </article>
+      <article class="intelligence-card">
+        <div class="intel-card-head">
+          <div>
+            <span class="intel-kicker">Decision Queue</span>
+            <h3>Operator Review</h3>
+          </div>
+          <span class="pill ${decisionCount ? "tone-yellow" : "tone-green"}">${decisionCount} open</span>
+        </div>
+        <div class="intel-decision-list">${decisionsMarkup}</div>
+      </article>
+      <article class="intelligence-card intelligence-card-wide">
+        <div class="intel-card-head">
+          <div>
+            <span class="intel-kicker">Perception Layer</span>
+            <h3>Authority and Source Coverage</h3>
+          </div>
+          <span class="pill tone-blue">${coverageScore}% coverage</span>
+        </div>
+        <div class="intel-authority-grid">
+          ${authoritySources.map((source) => `<div>
+            <span>${escapeHtml(source.label)}</span>
+            <strong>${escapeHtml(source.value)}</strong>
+          </div>`).join("")}
+        </div>
+        <div class="intel-insight-strip">
+          ${(crossInsights.length ? crossInsights : [{ title: "Insight pipeline waiting", detail: "More authority and citation signals will appear after monitored targets are configured." }])
+            .slice(0, 3)
+            .map((insight) => `<article>
+              <h3>${escapeHtml(insight.title)}</h3>
+              <p>${escapeHtml(insight.detail)}</p>
+            </article>`)
+            .join("")}
+        </div>
+      </article>
+    </section>
+  `;
 }
 
 function renderBuildQueue(site) {
@@ -3999,6 +4187,7 @@ function renderSite(siteId) {
   renderAlerts(site);
   renderActivity(site);
   renderCrossSystemInsights(site);
+  renderIntelligenceCore(site);
   renderAgents(site);
   renderBuildQueue(site);
   loadWebHelpers(site.id);
