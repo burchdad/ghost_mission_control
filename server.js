@@ -1582,6 +1582,22 @@ function classifyRepo(repo) {
   const name = String(repo.name || "").toLowerCase();
   const description = String(repo.description || "").toLowerCase();
   const haystack = `${name} ${description}`;
+  const knownClientRepos = new Set([
+    "anna_air",
+    "arcane_randd",
+    "barbara_consulting",
+    "barbara_consulting_2",
+    "design-and-renovation",
+    "e-commerce_peptides",
+    "landscape_design",
+    "mobile-detailing",
+    "price-consulting",
+    "price-consulting-site"
+  ]);
+
+  if (knownClientRepos.has(name)) {
+    return { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" };
+  }
 
   if (haystack.includes("geo") || haystack.includes("seo") || haystack.includes("aeo")) {
     return { category: "SEO / AEO / GEO Tools", productStatus: "Revenue Product", serviceId: "search-intelligence" };
