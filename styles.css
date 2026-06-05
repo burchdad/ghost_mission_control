@@ -1193,6 +1193,196 @@ min-width: 0;
   overflow-wrap: anywhere;
 }
 
+.strategy-command-board {
+display: grid;
+  gap: 0.75rem;
+}
+
+.strategy-command-grid {
+display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 0.65rem;
+}
+
+.strategy-command-card,
+.strategy-hero-card,
+.strategy-portfolio-card,
+.strategy-market-card {
+border: 1px solid rgba(177, 194, 163, 0.16);
+  border-radius: 8px;
+  background: rgba(11, 17, 11, 0.82);
+  min-width: 0;
+}
+
+.strategy-command-card,
+.strategy-hero-card {
+padding: 0.78rem;
+}
+
+.strategy-command-card-wide {
+grid-column: span 2;
+}
+
+.strategy-hero-card {
+display: grid;
+  grid-template-columns: minmax(0, 1fr) 126px;
+  gap: 0.8rem;
+  align-items: center;
+  border-color: rgba(124, 255, 155, 0.32);
+  background: linear-gradient(135deg, rgba(17, 58, 35, 0.72), rgba(9, 14, 9, 0.92));
+}
+
+.strategy-hero-copy h3,
+.strategy-command-card h3,
+.strategy-portfolio-card h3,
+.strategy-market-card h3 {
+margin: 0;
+  color: #f0faed;
+  font-size: 1rem;
+}
+
+.strategy-hero-copy p,
+.strategy-command-card p,
+.strategy-portfolio-card p,
+.strategy-market-card p,
+.strategy-site-note {
+margin: 0.38rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.strategy-score-ring {
+display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border: 1px solid rgba(124, 255, 155, 0.34);
+  border-radius: 8px;
+  background: rgba(124, 255, 155, 0.08);
+}
+
+.strategy-score-ring strong {
+color: var(--green);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.strategy-score-ring span {
+color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.strategy-bar-stack,
+.strategy-market-grid,
+.strategy-risk-list {
+display: grid;
+  gap: 0.5rem;
+}
+
+.strategy-bar-row {
+display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) 42px;
+  gap: 0.45rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.strategy-bar-row strong {
+color: var(--text);
+  text-align: right;
+}
+
+.strategy-progress-track {
+height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(177, 194, 163, 0.14);
+}
+
+.strategy-progress-fill {
+height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(124, 255, 155, 0.95), rgba(120, 233, 215, 0.85));
+}
+
+.strategy-step-list,
+.strategy-risk-list {
+margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.strategy-step-list {
+display: grid;
+  gap: 0.45rem;
+}
+
+.strategy-step-list li,
+.strategy-risk-list li {
+border: 1px solid rgba(177, 194, 163, 0.13);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #d7ead0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.strategy-step-list li {
+display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 0.45rem;
+  padding: 0.5rem;
+}
+
+.strategy-step-list li span {
+display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(124, 255, 155, 0.12);
+  color: var(--green);
+  font-weight: 900;
+}
+
+.strategy-risk-list li {
+padding: 0.48rem;
+}
+
+.strategy-portfolio-grid {
+display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+}
+
+.strategy-portfolio-card,
+.strategy-market-card {
+padding: 0.62rem;
+}
+
+.strategy-portfolio-card {
+display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.6rem;
+  align-items: start;
+}
+
+.strategy-portfolio-card p,
+.strategy-portfolio-card .pill {
+grid-column: 1 / -1;
+}
+
+.strategy-portfolio-card strong {
+color: var(--green);
+  font-size: 1.35rem;
+}
+
 .client-pipeline {
 margin-top: 0.75rem;
   display: flex;
@@ -3670,14 +3860,26 @@ grid-template-columns: repeat(2, minmax(0, 1fr));
   .web-helper-cards,
   .intelligence-grid,
   .intel-authority-grid,
+  .strategy-command-grid,
+  .strategy-portfolio-grid,
   .kpi-section,
   .web-helper-summary,
   .build-queue-columns {
 grid-template-columns: 1fr;
   }
 
-.intelligence-card-wide {
+.intelligence-card-wide,
+  .strategy-command-card-wide {
 grid-column: auto;
+  }
+
+.strategy-hero-card {
+grid-template-columns: 1fr;
+  }
+
+.strategy-score-ring {
+width: 126px;
+  justify-self: start;
   }
 
 .mission-strip {

@@ -39,6 +39,8 @@ const elements = {
   crossSystemInsights: document.getElementById("crossSystemInsights"),
   intelligenceSummary: document.getElementById("intelligenceSummary"),
   intelligenceBoard: document.getElementById("intelligenceBoard"),
+  strategySummary: document.getElementById("strategySummary"),
+  strategyBoard: document.getElementById("strategyBoard"),
   agentSnapshot: document.getElementById("agentSnapshot"),
   agentOpsSummary: document.getElementById("agentOpsSummary"),
   agentOpsBoard: document.getElementById("agentOpsBoard"),
@@ -157,6 +159,7 @@ const elements = {
   predictivePanel: document.getElementById("predictivePanel"),
   crossSystemPanel: document.getElementById("crossSystemPanel"),
   intelligencePanel: document.getElementById("intelligencePanel"),
+  strategyPanel: document.getElementById("strategyPanel"),
   agentsPanel: document.getElementById("agentsPanel"),
   agentOpsPanel: document.getElementById("agentOpsPanel"),
   navItems: [...document.querySelectorAll(".nav-item")],
@@ -208,6 +211,7 @@ let liveOnboarding = null;
 let liveServiceCatalog = null;
 let liveToolRegistry = null;
 let livePredictiveSignals = [];
+let liveStrategicPlan = null;
 let liveAutonomousGoals = [];
 let activeSiteId = "";
 
@@ -356,7 +360,7 @@ const viewVisibility = {
   "web-helpers": ["webHelpersPanel", "webHelperRequestsPanel"],
   tools: ["toolsPanel", "toolActionsPanel", "commandPlanPanel"],
   intelligence: ["intelligencePanel", "predictivePanel", "crossSystemPanel", "perceptionPanel", "alertsPanel", "activityPanel"],
-  strategy: ["strategicPanel", "perceptionPanel", "commandPlanPanel", "commandMemoryPanel"],
+  strategy: ["strategyPanel", "strategicPanel", "perceptionPanel", "commandPlanPanel", "commandMemoryPanel"],
   simulation: ["scenarioPanel", "strategicPanel", "predictivePanel"],
   autonomy: ["autonomyPanel", "scenarioPanel", "strategicPanel", "perceptionPanel"],
   "build-queue": ["buildQueuePanel", "operationsPanel"]
@@ -387,6 +391,7 @@ function setActiveView(view) {
     "buildQueuePanel",
     "webHelpersPanel",
     "intelligencePanel",
+    "strategyPanel",
     "executionPanel",
     "agentOpsPanel",
     "executionActionsPanel",
@@ -447,7 +452,7 @@ function setActiveView(view) {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
 
-  const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "intelligencePanel", "executionPanel", "agentOpsPanel"];
+  const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "intelligencePanel", "strategyPanel", "executionPanel", "agentOpsPanel"];
   const sideColumnPanels = [
     "clientActionsPanel",
     "onboardingActionsPanel",
@@ -2300,13 +2305,19 @@ async function loadStrategicGoals(siteId = activeSiteId) {
   try {
     const response = await fetch(apiUrl(`/mission/strategy?siteId=${encodeURIComponent(siteId)}`));
     if (!response.ok) {
+      liveStrategicPlan = null;
+      renderStrategyCommand(null);
       return;
     }
 
     const payload = await response.json();
+    liveStrategicPlan = payload;
     renderStrategicGoals(payload);
+    renderStrategyCommand(payload);
   } catch {
+    liveStrategicPlan = null;
     renderStrategicGoals(null);
+    renderStrategyCommand(null);
   }
 }
 
@@ -2402,6 +2413,151 @@ function renderStrategicGoals(strategy) {
       <h3>Strategic Rationale</h3>
       ${strategy.rationale.map((reason) => `<p class="rationale-item">• ${reason}</p>`).join("")}
     </article>
+  `;
+}
+
+function renderStrategyCommand(strategy) {
+  if (!elements.strategySummary || !elements.strategyBoard) {
+    return;
+  }
+
+  const site = getActiveSite() || getEmptySiteState();
+  const goals = strategy?.allGoals || [];
+  const primaryGoal = goals[0];
+  const allocation = strategy?.recommendedAllocation || { primary: 0, secondary: 0, contingency: 0 };
+
+  if (!strategy || !primaryGoal) {
+    renderOpsSummary(elements.strategySummary, [
+      { label: "Primary Bet", value: "Waiting" },
+      { label: "Score", value: "0" },
+      { label: "Success", value: "0%" },
+      { label: "Decisions", value: "0" }
+    ]);
+
+    elements.strategyBoard.innerHTML = `
+      <section class="strategy-command-grid">
+        <article class="strategy-command-card strategy-command-card-wide">
+          <span class="intel-kicker">Strategy Engine</span>
+          <h3>No strategy payload available</h3>
+          <p>Start the backend strategy route or select a configured site to generate a scored command plan.</p>
+        </article>
+      </section>
+    `;
+    return;
+  }
+
+  const success = Math.round(Number(primaryGoal.successProbability || 0) * 100);
+  const primaryName = formatStrategyGoalName(primaryGoal.goal);
+  const signalCount = (livePredictiveSignals || []).length;
+  const secondaryGoals = strategy.secondaryGoals || goals.slice(1);
+  const nextSteps = primaryGoal.nextSteps || [];
+  const resources = primaryGoal.resources || [];
+  const rationale = strategy.rationale || [];
+  const riskTone = primaryGoal.riskIfIgnored === "high" ? "tone-red" : primaryGoal.riskIfIgnored === "medium" ? "tone-yellow" : "tone-green";
+
+  renderOpsSummary(elements.strategySummary, [
+    { label: "Primary Bet", value: primaryName },
+    { label: "Score", value: primaryGoal.score ?? 0 },
+    { label: "Success", value: `${success}%` },
+    { label: "Signals", value: signalCount }
+  ]);
+
+  const resourceMarkup = resources.length
+    ? resources.map((resource) => `<span>${escapeHtml(formatStrategyGoalName(resource))}</span>`).join("")
+    : `<span>Campaign Orchestrator</span><span>Web Helper</span>`;
+
+  const stepsMarkup = nextSteps.length
+    ? nextSteps.map((step, index) => `<li><span>${index + 1}</span>${escapeHtml(step)}</li>`).join("")
+    : `<li><span>1</span>Review current site state and select the next measurable growth move.</li>`;
+
+  const portfolioMarkup = goals.length
+    ? goals.map((goal, index) => `<article class="strategy-portfolio-card">
+        <div>
+          <span class="intel-kicker">Rank ${index + 1}</span>
+          <h3>${escapeHtml(formatStrategyGoalName(goal.goal))}</h3>
+        </div>
+        <strong>${escapeHtml(goal.score ?? 0)}</strong>
+        <p>Urgency ${escapeHtml(goal.urgency ?? 0)}/10 - ${escapeHtml(goal.duration ?? 0)}h - ${Math.round(Number(goal.successProbability || 0) * 100)}% success</p>
+        <span class="pill ${goal.riskIfIgnored === "high" ? "tone-red" : goal.riskIfIgnored === "medium" ? "tone-yellow" : "tone-green"}">${escapeHtml(goal.riskIfIgnored || "low")} risk</span>
+      </article>`).join("")
+    : `<article class="intel-empty"><h3>No goal portfolio</h3><p>The strategy engine returned no ranked alternatives.</p></article>`;
+
+  const secondaryMarkup = secondaryGoals.length
+    ? secondaryGoals.slice(0, 4).map((goal) => `<article class="strategy-market-card">
+        <span class="intel-kicker">Secondary Bet</span>
+        <h3>${escapeHtml(formatStrategyGoalName(goal.goal))}</h3>
+        <p>Score ${escapeHtml(goal.score ?? 0)} with ${Math.round(Number(goal.successProbability || 0) * 100)}% modeled success.</p>
+      </article>`).join("")
+    : `<article class="strategy-market-card"><h3>No secondary bets</h3><p>Primary strategy owns the current planning window.</p></article>`;
+
+  const rationaleMarkup = rationale.length
+    ? rationale.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")
+    : `<li>Strategy engine is favoring the highest score path for the current site.</li>`;
+
+  elements.strategyBoard.innerHTML = `
+    <section class="strategy-command-grid">
+      <article class="strategy-hero-card strategy-command-card-wide">
+        <div class="strategy-hero-copy">
+          <span class="intel-kicker">Primary Strategic Bet</span>
+          <h3>${escapeHtml(primaryName)}</h3>
+          <p>${escapeHtml(strategy.primaryReasoning || "This is the strongest next move based on current urgency, success probability, and risk if ignored.")}</p>
+          <div class="ops-chip-row">${resourceMarkup}</div>
+        </div>
+        <div class="strategy-score-ring">
+          <strong>${escapeHtml(primaryGoal.score ?? 0)}</strong>
+          <span>goal score</span>
+        </div>
+      </article>
+
+      <article class="strategy-command-card">
+        <span class="intel-kicker">Execution Window</span>
+        <h3>${escapeHtml(primaryGoal.duration || 0)} hours</h3>
+        <p>Expected revenue impact: ${escapeHtml(primaryGoal.impactOnRevenue || "unknown")}. Risk if ignored is marked ${escapeHtml(primaryGoal.riskIfIgnored || "unknown")}.</p>
+        <span class="pill ${riskTone}">${escapeHtml(primaryGoal.riskIfIgnored || "low")} risk</span>
+      </article>
+
+      <article class="strategy-command-card">
+        <span class="intel-kicker">Resource Allocation</span>
+        <div class="strategy-bar-stack">
+          <div class="strategy-bar-row">
+            <span>Primary</span>
+            <div class="strategy-progress-track"><div class="strategy-progress-fill" style="width: ${Number(allocation.primary || 0)}%"></div></div>
+            <strong>${escapeHtml(allocation.primary || 0)}%</strong>
+          </div>
+          <div class="strategy-bar-row">
+            <span>Secondary</span>
+            <div class="strategy-progress-track"><div class="strategy-progress-fill" style="width: ${Number(allocation.secondary || 0)}%"></div></div>
+            <strong>${escapeHtml(allocation.secondary || 0)}%</strong>
+          </div>
+          <div class="strategy-bar-row">
+            <span>Contingency</span>
+            <div class="strategy-progress-track"><div class="strategy-progress-fill" style="width: ${Number(allocation.contingency || 0)}%"></div></div>
+            <strong>${escapeHtml(allocation.contingency || 0)}%</strong>
+          </div>
+        </div>
+      </article>
+
+      <article class="strategy-command-card strategy-command-card-wide">
+        <span class="intel-kicker">Next Moves</span>
+        <ol class="strategy-step-list">${stepsMarkup}</ol>
+      </article>
+
+      <article class="strategy-command-card strategy-command-card-wide">
+        <span class="intel-kicker">Goal Portfolio</span>
+        <div class="strategy-portfolio-grid">${portfolioMarkup}</div>
+      </article>
+
+      <article class="strategy-command-card">
+        <span class="intel-kicker">Secondary Opportunities</span>
+        <div class="strategy-market-grid">${secondaryMarkup}</div>
+      </article>
+
+      <article class="strategy-command-card">
+        <span class="intel-kicker">Decision Rationale</span>
+        <ul class="strategy-risk-list">${rationaleMarkup}</ul>
+        <p class="strategy-site-note">Current target: ${escapeHtml(site.name || "Ghost Ops")} / ${escapeHtml(site.domain || "n/a")}</p>
+      </article>
+    </section>
   `;
 }
 
@@ -2908,6 +3064,12 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function formatStrategyGoalName(value) {
+  return String(value || "strategic_goal")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function slugForUi(value) {
@@ -4188,6 +4350,7 @@ function renderSite(siteId) {
   renderActivity(site);
   renderCrossSystemInsights(site);
   renderIntelligenceCore(site);
+  renderStrategyCommand(liveStrategicPlan);
   renderAgents(site);
   renderBuildQueue(site);
   loadWebHelpers(site.id);
