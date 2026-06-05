@@ -1659,6 +1659,26 @@ function classifyRepo(repo) {
   return { category: "Unclassified", productStatus: "Needs Classification", serviceId: "website-build" };
 }
 
+const liveDeploymentMap = {
+  "anna-air": { provider: "Vercel", url: "https://www.annasair.com", status: "Live custom domain" },
+  "arcane-randd": { provider: "Vercel", url: "https://arcane-randd.vercel.app", status: "Live preview domain" },
+  "barbara-consulting": { provider: "Vercel", url: "https://www.graymatterstech.com", status: "Live custom domain" },
+  "design-and-renovation": { provider: "Vercel", url: "https://www.designhavenbuild.com", status: "Live custom domain" },
+  "ghost-alpha-terminal": { provider: "Vercel", url: "https://www.alphaghost.org", status: "Live custom domain" },
+  ghostaisolutions: { provider: "Vercel", url: "https://www.ghostai.solutions", status: "Live custom domain" },
+  ghostcrm: { provider: "Vercel", url: "https://www.ghostcrm.ai", status: "Live custom domain" },
+  "i-need-to-make-a-quick": { provider: "Vercel", url: "https://www.stephenburch.app", status: "Live custom domain" },
+  "keisha-law": { provider: "Vercel", url: "https://keisha-law.vercel.app", status: "Live preview domain" },
+  "mobile-detailing": { provider: "Vercel", url: "https://mobile-detailing-sigma.vercel.app", status: "Live preview domain" },
+  "peptides-ecommerce": { provider: "Vercel", url: "https://www.peppersandvibes.com", status: "Live custom domain" },
+  "price-consulting-site": { provider: "Vercel", url: "https://price-consulting-site.vercel.app", status: "Live preview domain" }
+};
+
+function getRepoDeployment(repo) {
+  const name = String(repo?.name || "").toLowerCase();
+  return liveDeploymentMap[name] || null;
+}
+
 async function fetchGitHubRepos(forceRefresh = false) {
   const now = Date.now();
   if (!forceRefresh && githubRepoCache.repos.length && now - githubRepoCache.generatedAt < GITHUB_REPO_CACHE_TTL_MS) {
@@ -1750,6 +1770,7 @@ async function buildToolRegistry(forceRefresh = false) {
   const repos = await fetchGitHubRepos(forceRefresh);
   const tools = repos.map((repo) => {
     const classification = classifyRepo(repo);
+    const deployment = getRepoDeployment(repo);
     return {
       id: repo.id,
       name: repo.name,
@@ -1769,8 +1790,10 @@ async function buildToolRegistry(forceRefresh = false) {
       category: classification.category,
       productStatus: classification.productStatus,
       serviceId: classification.serviceId,
-      deployment: "Unlinked",
-      health: repo.archived ? "archived" : "needs-review"
+      deployment: deployment?.provider || "Unlinked",
+      deploymentUrl: deployment?.url || "",
+      deploymentStatus: deployment?.status || "Unlinked",
+      health: repo.archived ? "archived" : deployment ? "live" : "needs-review"
     };
   });
 
@@ -1795,6 +1818,7 @@ async function buildToolRegistry(forceRefresh = false) {
       activeTools: tools.filter((tool) => !tool.archived).length,
       privateTools: tools.filter((tool) => tool.private).length,
       publicTools: tools.filter((tool) => !tool.private).length,
+      liveDeployments: tools.filter((tool) => tool.deploymentUrl).length,
       archivedTools: tools.filter((tool) => tool.archived).length,
       needsClassification: tools.filter((tool) => tool.category === "Unclassified").length,
       revenueProducts: tools.filter((tool) => tool.productStatus === "Revenue Product").length,

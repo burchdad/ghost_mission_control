@@ -4051,11 +4051,13 @@ function renderTools(payload) {
             <div class="ops-meta-grid">
               <div><span>Status</span>${escapeHtml(tool.productStatus)}</div>
               <div><span>Service</span>${escapeHtml(tool.serviceId)}</div>
+              <div><span>Deployment</span>${escapeHtml(tool.deploymentStatus || tool.deployment || "Unlinked")}</div>
               <div><span>Language</span>${escapeHtml(tool.language)}</div>
               <div><span>Branch</span>${escapeHtml(tool.defaultBranch || "main")}</div>
             </div>
             <div class="tool-card-footer">
               <span>${escapeHtml(tool.pushedAt ? `Pushed ${new Date(tool.pushedAt).toLocaleDateString()}` : "No push date")}</span>
+              ${tool.deploymentUrl ? `<a href="${escapeHtml(tool.deploymentUrl)}" target="_blank" rel="noreferrer">Open live</a>` : ""}
               ${tool.url ? `<a href="${escapeHtml(tool.url)}" target="_blank" rel="noreferrer">Open repo</a>` : ""}
             </div>
           </article>`).join("")}
