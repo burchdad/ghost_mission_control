@@ -1582,21 +1582,54 @@ function classifyRepo(repo) {
   const name = String(repo.name || "").toLowerCase();
   const description = String(repo.description || "").toLowerCase();
   const haystack = `${name} ${description}`;
-  const knownClientRepos = new Set([
-    "anna_air",
-    "arcane_randd",
-    "barbara_consulting",
-    "barbara_consulting_2",
-    "design-and-renovation",
-    "e-commerce_peptides",
-    "landscape_design",
-    "mobile-detailing",
-    "price-consulting",
-    "price-consulting-site"
-  ]);
+  const explicitClassifications = {
+    "airtable-clone-1": { category: "Internal Data Tools", productStatus: "Internal Tool", serviceId: "operations-db" },
+    anna_air: { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
+    ai_portfolio: { category: "Backlog / Unknown", productStatus: "Needs Review", serviceId: "incubation" },
+    arcane_randd: { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
+    barbara_consulting: { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
+    barbara_consulting_2: { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
+    burchfitness: { category: "Backlog / Unknown", productStatus: "Needs Review", serviceId: "incubation" },
+    consult_prototype: { category: "Prototype Websites", productStatus: "Prototype", serviceId: "website-build" },
+    "design-and-renovation": { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
+    "e-commerce_peptides": { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
+    ghostdrop: { category: "Backlog / Unknown", productStatus: "Needs Review", serviceId: "incubation" },
+    "ghost-enterprise-template": { category: "Backlog / Unknown", productStatus: "Needs Review", serviceId: "incubation" },
+    "ghost-hvac": { category: "Sellable Software", productStatus: "Revenue Product", serviceId: "software-product" },
+    "ghost-investor-ai": { category: "Investor Tools", productStatus: "Revenue Product", serviceId: "investor-intelligence" },
+    ghostmain: { category: "Backlog / Unknown", productStatus: "Needs Review", serviceId: "incubation" },
+    ghostmain1: { category: "Backlog / Unknown", productStatus: "Needs Review", serviceId: "incubation" },
+    ghostscore: { category: "Personal Financial Tools", productStatus: "Personal Tool", serviceId: "finance-intelligence" },
+    ghosttable: { category: "Internal Data Tools", productStatus: "Internal Tool", serviceId: "operations-db" },
+    ghostvoicegpt: { category: "Voice Revenue Tools", productStatus: "Revenue Product", serviceId: "voice-ai" },
+    "ghostvoice_orderhandler": { category: "Voice Revenue Tools", productStatus: "Revenue Product", serviceId: "voice-ai" },
+    "ghost-voice-os": { category: "Voice Revenue Tools", productStatus: "Revenue Product", serviceId: "voice-ai" },
+    "ghost-voice-tts": { category: "Voice Revenue Tools", productStatus: "Revenue Product", serviceId: "voice-ai" },
+    "ghost-voice-tts-landing": { category: "Voice Revenue Tools", productStatus: "Revenue Product", serviceId: "voice-ai" },
+    "investor-command-center": { category: "Investor Tools", productStatus: "Revenue Product", serviceId: "investor-intelligence" },
+    "kaisyn-contact-card": { category: "Other Business Ventures", productStatus: "Venture Tool", serviceId: "venture-build" },
+    kaisynphotography: { category: "Prototype Websites", productStatus: "Prototype", serviceId: "website-build" },
+    landscape_design: { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
+    "mobile-detailing": { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
+    "nova-ceo": { category: "Executive OS", productStatus: "Strategic Platform", serviceId: "executive-ops" },
+    piddy: { category: "Piddy Local AI", productStatus: "Strategic Platform", serviceId: "local-ai" },
+    "piddy-growth": { category: "Piddy Local AI", productStatus: "Strategic Platform", serviceId: "local-ai" },
+    "piddy-knowledge-base": { category: "Piddy Local AI", productStatus: "Strategic Platform", serviceId: "local-ai" },
+    "piddy-microservices": { category: "Piddy Local AI", productStatus: "Strategic Platform", serviceId: "local-ai" },
+    "price-consulting": { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
+    "price-consulting-site": { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
+    "project-vortex": { category: "Games / Experiments", productStatus: "Prototype", serviceId: "product-lab" },
+    "quick-contact-card": { category: "Other Business Ventures", productStatus: "Venture Tool", serviceId: "venture-build" },
+    relateos: { category: "Sellable Software", productStatus: "Client SaaS Build", serviceId: "software-product" },
+    smoke_shop: { category: "Prototype Websites", productStatus: "Prototype", serviceId: "website-build" },
+    stephenburch: { category: "Backlog / Unknown", productStatus: "Needs Review", serviceId: "incubation" },
+    "wedding-package": { category: "Prototype Websites", productStatus: "Prototype", serviceId: "website-build" },
+    wellness: { category: "Prototype Websites", productStatus: "Prototype", serviceId: "website-build" },
+    "wholesale-jewelry": { category: "Prototype Websites", productStatus: "Prototype", serviceId: "website-build" }
+  };
 
-  if (knownClientRepos.has(name)) {
-    return { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" };
+  if (explicitClassifications[name]) {
+    return explicitClassifications[name];
   }
 
   if (haystack.includes("geo") || haystack.includes("seo") || haystack.includes("aeo")) {
