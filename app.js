@@ -499,6 +499,10 @@ function setupNavigation() {
       const selectedView = item.dataset.view;
       setActiveView(selectedView);
       setFocusMode(false);
+
+      if (selectedView === "tools") {
+        loadTools(true);
+      }
     });
   });
 
@@ -4495,6 +4499,7 @@ async function runMissionCommand() {
 
 async function init() {
   setupNavigation();
+  loadTools();
   await loadMissionSnapshot();
   renderWebsiteOptions();
 
@@ -4506,7 +4511,6 @@ async function init() {
   loadClients();
   loadOnboarding();
   loadServices();
-  loadTools();
   if (initialSite.id && initialSite.id !== "no-site") {
     loadAgentIntelligence(initialSite.id);
     loadPredictiveSignals(initialSite.id);
