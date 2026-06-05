@@ -4051,10 +4051,12 @@ function renderTools(payload) {
             <div class="ops-meta-grid">
               <div><span>Status</span>${escapeHtml(tool.productStatus)}</div>
               <div><span>Service</span>${escapeHtml(tool.serviceId)}</div>
+              ${tool.clientName ? `<div><span>Client</span>${escapeHtml(tool.clientName)}</div>` : ""}
               <div><span>Deployment</span>${escapeHtml(tool.deploymentStatus || tool.deployment || "Unlinked")}</div>
               <div><span>Language</span>${escapeHtml(tool.language)}</div>
               <div><span>Branch</span>${escapeHtml(tool.defaultBranch || "main")}</div>
             </div>
+            ${tool.needsActions?.length ? `<ul class="ops-mini-list">${tool.needsActions.slice(0, 2).map((action) => `<li>${escapeHtml(action)}</li>`).join("")}</ul>` : ""}
             <div class="tool-card-footer">
               <span>${escapeHtml(tool.pushedAt ? `Pushed ${new Date(tool.pushedAt).toLocaleDateString()}` : "No push date")}</span>
               ${tool.deploymentUrl ? `<a href="${escapeHtml(tool.deploymentUrl)}" target="_blank" rel="noreferrer">Open live</a>` : ""}
@@ -4066,12 +4068,34 @@ function renderTools(payload) {
     `).join("")
     : `<article class="ops-card"><h3>No GitHub tools loaded</h3><p>Add public repos or configure GITHUB_TOKEN to inventory private burchdad tools.</p></article>`);
 
-  const actions = payload?.actions || [
-    "Configure GITHUB_TOKEN for private repo inventory.",
-    "Classify repos once imported.",
-    "Connect tools to client services."
-  ];
-  renderOpsActions(elements.toolActions, actions, "Tool actions will appear here.");
+  const buckets = payload?.actionBuckets || [];
+  if (buckets.length) {
+    elements.toolActions.innerHTML = buckets.map((bucket) => `
+      <article class="ops-action-card">
+        <div class="ops-card-head">
+          <h3>${escapeHtml(bucket.label)}</h3>
+          <span class="pill tone-${escapeHtml(bucket.tone || "blue")}">${Number(bucket.count || 0)}</span>
+        </div>
+        ${bucket.items?.length ? `<div class="ops-action-list">
+          ${bucket.items.map((item) => `
+            <div class="ops-action-item">
+              <strong>${escapeHtml(item.name)}</strong>
+              ${item.clientName ? `<span>${escapeHtml(item.clientName)}</span>` : ""}
+              <p>${escapeHtml(item.reason || item.status || "Ready for operator mapping.")}</p>
+              ${item.deploymentUrl ? `<a href="${escapeHtml(item.deploymentUrl)}" target="_blank" rel="noreferrer">Open live</a>` : ""}
+            </div>
+          `).join("")}
+        </div>` : `<p>No current items in this bucket.</p>`}
+      </article>
+    `).join("");
+  } else {
+    const actions = payload?.actions || [
+      "Configure GITHUB_TOKEN for private repo inventory.",
+      "Classify repos once imported.",
+      "Connect tools to client services."
+    ];
+    renderOpsActions(elements.toolActions, actions, "Tool actions will appear here.");
+  }
   updateNavBadges();
 }
 

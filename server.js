@@ -996,6 +996,99 @@ function buildWebHelperAgents(snapshot, requestedSiteId = "") {
   });
 }
 
+function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpers = []) {
+  const existingUrls = new Set(
+    (existingHelpers || [])
+      .map((helper) => {
+        try {
+          return new URL(helper.websiteUrl).origin;
+        } catch {
+          return "";
+        }
+      })
+      .filter(Boolean)
+  );
+
+  return (clients || [])
+    .filter((client) => client.websiteUrl && client.repo)
+    .filter((client) => !requestedSiteId || client.id === requestedSiteId)
+    .filter((client) => {
+      try {
+        return !existingUrls.has(new URL(client.websiteUrl).origin);
+      } catch {
+        return true;
+      }
+    })
+    .map((client) => {
+      const requests = [];
+      if (client.finalDomainPurchased === false) {
+        requests.push({
+          id: `${client.id}-domain`,
+          type: "domain_setup",
+          title: "Attach final custom domain",
+          summary: "Client is running on a preview deployment. Purchase or connect the final domain before handoff.",
+          status: "needs-review",
+          approvalRequired: true,
+          sla: "Before launch"
+        });
+      }
+
+      if (client.clientDetailsPending) {
+        requests.push({
+          id: `${client.id}-details`,
+          type: "client_intake",
+          title: "Collect final client details",
+          summary: "Client details are still pending. Confirm business information, service scope, and launch notes.",
+          status: "needs-review",
+          approvalRequired: true,
+          sla: "Before automation"
+        });
+      }
+
+      if (!requests.length) {
+        requests.push({
+          id: `${client.id}-helper-memory`,
+          type: "template_setup",
+          title: "Create Web Helper memory",
+          summary: "Live client site is ready for brand voice, repo map, scope rules, and update-history memory.",
+          status: "ready",
+          approvalRequired: false,
+          sla: "Template setup"
+        });
+      }
+
+      const pendingApprovals = requests.filter((request) => request.approvalRequired).length;
+      const status = pendingApprovals > 0 ? "needs-approval" : "active";
+      return {
+        id: `${client.id}-web-helper`,
+        siteId: client.id,
+        name: `${client.clientName} Web Helper`,
+        clientName: client.clientName,
+        websiteUrl: client.websiteUrl,
+        repo: client.repo,
+        deployment: client.vercelUrl ? "Vercel / live client site" : "Live client site",
+        status,
+        statusLabel: status === "needs-approval" ? "Needs Approval" : "Active",
+        autonomyLevel: "Level 1 - prepare changes, owner approves deploy",
+        plan: client.plan || "Launch + Care",
+        openRequests: requests.length,
+        pendingApprovals,
+        lastDeployment: client.updatedAt,
+        lastDeploymentLabel: formatWebHelperDate(client.updatedAt),
+        scope: ["copy edits", "image swaps", "hours", "broken links", "minor layout bugs"],
+        escalationRules: ["new pages", "forms", "payments", "billing", "angry client"],
+        memoryFiles: [
+          "client-profile.md",
+          "brand-voice.md",
+          "website-stack.md",
+          "scope-rules.md",
+          "update-history.md"
+        ],
+        requests
+      };
+    });
+}
+
 function summarizeWebHelpers(helpers) {
   return {
     helperCount: helpers.length,
@@ -1284,6 +1377,11 @@ function normalizeClient(client) {
     analyticsUrl: getClientUrl(client.analyticsUrl || client.analytics || client.gaUrl),
     adsStatus: String(client.adsStatus || client.ads || "").trim(),
     socialUrls: normalizeUrlList(client.socialUrls || client.socials),
+    finalDomainPurchased:
+      client.finalDomainPurchased === undefined || client.finalDomainPurchased === null
+        ? null
+        : normalizeBoolean(client.finalDomainPurchased),
+    clientDetailsPending: normalizeBoolean(client.clientDetailsPending),
     proposalSigned: normalizeBoolean(client.proposalSigned),
     partnershipSigned: normalizeBoolean(client.partnershipSigned),
     depositPaid: normalizeBoolean(client.depositPaid),
@@ -1321,10 +1419,11 @@ function buildClientRecord(input) {
 }
 
 function getAllClients() {
+  const seeded = getSeededClientProfiles();
   const configured = parseConfiguredClients();
   const merged = new Map();
 
-  [...configured, ...runtimeClients].forEach((client) => {
+  [...seeded, ...configured, ...runtimeClients].forEach((client) => {
     if (client?.id) {
       merged.set(client.id, client);
     }
@@ -1355,6 +1454,12 @@ function getClientDerivedActions(client) {
   }
   if (client.railwayUrl) {
     actions.push("Keep backend links internal until auth, role masking, and audit logging are active.");
+  }
+  if (client.finalDomainPurchased === false) {
+    actions.push("Purchase or attach the final custom domain before handoff.");
+  }
+  if (client.clientDetailsPending) {
+    actions.push("Collect final client details before moving into full automation.");
   }
   if (!client.services.includes("search-intelligence")) {
     actions.push("Decide whether SEO/AEO/GEO belongs in this client package.");
@@ -1660,23 +1765,268 @@ function classifyRepo(repo) {
 }
 
 const liveDeploymentMap = {
-  "anna-air": { provider: "Vercel", url: "https://www.annasair.com", status: "Live custom domain" },
-  "arcane-randd": { provider: "Vercel", url: "https://arcane-randd.vercel.app", status: "Live preview domain" },
-  "barbara-consulting": { provider: "Vercel", url: "https://www.graymatterstech.com", status: "Live custom domain" },
-  "design-and-renovation": { provider: "Vercel", url: "https://www.designhavenbuild.com", status: "Live custom domain" },
-  "ghost-alpha-terminal": { provider: "Vercel", url: "https://www.alphaghost.org", status: "Live custom domain" },
-  ghostaisolutions: { provider: "Vercel", url: "https://www.ghostai.solutions", status: "Live custom domain" },
-  ghostcrm: { provider: "Vercel", url: "https://www.ghostcrm.ai", status: "Live custom domain" },
-  "i-need-to-make-a-quick": { provider: "Vercel", url: "https://www.stephenburch.app", status: "Live custom domain" },
-  "keisha-law": { provider: "Vercel", url: "https://keisha-law.vercel.app", status: "Live preview domain" },
-  "mobile-detailing": { provider: "Vercel", url: "https://mobile-detailing-sigma.vercel.app", status: "Live preview domain" },
-  "peptides-ecommerce": { provider: "Vercel", url: "https://www.peppersandvibes.com", status: "Live custom domain" },
-  "price-consulting-site": { provider: "Vercel", url: "https://price-consulting-site.vercel.app", status: "Live preview domain" }
+  "anna-air": {
+    provider: "Vercel",
+    url: "https://www.annasair.com",
+    status: "Live custom domain",
+    clientName: "Anna's Air",
+    canonicalRepo: "anna_air",
+    repoAliases: ["anna-air"],
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care"],
+    finalDomainPurchased: true
+  },
+  "arcane-randd": {
+    provider: "Vercel",
+    url: "https://arcane-randd.vercel.app",
+    status: "Live preview domain",
+    clientName: "Arcane R&D",
+    canonicalRepo: "arcane_randd",
+    repoAliases: ["arcane-randd"],
+    stage: "client-review",
+    services: ["website-build", "web-helper-care"],
+    finalDomainPurchased: false,
+    notes: "Final custom domain has not been purchased."
+  },
+  "barbara-consulting": {
+    provider: "Vercel",
+    url: "https://www.graymatterstech.com",
+    status: "Live custom domain",
+    clientName: "Gray Matters Tech",
+    canonicalRepo: "barbara_consulting",
+    repoAliases: ["barbara-consulting", "barbara_consulting_2"],
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care", "search-intelligence"],
+    finalDomainPurchased: true
+  },
+  "design-and-renovation": {
+    provider: "Vercel",
+    url: "https://www.designhavenbuild.com",
+    status: "Live custom domain",
+    clientName: "Design Haven Build",
+    canonicalRepo: "design-and-renovation",
+    repoAliases: ["design_and_renovation"],
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care", "search-intelligence"],
+    finalDomainPurchased: true
+  },
+  "ghost-alpha-terminal": {
+    provider: "Vercel",
+    url: "https://www.alphaghost.org",
+    status: "Live custom domain",
+    clientName: "Alpha Ghost",
+    canonicalRepo: "ghost-alpha-terminal",
+    stage: "growth-services",
+    services: ["website-build", "web-helper-care"],
+    finalDomainPurchased: true,
+    notes: "Stock market intelligence and trading bot property."
+  },
+  ghostaisolutions: {
+    provider: "Vercel",
+    url: "https://www.ghostai.solutions",
+    status: "Live custom domain",
+    clientName: "Ghost AI Solutions",
+    canonicalRepo: "ghostaisolutions",
+    stage: "growth-services",
+    services: ["website-build", "web-helper-care", "search-intelligence"],
+    finalDomainPurchased: true,
+    notes: "Primary Ghost AI brand and lead-intelligence backend."
+  },
+  ghostcrm: {
+    provider: "Vercel",
+    url: "https://www.ghostcrm.ai",
+    status: "Live custom domain",
+    clientName: "GhostCRM",
+    canonicalRepo: "ghostcrm",
+    stage: "paused-archived",
+    services: ["website-build"],
+    finalDomainPurchased: true,
+    notes: "Dealership CRM property that is currently paused."
+  },
+  "i-need-to-make-a-quick": {
+    provider: "Vercel",
+    url: "https://www.stephenburch.app",
+    status: "Live custom domain",
+    clientName: "Stephen Burch",
+    canonicalRepo: "i-need-to-make-a-quick",
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care"],
+    finalDomainPurchased: true,
+    notes: "Personal digital business card."
+  },
+  "keisha-law": {
+    provider: "Vercel",
+    url: "https://keisha-law.vercel.app",
+    status: "Live preview domain",
+    clientName: "Keisha Law",
+    canonicalRepo: "keisha-law",
+    stage: "client-review",
+    services: ["website-build"],
+    finalDomainPurchased: false,
+    clientDetailsPending: true,
+    notes: "Client has not finalized details."
+  },
+  "mobile-detailing": {
+    provider: "Vercel",
+    url: "https://mobile-detailing-sigma.vercel.app",
+    status: "Live preview domain",
+    clientName: "Mobile Detailing",
+    canonicalRepo: "mobile-detailing",
+    stage: "client-review",
+    services: ["website-build", "web-helper-care"],
+    finalDomainPurchased: false,
+    notes: "Final custom domain has not been purchased."
+  },
+  "peptides-ecommerce": {
+    provider: "Vercel",
+    url: "https://www.peppersandvibes.com",
+    status: "Live custom domain",
+    clientName: "Peppers and Vibes",
+    canonicalRepo: "e-commerce_peptides",
+    repoAliases: ["peptides-ecommerce"],
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care"],
+    finalDomainPurchased: true
+  },
+  "price-consulting-site": {
+    provider: "Vercel",
+    url: "https://price-consulting-site.vercel.app",
+    status: "Live preview domain",
+    clientName: "Price Consulting",
+    canonicalRepo: "price-consulting-site",
+    repoAliases: ["price-consulting"],
+    stage: "client-review",
+    services: ["website-build", "web-helper-care"],
+    finalDomainPurchased: false,
+    notes: "Final custom domain has not been purchased."
+  }
 };
+
+const liveDeploymentAliases = Object.entries(liveDeploymentMap).reduce((aliases, [key, deployment]) => {
+  aliases[key] = deployment;
+  aliases[key.replace(/-/g, "_")] = deployment;
+  aliases[key.replace(/_/g, "-")] = deployment;
+  (deployment.repoAliases || []).forEach((alias) => {
+    aliases[String(alias).toLowerCase()] = deployment;
+  });
+  return aliases;
+}, {});
 
 function getRepoDeployment(repo) {
   const name = String(repo?.name || "").toLowerCase();
-  return liveDeploymentMap[name] || null;
+  return liveDeploymentAliases[name] || liveDeploymentAliases[name.replace(/_/g, "-")] || liveDeploymentAliases[name.replace(/-/g, "_")] || null;
+}
+
+function getSeededClientProfiles() {
+  const seen = new Set();
+  return Object.values(liveDeploymentMap)
+    .filter((deployment) => {
+      const canonicalRepo = deployment.canonicalRepo || deployment.url;
+      if (seen.has(canonicalRepo)) {
+        return false;
+      }
+      seen.add(canonicalRepo);
+      return true;
+    })
+    .map((deployment) =>
+      normalizeClient({
+        id: slugify(deployment.clientName || deployment.canonicalRepo),
+        clientName: deployment.clientName || deployment.canonicalRepo,
+        websiteUrl: deployment.url,
+        vercelUrl: deployment.url,
+        repo: `${GITHUB_OWNER}/${deployment.canonicalRepo}`,
+        stage: deployment.stage || "web-helper-care",
+        services: deployment.services || ["website-build", "web-helper-care"],
+        finalDomainPurchased: deployment.finalDomainPurchased,
+        clientDetailsPending: deployment.clientDetailsPending,
+        plan: deployment.plan || "Launch + Care",
+        notes: deployment.notes || "",
+        source: "deployment-map"
+      })
+    )
+    .filter(Boolean);
+}
+
+function getToolNeedsActions(tool) {
+  const actions = [];
+  if (tool.productStatus === "Needs Classification") {
+    actions.push("Classify this repo into a product, client, prototype, or archive bucket.");
+  }
+  if (!tool.deploymentUrl && ["Client Tool", "Revenue Product", "Strategic Platform"].includes(tool.productStatus)) {
+    actions.push("Attach a live URL, Vercel project, Railway service, or mark it intentionally internal.");
+  }
+  if (tool.finalDomainPurchased === false) {
+    actions.push("Buy or connect the final client domain before handoff.");
+  }
+  if (tool.clientDetailsPending) {
+    actions.push("Collect final client details before launching automation or search work.");
+  }
+  if (tool.deploymentUrl && tool.category === "Client Websites") {
+    actions.push("Attach Web Helper memory and monthly scope rules.");
+  }
+  if (tool.deploymentUrl && !tool.healthCheckUrl) {
+    actions.push("Add a page-specific health check path if the root URL is not enough.");
+  }
+  return actions;
+}
+
+function buildToolActionBuckets(tools) {
+  const bucketDefinitions = [
+    {
+      id: "final-domain-needed",
+      label: "Final Domain Needed",
+      tone: "yellow",
+      items: tools.filter((tool) => tool.finalDomainPurchased === false)
+    },
+    {
+      id: "client-details-pending",
+      label: "Client Details Pending",
+      tone: "yellow",
+      items: tools.filter((tool) => tool.clientDetailsPending)
+    },
+    {
+      id: "needs-classification",
+      label: "Needs Classification",
+      tone: "yellow",
+      items: tools.filter((tool) => tool.productStatus === "Needs Classification")
+    },
+    {
+      id: "needs-live-link",
+      label: "Needs Live Link",
+      tone: "blue",
+      items: tools.filter(
+        (tool) => !tool.deploymentUrl && ["Client Tool", "Revenue Product", "Strategic Platform"].includes(tool.productStatus)
+      )
+    },
+    {
+      id: "web-helper-ready",
+      label: "Web Helper Ready",
+      tone: "green",
+      items: tools.filter((tool) => tool.deploymentUrl && tool.category === "Client Websites")
+    },
+    {
+      id: "revenue-candidates",
+      label: "Revenue Candidates",
+      tone: "green",
+      items: tools.filter((tool) => ["Revenue Product", "Strategic Platform"].includes(tool.productStatus))
+    }
+  ];
+
+  return bucketDefinitions.map((bucket) => ({
+    id: bucket.id,
+    label: bucket.label,
+    tone: bucket.tone,
+    count: bucket.items.length,
+    items: bucket.items.slice(0, 8).map((tool) => ({
+      id: tool.id,
+      name: tool.name,
+      clientName: tool.clientName || "",
+      status: tool.productStatus,
+      serviceId: tool.serviceId,
+      deploymentUrl: tool.deploymentUrl || "",
+      reason: getToolNeedsActions(tool)[0] || "Ready for operator mapping."
+    }))
+  }));
 }
 
 async function fetchGitHubRepos(forceRefresh = false) {
@@ -1771,7 +2121,7 @@ async function buildToolRegistry(forceRefresh = false) {
   const tools = repos.map((repo) => {
     const classification = classifyRepo(repo);
     const deployment = getRepoDeployment(repo);
-    return {
+    const tool = {
       id: repo.id,
       name: repo.name,
       fullName: repo.full_name,
@@ -1793,7 +2143,17 @@ async function buildToolRegistry(forceRefresh = false) {
       deployment: deployment?.provider || "Unlinked",
       deploymentUrl: deployment?.url || "",
       deploymentStatus: deployment?.status || "Unlinked",
+      clientName: deployment?.clientName || "",
+      clientId: deployment?.clientName ? slugify(deployment.clientName) : "",
+      finalDomainPurchased: deployment?.finalDomainPurchased ?? null,
+      clientDetailsPending: Boolean(deployment?.clientDetailsPending),
+      healthCheckUrl: deployment?.healthCheckUrl || deployment?.url || "",
+      notes: deployment?.notes || "",
       health: repo.archived ? "archived" : deployment ? "live" : "needs-review"
+    };
+    return {
+      ...tool,
+      needsActions: getToolNeedsActions(tool)
     };
   });
 
@@ -1801,6 +2161,7 @@ async function buildToolRegistry(forceRefresh = false) {
     counts[tool.category] = (counts[tool.category] || 0) + 1;
     return counts;
   }, {});
+  const actionBuckets = buildToolActionBuckets(tools);
 
   return {
     owner: GITHUB_OWNER,
@@ -1825,6 +2186,7 @@ async function buildToolRegistry(forceRefresh = false) {
       categoryCounts
     },
     tools,
+    actionBuckets,
     actions: [
       `Set GITHUB_OWNER=${GITHUB_OWNER} and GITHUB_TOKEN in Railway/Vercel backend env for private repo access.`,
       "Use a fine-grained GitHub token with repository metadata/content read access for the repos agents can inspect.",
@@ -3918,7 +4280,9 @@ const server = http.createServer((request, response) => {
 
     getMissionSnapshot(forceRefresh)
       .then((snapshot) => {
-        const helpers = buildWebHelperAgents(snapshot, requestedSiteId);
+        const monitoredHelpers = buildWebHelperAgents(snapshot, requestedSiteId);
+        const clientHelpers = buildClientWebHelperAgents(getAllClients(), requestedSiteId, monitoredHelpers);
+        const helpers = [...monitoredHelpers, ...clientHelpers];
         sendJson(request, response, 200, {
           generatedAt: new Date().toISOString(),
           siteId: requestedSiteId || null,
