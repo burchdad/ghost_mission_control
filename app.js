@@ -1,6 +1,8 @@
 let missionData = { websites: [] };
 let draftedAgentBuilds = [];
 let currentRecommendedAgents = [];
+const configuredApiBase = String(window.GHOST_API_BASE_URL || "").trim().replace(/\/+$/, "");
+const API_BASE_URL = configuredApiBase && !configuredApiBase.includes("__GHOST_API_BASE_URL__") ? configuredApiBase : "";
 const toneClass = {
   green: "tone-green",
   yellow: "tone-yellow",
@@ -9,6 +11,11 @@ const toneClass = {
   violet: "tone-violet",
   gray: "tone-gray"
 };
+
+function apiUrl(path) {
+  const normalizedPath = String(path || "").startsWith("/") ? String(path || "") : `/${path || ""}`;
+  return `${API_BASE_URL}${normalizedPath}`;
+}
 
 const elements = {
   body: document.body,
@@ -3965,9 +3972,12 @@ async function loadTools(forceRefresh = false) {
 
     liveToolRegistry = await response.json();
     renderTools(liveToolRegistry);
-  } catch {
+  } catch (error) {
     liveToolRegistry = null;
-    renderTools(null);
+    renderTools({
+      error: "Tool registry unavailable",
+      detail: String(error?.message || error || "Unknown tools error")
+    });
   }
 }
 
@@ -3981,6 +3991,22 @@ function renderTools(payload) {
   ]);
 
   const tools = payload?.tools || [];
+  const sync = payload?.sync || {};
+  const apiStatusMarkup = `<article class="ops-card tool-sync-card">
+    <div class="ops-card-head">
+      <h3>GitHub Sync</h3>
+      <span class="pill ${payload?.error || sync.lastError ? "tone-red" : sync.tokenConfigured ? "tone-green" : "tone-yellow"}">
+        ${payload?.error ? "failed" : sync.tokenConfigured ? "token ready" : "public only"}
+      </span>
+    </div>
+    <div class="ops-meta-grid">
+      <div><span>API Base</span>${escapeHtml(API_BASE_URL || "same-origin")}</div>
+      <div><span>Owner</span>${escapeHtml(sync.owner || payload?.owner || "burchdad")}</div>
+      <div><span>Private Access</span>${sync.privateRepoAccess ? "enabled" : "not enabled"}</div>
+      <div><span>Last Sync</span>${escapeHtml(sync.lastSuccessAt ? new Date(sync.lastSuccessAt).toLocaleString() : "not synced")}</div>
+    </div>
+    ${payload?.detail || sync.lastError ? `<p>${escapeHtml(payload?.detail || sync.lastError)}</p>` : ""}
+  </article>`;
   const groupedTools = tools.reduce((groups, tool) => {
     const category = tool.category || "Unclassified";
     groups[category] = groups[category] || [];
@@ -3988,7 +4014,7 @@ function renderTools(payload) {
     return groups;
   }, {});
 
-  elements.toolCards.innerHTML = tools.length
+  elements.toolCards.innerHTML = apiStatusMarkup + (tools.length
     ? Object.entries(groupedTools).map(([category, categoryTools]) => `
       <section class="tool-category-group">
         <div class="tool-category-head">
@@ -4019,7 +4045,7 @@ function renderTools(payload) {
         </div>
       </section>
     `).join("")
-    : `<article class="ops-card"><h3>No GitHub tools loaded</h3><p>Add public repos or configure GITHUB_TOKEN to inventory private burchdad tools.</p></article>`;
+    : `<article class="ops-card"><h3>No GitHub tools loaded</h3><p>Add public repos or configure GITHUB_TOKEN to inventory private burchdad tools.</p></article>`);
 
   const actions = payload?.actions || [
     "Configure GITHUB_TOKEN for private repo inventory.",
