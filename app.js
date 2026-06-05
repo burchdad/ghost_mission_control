@@ -3972,29 +3972,53 @@ async function loadTools(forceRefresh = false) {
 }
 
 function renderTools(payload) {
-  const summary = payload?.summary || { totalTools: 0, activeTools: 0, needsClassification: 0, revenueProducts: 0 };
+  const summary = payload?.summary || { totalTools: 0, activeTools: 0, needsClassification: 0, revenueProducts: 0, privateTools: 0 };
   renderOpsSummary(elements.toolSummary, [
     { label: "Repos", value: summary.totalTools },
     { label: "Active", value: summary.activeTools },
-    { label: "Unclassified", value: summary.needsClassification },
+    { label: "Private", value: summary.privateTools || 0 },
     { label: "Revenue Tools", value: summary.revenueProducts }
   ]);
 
-  const tools = (payload?.tools || []).slice(0, 12);
+  const tools = payload?.tools || [];
+  const groupedTools = tools.reduce((groups, tool) => {
+    const category = tool.category || "Unclassified";
+    groups[category] = groups[category] || [];
+    groups[category].push(tool);
+    return groups;
+  }, {});
+
   elements.toolCards.innerHTML = tools.length
-    ? tools.map((tool) => `<article class="ops-card">
-        <div class="ops-card-head">
-          <h3>${tool.name}</h3>
-          <span class="pill ${tool.category === "Unclassified" ? "tone-yellow" : "tone-green"}">${tool.category}</span>
+    ? Object.entries(groupedTools).map(([category, categoryTools]) => `
+      <section class="tool-category-group">
+        <div class="tool-category-head">
+          <h3>${escapeHtml(category)}</h3>
+          <span class="pill ${category === "Unclassified" ? "tone-yellow" : "tone-green"}">${categoryTools.length} repos</span>
         </div>
-        <p>${tool.description}</p>
-        <div class="ops-meta-grid">
-          <div><span>Status</span>${tool.productStatus}</div>
-          <div><span>Service</span>${tool.serviceId}</div>
-          <div><span>Language</span>${tool.language}</div>
-          <div><span>Health</span>${tool.health}</div>
+        <div class="tool-repo-grid">
+          ${categoryTools.map((tool) => `<article class="ops-card tool-repo-card">
+            <div class="ops-card-head">
+              <div>
+                <h3>${escapeHtml(tool.name)}</h3>
+                <p>${escapeHtml(tool.fullName || "")}</p>
+              </div>
+              <span class="pill ${tool.private ? "tone-blue" : tool.archived ? "tone-yellow" : "tone-green"}">${tool.private ? "private" : tool.archived ? "archived" : "public"}</span>
+            </div>
+            <p>${escapeHtml(tool.description)}</p>
+            <div class="ops-meta-grid">
+              <div><span>Status</span>${escapeHtml(tool.productStatus)}</div>
+              <div><span>Service</span>${escapeHtml(tool.serviceId)}</div>
+              <div><span>Language</span>${escapeHtml(tool.language)}</div>
+              <div><span>Branch</span>${escapeHtml(tool.defaultBranch || "main")}</div>
+            </div>
+            <div class="tool-card-footer">
+              <span>${escapeHtml(tool.pushedAt ? `Pushed ${new Date(tool.pushedAt).toLocaleDateString()}` : "No push date")}</span>
+              ${tool.url ? `<a href="${escapeHtml(tool.url)}" target="_blank" rel="noreferrer">Open repo</a>` : ""}
+            </div>
+          </article>`).join("")}
         </div>
-      </article>`).join("")
+      </section>
+    `).join("")
     : `<article class="ops-card"><h3>No GitHub tools loaded</h3><p>Add public repos or configure GITHUB_TOKEN to inventory private burchdad tools.</p></article>`;
 
   const actions = payload?.actions || [

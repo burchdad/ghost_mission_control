@@ -29,6 +29,7 @@ const VERCEL_MAX_PROJECTS = Number(process.env.VERCEL_MAX_PROJECTS || 100);
 const GITHUB_OWNER = String(process.env.GITHUB_OWNER || "burchdad").trim();
 const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "").trim();
 const GITHUB_REPO_CACHE_TTL_MS = Number(process.env.GITHUB_REPO_CACHE_TTL_MS || 300000);
+const GITHUB_MAX_REPO_PAGES = Math.max(1, Number(process.env.GITHUB_MAX_REPO_PAGES || 10));
 const runtimeClients = [];
 
 const CLIENT_PIPELINE_STAGES = [
@@ -1629,18 +1630,57 @@ async function fetchGitHubRepos(forceRefresh = false) {
     headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
   }
 
-  githubRepoCache.pending = fetch(`https://api.github.com/users/${encodeURIComponent(GITHUB_OWNER)}/repos?per_page=100&sort=updated`, {
-    method: "GET",
-    headers
-  })
-    .then(async (response) => {
+  githubRepoCache.pending = (async () => {
+    const repos = [];
+    const seenIds = new Set();
+    const baseUrl = GITHUB_TOKEN
+      ? "https://api.github.com/user/repos"
+      : `https://api.github.com/users/${encodeURIComponent(GITHUB_OWNER)}/repos`;
+
+    for (let page = 1; page <= GITHUB_MAX_REPO_PAGES; page += 1) {
+      const params = new URLSearchParams({
+        per_page: "100",
+        page: String(page),
+        sort: "updated"
+      });
+
+      if (GITHUB_TOKEN) {
+        params.set("affiliation", "owner,collaborator,organization_member");
+        params.set("visibility", "all");
+      }
+
+      const response = await fetch(`${baseUrl}?${params.toString()}`, {
+        method: "GET",
+        headers
+      });
+
       if (!response.ok) {
         throw new Error(`GitHub repo request failed (${response.status})`);
       }
-      return response.json();
-    })
+
+      const pageRepos = await response.json();
+      if (!Array.isArray(pageRepos) || pageRepos.length === 0) {
+        break;
+      }
+
+      pageRepos
+        .filter((repo) => !GITHUB_TOKEN || repo?.owner?.login?.toLowerCase() === GITHUB_OWNER.toLowerCase())
+        .forEach((repo) => {
+          if (!seenIds.has(repo.id)) {
+            seenIds.add(repo.id);
+            repos.push(repo);
+          }
+        });
+
+      if (pageRepos.length < 100) {
+        break;
+      }
+    }
+
+    return repos;
+  })()
     .then((repos) => {
-      githubRepoCache.repos = Array.isArray(repos) ? repos : [];
+      githubRepoCache.repos = repos;
       githubRepoCache.generatedAt = Date.now();
       githubRepoCache.lastSuccessAt = githubRepoCache.generatedAt;
       githubRepoCache.lastError = "";
@@ -1669,8 +1709,13 @@ async function buildToolRegistry(forceRefresh = false) {
       url: repo.html_url,
       private: Boolean(repo.private),
       archived: Boolean(repo.archived),
+      fork: Boolean(repo.fork),
       updatedAt: repo.updated_at,
       pushedAt: repo.pushed_at,
+      defaultBranch: repo.default_branch || "main",
+      visibility: repo.visibility || (repo.private ? "private" : "public"),
+      openIssues: Number(repo.open_issues_count || 0),
+      topics: Array.isArray(repo.topics) ? repo.topics : [],
       language: repo.language || "n/a",
       category: classification.category,
       productStatus: classification.productStatus,
@@ -1690,18 +1735,26 @@ async function buildToolRegistry(forceRefresh = false) {
     generatedAt: new Date().toISOString(),
     sync: {
       tokenConfigured: Boolean(GITHUB_TOKEN),
+      owner: GITHUB_OWNER,
+      maxPages: GITHUB_MAX_REPO_PAGES,
+      privateRepoAccess: Boolean(GITHUB_TOKEN),
       lastSuccessAt: toIsoOrNull(githubRepoCache.lastSuccessAt),
       lastError: githubRepoCache.lastError || null
     },
     summary: {
       totalTools: tools.length,
       activeTools: tools.filter((tool) => !tool.archived).length,
+      privateTools: tools.filter((tool) => tool.private).length,
+      publicTools: tools.filter((tool) => !tool.private).length,
+      archivedTools: tools.filter((tool) => tool.archived).length,
       needsClassification: tools.filter((tool) => tool.category === "Unclassified").length,
       revenueProducts: tools.filter((tool) => tool.productStatus === "Revenue Product").length,
       categoryCounts
     },
     tools,
     actions: [
+      `Set GITHUB_OWNER=${GITHUB_OWNER} and GITHUB_TOKEN in Railway/Vercel backend env for private repo access.`,
+      "Use a fine-grained GitHub token with repository metadata/content read access for the repos agents can inspect.",
       "Classify unassigned repos into services.",
       "Attach live URLs and deployment providers.",
       "Map each production tool to a client or internal owner.",
