@@ -186,6 +186,19 @@ function parseMonitoredSites() {
       .filter(Boolean);
   }
 
+  if (!sites.length && typeof getSeededClientProfiles === "function") {
+    sites = getSeededClientProfiles()
+      .filter((client) => client.websiteUrl)
+      .map((client) => ({
+        name: client.clientName,
+        domain: "",
+        rootUrl: client.websiteUrl,
+        pages: [client.websiteUrl],
+        autoDiscoverPages: true,
+        source: "client-deployment-map"
+      }));
+  }
+
   return sites
     .map((site, index) => {
       const pages = Array.isArray(site.pages)

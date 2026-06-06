@@ -3003,7 +3003,13 @@ function renderBuildQueue(site) {
     "Archived"
   ];
 
-  const buildQueue = site.buildQueue || {};
+  const buildQueue = {
+    ...(site.buildQueue || {})
+  };
+  const clientBuildQueue = buildClientBuildQueue(liveClients?.clients || []);
+  Object.entries(clientBuildQueue).forEach(([column, items]) => {
+    buildQueue[column] = [...(buildQueue[column] || []), ...items];
+  });
   const columns = preferredOrder.filter((name) =>
     Object.prototype.hasOwnProperty.call(buildQueue, name)
   );
@@ -3032,6 +3038,48 @@ function renderBuildQueue(site) {
       </section>`;
     })
     .join("");
+}
+
+function buildClientBuildQueue(clients) {
+  return clients.reduce((queue, client) => {
+    const stage = getClientStage(client);
+    const name = client.clientName;
+    const repoLabel = client.repo ? `repo: ${client.repo}` : "repo needed";
+    const domainLabel = client.finalDomainPurchased === false ? "final domain needed" : "domain ready";
+
+    if (stage === "lead" || stage === "deposit-paid") {
+      queue.Researching.push(`${name}: confirm scope, offer, access, and deposit path.`);
+    } else if (stage === "website-build") {
+      queue.Building.push(`${name}: build website path with ${repoLabel}.`);
+    } else if (stage === "client-review") {
+      queue.Testing.push(`${name}: client review, polish pass, ${domainLabel}.`);
+    } else if (stage === "final-payment") {
+      queue["Ready to Deploy"].push(`${name}: collect final payment and prep launch checklist.`);
+    } else if (stage === "launch-handoff") {
+      queue["Ready to Deploy"].push(`${name}: launch handoff, Web Helper memory, scope rules.`);
+    } else if (stage === "web-helper-care" || stage === "growth-services") {
+      queue.Live.push(`${name}: live care active, monitor health and upsell services.`);
+    } else if (stage === "paused-archived") {
+      queue.Archived.push(`${name}: paused property, retain repo/domain record.`);
+    }
+
+    if (client.clientDetailsPending) {
+      queue.Researching.push(`${name}: collect final business details before automation.`);
+    }
+    if (client.finalDomainPurchased === false) {
+      queue["Ready to Deploy"].push(`${name}: buy or connect final custom domain.`);
+    }
+    return queue;
+  }, {
+    "Idea Backlog": [],
+    Researching: [],
+    "Ready to Build": [],
+    Building: [],
+    Testing: [],
+    "Ready to Deploy": [],
+    Live: [],
+    Archived: []
+  });
 }
 
 function renderOpsSummary(element, items) {
@@ -3130,6 +3178,12 @@ function getClientIssueTags(client) {
   }
   if (client.services?.includes("search-intelligence")) {
     issues.push({ id: "needs-geo", label: "Needs GEO setup" });
+  }
+  if (client.finalDomainPurchased === false) {
+    issues.push({ id: "final-domain-needed", label: "Final domain needed" });
+  }
+  if (client.clientDetailsPending) {
+    issues.push({ id: "details-pending", label: "Details pending" });
   }
   return issues;
 }
@@ -3241,6 +3295,86 @@ function renderClientQuickActions(client) {
   </div>`;
 }
 
+function getClientHandoffItems(client) {
+  const items = [
+    {
+      label: "Client profile",
+      status: client.contact || client.notes ? "ready" : "needs-input",
+      detail: client.contact || client.notes || "Add primary contact, offer, audience, and brand notes."
+    },
+    {
+      label: "Repo and deployment",
+      status: client.websiteUrl && client.repo && client.vercelUrl ? "ready" : "blocked",
+      detail: client.repo || client.websiteUrl || "Link website, repo, and deployment."
+    },
+    {
+      label: "Final domain",
+      status: client.finalDomainPurchased === false ? "needs-action" : "ready",
+      detail: client.finalDomainPurchased === false ? "Preview domain is live, final domain still needed." : "Custom domain or accepted live URL is set."
+    },
+    {
+      label: "Web Helper memory",
+      status: client.services?.includes("web-helper-care") ? "ready" : "optional",
+      detail: "Generate client-profile.md, brand-voice.md, website-stack.md, scope-rules.md, and update-history.md."
+    },
+    {
+      label: "Growth layer",
+      status: client.services?.includes("search-intelligence") ? "queued" : "optional",
+      detail: client.services?.includes("search-intelligence")
+        ? "Map to GEO/search intelligence and authority monitoring."
+        : "Not currently included in package."
+    }
+  ];
+  return items;
+}
+
+function getClientHealthChecks(client) {
+  return [
+    { label: "Homepage", value: client.websiteUrl || "Not linked", status: client.websiteUrl ? "ready" : "missing" },
+    { label: "Repository", value: client.repo || "Not linked", status: client.repo ? "ready" : "missing" },
+    { label: "Deployment", value: client.vercelUrl || "Not linked", status: client.vercelUrl ? "ready" : "missing" },
+    { label: "Backend", value: client.railwayUrl || "Not required unless app/backend exists", status: client.railwayUrl ? "ready" : "optional" },
+    { label: "Search profile", value: client.googleBusinessUrl || "Not linked", status: client.googleBusinessUrl ? "ready" : "optional" }
+  ];
+}
+
+function renderHandoffList(items) {
+  return `<div class="handoff-list">
+    ${items.map((item) => `<article class="handoff-item">
+      <div>
+        <strong>${escapeHtml(item.label)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+      </div>
+      <span class="pill ${item.status === "ready" ? "tone-green" : item.status === "blocked" || item.status === "needs-action" ? "tone-red" : "tone-blue"}">${escapeHtml(item.status)}</span>
+    </article>`).join("")}
+  </div>`;
+}
+
+function renderHealthCheckList(items) {
+  return `<div class="handoff-list compact">
+    ${items.map((item) => `<article class="handoff-item">
+      <div>
+        <strong>${escapeHtml(item.label)}</strong>
+        <p>${escapeHtml(item.value)}</p>
+      </div>
+      <span class="pill ${item.status === "ready" ? "tone-green" : item.status === "missing" ? "tone-yellow" : "tone-blue"}">${escapeHtml(item.status)}</span>
+    </article>`).join("")}
+  </div>`;
+}
+
+function renderClientBuildTasks(client) {
+  const tasks = buildClientBuildQueue([client]);
+  const activeTasks = Object.entries(tasks)
+    .flatMap(([column, items]) => items.map((item) => ({ column, item })))
+    .filter((entry) => entry.item);
+
+  return `<div class="ops-mini-list">
+    ${activeTasks.length
+      ? activeTasks.map((entry) => `<p><strong>${escapeHtml(entry.column)}:</strong> ${escapeHtml(entry.item)}</p>`).join("")
+      : "<p>No build tasks generated for this client.</p>"}
+  </div>`;
+}
+
 function renderClientPipeline(clients) {
   if (!elements.clientPipeline) {
     return;
@@ -3306,6 +3440,24 @@ function openClientDetail(clientId) {
     <div class="client-detail-section">
       <h3>Services</h3>
       <div class="ops-chip-row">${(client.services || []).map((service) => `<span>${escapeHtml(service)}</span>`).join("") || "<span>Not set</span>"}</div>
+    </div>
+    <div class="client-detail-section">
+      <h3>Operator Handoff</h3>
+      ${renderHandoffList(getClientHandoffItems(client))}
+    </div>
+    <div class="client-detail-section">
+      <h3>Health Checks</h3>
+      ${renderHealthCheckList(getClientHealthChecks(client))}
+    </div>
+    <div class="client-detail-section">
+      <h3>Build Queue</h3>
+      ${renderClientBuildTasks(client)}
+    </div>
+    <div class="client-detail-section">
+      <h3>Web Helper Scope</h3>
+      <div class="ops-chip-row">
+        ${["copy edits", "image swaps", "hours", "broken links", "minor layout bugs", "approval-gated deploys"].map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+      </div>
     </div>
     <div class="client-detail-section">
       <h3>Contact</h3>

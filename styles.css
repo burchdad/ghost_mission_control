@@ -2682,6 +2682,36 @@ display: none !important;
   overflow-wrap: anywhere;
 }
 
+.handoff-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.handoff-list.compact {
+  gap: 0.4rem;
+}
+
+.handoff-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.55rem;
+  padding: 0.55rem;
+  border: 1px solid rgba(177, 194, 163, 0.13);
+  border-radius: 8px;
+  background: rgba(177, 194, 163, 0.045);
+}
+
+.handoff-item strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.handoff-item p {
+  margin-top: 0.2rem;
+}
+
 .client-modal-panel {
 width: min(760px, 100%);
   max-height: min(88vh, 920px);
