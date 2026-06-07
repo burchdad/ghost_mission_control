@@ -1438,19 +1438,12 @@ color: var(--green);
 
 .client-pipeline {
 margin-top: 0.75rem;
-  display: flex;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(184px, 1fr);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 0.62rem;
-  overflow-x: auto;
-  padding-bottom: 0.65rem;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow-y: hidden;
-  overscroll-behavior-inline: contain;
-  scrollbar-color: rgba(124, 255, 155, 0.72) rgba(177, 194, 163, 0.12);
-  scrollbar-width: thin;
 }
 
 .client-toolbar {
@@ -1474,12 +1467,12 @@ margin-top: 0.75rem;
 }
 
 .pipeline-column {
-min-height: 176px;
+min-height: 146px;
   border: 1px solid rgba(177, 194, 163, 0.2);
   border-radius: 8px;
   background: rgba(9, 18, 11, 0.78);
   padding: 0.55rem;
-  flex: 0 0 202px;
+  min-width: 0;
 }
 
 .pipeline-column-head {
@@ -1515,6 +1508,43 @@ border-radius: 7px;
   border: 1px solid rgba(177, 194, 163, 0.16);
   background: rgba(4, 8, 5, 0.86);
   padding: 0.5rem;
+}
+
+.client-directory-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-top: 0.25rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(177, 194, 163, 0.14);
+}
+
+.client-directory-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.client-directory-head p {
+  margin: 0.18rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.client-directory-head > span {
+  flex: 0 0 auto;
+  border: 1px solid rgba(244, 199, 96, 0.32);
+  border-radius: 999px;
+  background: rgba(244, 199, 96, 0.1);
+  color: #ffe3a0;
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 0.22rem 0.55rem;
+}
+
+.client-detail-card .connection-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .pipeline-card + .pipeline-card,
@@ -1736,38 +1766,16 @@ padding: 0.62rem;
 }
 
 .onboarding-kanban {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 0.62rem;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
   align-items: flex-start;
-  max-height: 760px;
-  padding-bottom: 0.65rem;
-  scrollbar-color: rgba(124, 255, 155, 0.72) rgba(177, 194, 163, 0.12);
-  scrollbar-width: thin;
-}
-
-.onboarding-kanban::-webkit-scrollbar {
-  height: 11px;
-}
-
-.onboarding-kanban::-webkit-scrollbar-track {
-  border-radius: 999px;
-  background: rgba(177, 194, 163, 0.12);
-}
-
-.onboarding-kanban::-webkit-scrollbar-thumb {
-  border: 2px solid rgba(10, 16, 10, 0.96);
-  border-radius: 999px;
-  background: rgba(124, 255, 155, 0.72);
 }
 
 .onboarding-column {
-  flex: 0 0 252px;
-  min-height: 246px;
-  max-height: 720px;
-  overflow-y: auto;
+  min-width: 0;
+  min-height: 188px;
   border: 1px solid rgba(177, 194, 163, 0.2);
   border-radius: 8px;
   background: rgba(9, 18, 11, 0.78);
@@ -1922,6 +1930,7 @@ padding: 0.62rem;
 
 .connection-matrix {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 0.65rem;
 }
 

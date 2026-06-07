@@ -3724,8 +3724,10 @@ function renderClientPipeline(clients) {
   elements.clientPipeline.innerHTML = clientPipelineStages
     .map((stage) => {
       const stageClients = clients.filter((client) => getClientStage(client) === stage.id);
+      const visibleStageClients = stageClients.slice(0, 2);
+      const hiddenCount = Math.max(0, stageClients.length - visibleStageClients.length);
       const cards = stageClients.length
-        ? stageClients.map((client) => `<article class="pipeline-card" data-client-detail="${escapeHtml(client.id)}">
+        ? `${visibleStageClients.map((client) => `<article class="pipeline-card" data-client-detail="${escapeHtml(client.id)}">
             <div class="pipeline-card-head">
               <h3>${escapeHtml(client.clientName)}</h3>
               <span>${getClientIssueTags(client).length}</span>
@@ -3736,7 +3738,8 @@ function renderClientPipeline(clients) {
             <div class="ops-chip-row">
               ${(client.services || []).slice(0, 3).map((service) => `<span>${escapeHtml(service)}</span>`).join("")}
             </div>
-          </article>`).join("")
+          </article>`).join("")}
+          ${hiddenCount ? `<div class="pipeline-empty">+${hiddenCount} more in client directory</div>` : ""}`
         : `<div class="pipeline-empty">No clients</div>`;
 
       return `<section class="pipeline-column">
@@ -3835,11 +3838,22 @@ function renderClients(payload) {
 
   const clients = activePayload.clients || [];
   const filteredClients = getFilteredClients(clients);
+  const clientFilters = getClientFilterState();
+  const hasClientFilters = Boolean(clientFilters.query || clientFilters.stage !== "all" || clientFilters.issue !== "all");
+  const visibleDirectoryClients = hasClientFilters ? filteredClients : filteredClients.slice(0, 9);
+  const hiddenDirectoryCount = Math.max(0, filteredClients.length - visibleDirectoryClients.length);
   renderClientPipeline(filteredClients);
 
   elements.clientCards.innerHTML = clients.length
     ? filteredClients.length
-      ? filteredClients.map((client) => `<article class="ops-card client-detail-card">
+      ? `<div class="client-directory-head">
+          <div>
+            <h3>Client Directory</h3>
+            <p>${hasClientFilters ? "Filtered view" : "Focused view"} showing ${visibleDirectoryClients.length} of ${filteredClients.length} clients.</p>
+          </div>
+          ${hiddenDirectoryCount ? `<span>+${hiddenDirectoryCount} hidden until filtered</span>` : ""}
+        </div>
+        ${visibleDirectoryClients.map((client) => `<article class="ops-card client-detail-card">
         <div class="ops-card-head">
           <h3>${escapeHtml(client.clientName)}</h3>
           <span class="pill ${["web-helper-care", "growth-services"].includes(getClientStage(client)) ? "tone-green" : "tone-blue"}">${escapeHtml(getClientStageLabel(getClientStage(client)))}</span>
@@ -3868,6 +3882,7 @@ function renderClients(payload) {
         </div>
         ${client.notes ? `<p>${escapeHtml(client.notes)}</p>` : ""}
       </article>`).join("")
+        }`
       : `<article class="ops-card">
         <h3>No clients match the filters</h3>
         <p>Adjust search, stage, or issue filters to bring clients back into view.</p>
@@ -4293,7 +4308,7 @@ function renderOnboarding(payload) {
     <div class="onboarding-kanban">
       ${onboardingBuckets.map((bucket) => {
         const bucketTasksAll = visibleTasks.filter((task) => task.bucket === bucket.id);
-        const bucketTasks = bucketTasksAll.slice(0, 4);
+        const bucketTasks = bucketTasksAll.slice(0, 3);
         const hiddenCount = Math.max(0, bucketTasksAll.length - bucketTasks.length);
         return `<section class="onboarding-column">
           <div class="onboarding-column-head">
