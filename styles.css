@@ -1741,6 +1741,8 @@ padding: 0.62rem;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  align-items: flex-start;
+  max-height: 760px;
   padding-bottom: 0.65rem;
   scrollbar-color: rgba(124, 255, 155, 0.72) rgba(177, 194, 163, 0.12);
   scrollbar-width: thin;
@@ -1764,6 +1766,8 @@ padding: 0.62rem;
 .onboarding-column {
   flex: 0 0 252px;
   min-height: 246px;
+  max-height: 720px;
+  overflow-y: auto;
   border: 1px solid rgba(177, 194, 163, 0.2);
   border-radius: 8px;
   background: rgba(9, 18, 11, 0.78);

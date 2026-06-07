@@ -2920,15 +2920,35 @@ function renderAutonomousGoals(goals) {
   }
 
   if (!goals || goals.length === 0) {
-    liveAutonomousGoals = [];
-    elements.autonomousGoals.innerHTML = `
-      <article class="autonomy-item autonomy-empty">
-        <h3>No Autonomous Goals</h3>
-        <p>System is stable. No self-directed intervention needed.</p>
-      </article>
-    `;
-    updateNavBadges();
-    return;
+    goals = [
+      {
+        title: "Client Care Loop",
+        priority: "P2",
+        trigger: "Daily scan of launched and review-stage client sites.",
+        expectedImpact: "Keeps live websites, helper requests, and handoff work from drifting.",
+        confidence: 82,
+        horizonHours: 24,
+        proposedCommand: "Scan active client sites, surface blockers, and draft Web Helper tasks."
+      },
+      {
+        title: "Revenue Services Loop",
+        priority: "P2",
+        trigger: "Service map includes planned GEO, lead funnel, content, ads, and reporting packages.",
+        expectedImpact: "Turns client status into upsell-ready service recommendations.",
+        confidence: 78,
+        horizonHours: 48,
+        proposedCommand: "Match each client to one low-risk growth offer and queue owner review."
+      },
+      {
+        title: "Repo Steward Loop",
+        priority: "P3",
+        trigger: "GitHub registry has unclassified or unlinked tools.",
+        expectedImpact: "Keeps Ghost tools mapped to clients, products, services, and future systems.",
+        confidence: 74,
+        horizonHours: 72,
+        proposedCommand: "Classify unmapped repos and propose deploy/client ownership."
+      }
+    ];
   }
 
   liveAutonomousGoals = [...goals];
@@ -2939,16 +2959,16 @@ function renderAutonomousGoals(goals) {
       return `
       <article class="autonomy-item">
         <div class="autonomy-header">
-          <h3>${goal.title}</h3>
-          <span class="pill ${priorityTone}">${goal.priority}</span>
+          <h3>${escapeHtml(goal.title)}</h3>
+          <span class="pill ${priorityTone}">${escapeHtml(goal.priority)}</span>
         </div>
-        <p class="autonomy-trigger">Trigger: ${goal.trigger}</p>
-        <p class="autonomy-impact">Expected: ${goal.expectedImpact}</p>
+        <p class="autonomy-trigger">Trigger: ${escapeHtml(goal.trigger)}</p>
+        <p class="autonomy-impact">Expected: ${escapeHtml(goal.expectedImpact)}</p>
         <div class="autonomy-meta">
-          <span>Confidence: ${Math.round(goal.confidence)}%</span>
-          <span>Horizon: ${goal.horizonHours}h</span>
+          <span>Confidence: ${Math.round(Number(goal.confidence || 0))}%</span>
+          <span>Horizon: ${escapeHtml(String(goal.horizonHours || 0))}h</span>
         </div>
-        <div class="autonomy-command">Suggested command: ${goal.proposedCommand}</div>
+        <div class="autonomy-command">Suggested command: ${escapeHtml(goal.proposedCommand)}</div>
       </article>`;
     })
     .join("");
@@ -4272,13 +4292,16 @@ function renderOnboarding(payload) {
     </article>`}
     <div class="onboarding-kanban">
       ${onboardingBuckets.map((bucket) => {
-        const bucketTasks = visibleTasks.filter((task) => task.bucket === bucket.id);
+        const bucketTasksAll = visibleTasks.filter((task) => task.bucket === bucket.id);
+        const bucketTasks = bucketTasksAll.slice(0, 4);
+        const hiddenCount = Math.max(0, bucketTasksAll.length - bucketTasks.length);
         return `<section class="onboarding-column">
           <div class="onboarding-column-head">
             <h3>${escapeHtml(bucket.label)}</h3>
-            <span>${bucketTasks.length}</span>
+            <span>${bucketTasksAll.length}</span>
           </div>
           ${bucketTasks.length ? bucketTasks.map(renderOnboardingCard).join("") : `<div class="pipeline-empty">${escapeHtml(rawQueue.length ? "No matches" : "Waiting")}</div>`}
+          ${hiddenCount ? `<div class="pipeline-empty">+${hiddenCount} more. Filter or review connection status below.</div>` : ""}
         </section>`;
       }).join("")}
     </div>`;
@@ -4577,7 +4600,7 @@ async function loadWebHelpers(siteId = activeSiteId) {
     }
 
     const payload = await response.json();
-    const hydratedPayload = payload.helpers?.length ? payload : buildFallbackWebHelpersPayload(siteId, "Live helper queue has no client helpers yet.");
+    const hydratedPayload = mergeWebHelpersWithSeed(payload, siteId);
     liveWebHelpers = hydratedPayload.helpers || [];
     renderWebHelpers(hydratedPayload);
   } catch (error) {
@@ -4585,6 +4608,50 @@ async function loadWebHelpers(siteId = activeSiteId) {
     liveWebHelpers = fallbackPayload.helpers || [];
     renderWebHelpers(fallbackPayload);
   }
+}
+
+function summarizeWebHelpersForUi(helpers) {
+  const openRequests = helpers.flatMap((helper) => helper.requests || []);
+  return {
+    helperCount: helpers.length,
+    activeCount: helpers.filter((helper) => helper.status === "active").length,
+    openRequests: openRequests.length,
+    pendingApprovals: openRequests.filter((request) => request.approvalRequired).length,
+    templateReadyCount: helpers.length
+  };
+}
+
+function getWebHelperMergeKey(helper) {
+  return slugForUi(helper?.clientName || helper?.id || helper?.name || "");
+}
+
+function mergeWebHelpersWithSeed(payload = {}, siteId = activeSiteId) {
+  const seededPayload = buildFallbackWebHelpersPayload(siteId, "Merged with seeded client map.");
+  const mergedHelpers = new Map();
+
+  (seededPayload.helpers || []).forEach((helper) => {
+    mergedHelpers.set(getWebHelperMergeKey(helper), helper);
+  });
+
+  (payload.helpers || []).forEach((helper) => {
+    const key = getWebHelperMergeKey(helper);
+    const seeded = mergedHelpers.get(key) || {};
+    mergedHelpers.set(key, {
+      ...seeded,
+      ...helper,
+      scope: helper.scope?.length ? helper.scope : seeded.scope || [],
+      requests: helper.requests?.length ? helper.requests : seeded.requests || []
+    });
+  });
+
+  const helpers = [...mergedHelpers.values()];
+  return {
+    ...seededPayload,
+    ...payload,
+    source: payload.source || seededPayload.source,
+    helpers,
+    summary: summarizeWebHelpersForUi(helpers)
+  };
 }
 
 function buildFallbackWebHelpersPayload(siteId = activeSiteId, reason = "") {
@@ -4769,20 +4836,20 @@ function renderWebHelpers(payload) {
       const tone = helper.status === "active" ? "green" : helper.status === "needs-approval" ? "yellow" : "gray";
       return `<article class="web-helper-card">
         <div class="web-helper-card-head">
-          <h3>${helper.clientName}</h3>
-          <span class="pill ${toneClass[tone] ?? "tone-gray"}">${helper.statusLabel}</span>
+          <h3>${escapeHtml(helper.clientName)}</h3>
+          <span class="pill ${toneClass[tone] ?? "tone-gray"}">${escapeHtml(helper.statusLabel || helper.status || "ready")}</span>
         </div>
-        <p class="web-helper-domain">${helper.websiteUrl}</p>
+        <p class="web-helper-domain">${escapeHtml(helper.websiteUrl)}</p>
         <div class="web-helper-meta">
-          <div><span>Agent</span>${helper.name}</div>
-          <div><span>Autonomy</span>${helper.autonomyLevel}</div>
-          <div><span>Plan</span>${helper.plan}</div>
-          <div><span>Repo</span>${helper.repo || "Not connected"}</div>
-          <div><span>Deployment</span>${helper.deployment}</div>
-          <div><span>Last Deploy</span>${helper.lastDeploymentLabel}</div>
+          <div><span>Agent</span>${escapeHtml(helper.name)}</div>
+          <div><span>Autonomy</span>${escapeHtml(helper.autonomyLevel)}</div>
+          <div><span>Plan</span>${escapeHtml(helper.plan)}</div>
+          <div><span>Repo</span>${escapeHtml(helper.repo || "Not connected")}</div>
+          <div><span>Deployment</span>${escapeHtml(helper.deployment)}</div>
+          <div><span>Last Deploy</span>${escapeHtml(helper.lastDeploymentLabel)}</div>
         </div>
         <div class="web-helper-scope">
-          ${helper.scope.map((item) => `<span>${item}</span>`).join("")}
+          ${(helper.scope || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
         </div>
       </article>`;
     })
@@ -4800,14 +4867,14 @@ function renderWebHelpers(payload) {
     ? requests
         .map((request) => `<article class="web-helper-request">
           <div class="web-helper-request-head">
-            <h3>${request.title}</h3>
+            <h3>${escapeHtml(request.title)}</h3>
             <span class="exec-status ${request.approvalRequired ? "exec-retrying" : "exec-running"}">
               ${request.approvalRequired ? "approval" : "safe"}
             </span>
           </div>
-          <p>${request.clientName} | ${request.helperName}</p>
-          <p>${request.summary}</p>
-          <p class="statline">Type: ${request.type} | Status: ${request.status} | SLA: ${request.sla}</p>
+          <p>${escapeHtml(request.clientName)} | ${escapeHtml(request.helperName)}</p>
+          <p>${escapeHtml(request.summary)}</p>
+          <p class="statline">Type: ${escapeHtml(request.type)} | Status: ${escapeHtml(request.status)} | SLA: ${escapeHtml(request.sla)}</p>
         </article>`)
         .join("")
     : `<article class="web-helper-request">
