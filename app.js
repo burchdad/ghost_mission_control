@@ -247,6 +247,193 @@ const clientPipelineStages = [
   { id: "paused-archived", label: "Paused / Archived" }
 ];
 
+const clientServiceDefinitions = {
+  "website-build": {
+    label: "Website Build",
+    category: "Web",
+    agreement: "Website build / launch agreement",
+    system: "GitHub + Vercel",
+    pipeline: "web-delivery"
+  },
+  "web-helper-care": {
+    label: "Web Helper Care",
+    category: "Care",
+    agreement: "Maintenance / Web Helper care agreement",
+    system: "Web Helper Agent",
+    pipeline: "web-care"
+  },
+  "search-intelligence": {
+    label: "SEO / AEO / GEO",
+    category: "Growth",
+    agreement: "Search intelligence / GEO growth agreement",
+    system: "geo.ghostai.solutions",
+    pipeline: "seo-geo"
+  },
+  "local-service": {
+    label: "Local Service Growth",
+    category: "Growth",
+    agreement: "Local service growth agreement",
+    system: "GBP + GEO + Web Helper",
+    pipeline: "seo-geo"
+  },
+  "lead-funnel": {
+    label: "Lead Funnel",
+    category: "Growth",
+    agreement: "Lead generation / funnel agreement",
+    system: "Ghost Lead Command + GhostCRM",
+    pipeline: "automations"
+  },
+  "software-tool": {
+    label: "Software Tool",
+    category: "Software",
+    agreement: "Software build / automation agreement",
+    system: "Tool registry + deployment map",
+    pipeline: "automations"
+  },
+  "ai-automation": {
+    label: "AI Automation",
+    category: "Automation",
+    agreement: "AI workflow / agent automation agreement",
+    system: "Lead Command + GhostCRM + Slack approvals",
+    pipeline: "automations"
+  },
+  ecommerce: {
+    label: "Ecommerce",
+    category: "Commerce",
+    agreement: "Ecommerce operations agreement",
+    system: "Storefront + payments",
+    pipeline: "commerce"
+  },
+  "content-social": {
+    label: "Content + Social",
+    category: "Social",
+    agreement: "Social/content management agreement",
+    system: "Content operator + social pages",
+    pipeline: "social"
+  },
+  "paid-ads": {
+    label: "Paid Ads",
+    category: "Ads",
+    agreement: "Ads management agreement",
+    system: "Meta Ads + Google Ads + reporting",
+    pipeline: "ads"
+  },
+  "mobile-app": {
+    label: "Mobile App",
+    category: "Mobile",
+    agreement: "Mobile app build agreement",
+    system: "App build queue + stores",
+    pipeline: "mobile-apps"
+  }
+};
+
+const servicePipelineDefinitions = [
+  {
+    id: "web-care",
+    label: "Web Helper Care",
+    description: "Live site maintenance, approved changes, health checks, and client request handling.",
+    system: "Web Helper Agents",
+    serviceKeys: ["web-helper-care"],
+    stages: [
+      { id: "handoff", label: "Handoff" },
+      { id: "memory", label: "Memory" },
+      { id: "active-care", label: "Active Care" },
+      { id: "request-queue", label: "Requests" },
+      { id: "reporting", label: "Reporting" }
+    ]
+  },
+  {
+    id: "seo-geo",
+    label: "SEO / AEO / GEO",
+    description: "Search visibility, AI answer presence, local authority, competitor analysis, and GEO action queues.",
+    system: "geo.ghostai.solutions",
+    serviceKeys: ["search-intelligence", "local-service"],
+    stages: [
+      { id: "eligible", label: "Eligible" },
+      { id: "audit-needed", label: "Audit Needed" },
+      { id: "strategy", label: "Strategy" },
+      { id: "approval", label: "Approval" },
+      { id: "active", label: "Active" },
+      { id: "reporting", label: "Reporting" }
+    ]
+  },
+  {
+    id: "social",
+    label: "Social Management",
+    description: "Social page access, content calendar, posting approvals, reputation responses, and campaign support.",
+    system: "Social pages + content operator",
+    serviceKeys: ["content-social"],
+    stages: [
+      { id: "candidate", label: "Candidate" },
+      { id: "access", label: "Access" },
+      { id: "calendar", label: "Calendar" },
+      { id: "approval", label: "Approval" },
+      { id: "publishing", label: "Publishing" },
+      { id: "reporting", label: "Reporting" }
+    ]
+  },
+  {
+    id: "ads",
+    label: "Paid Ads",
+    description: "Ad account access, tracking, offer alignment, campaign launch, optimization, and reporting.",
+    system: "Meta Ads + Google Ads",
+    serviceKeys: ["paid-ads"],
+    stages: [
+      { id: "candidate", label: "Candidate" },
+      { id: "access", label: "Access" },
+      { id: "tracking", label: "Tracking" },
+      { id: "launch", label: "Launch" },
+      { id: "optimize", label: "Optimize" },
+      { id: "reporting", label: "Reporting" }
+    ]
+  },
+  {
+    id: "mobile-apps",
+    label: "Mobile Apps",
+    description: "Mobile app ideas, scope, build, client review, release, and post-launch care.",
+    system: "App build queue + stores",
+    serviceKeys: ["mobile-app"],
+    stages: [
+      { id: "idea", label: "Idea" },
+      { id: "scope", label: "Scope" },
+      { id: "build", label: "Build" },
+      { id: "review", label: "Review" },
+      { id: "release", label: "Release" },
+      { id: "care", label: "Care" }
+    ]
+  },
+  {
+    id: "automations",
+    label: "Automations + Lead Systems",
+    description: "Lead Command, CRM, workflow agents, software builds, and revenue automation systems.",
+    system: "Ghost Lead Command + GhostCRM + tool registry",
+    serviceKeys: ["lead-funnel", "software-tool"],
+    stages: [
+      { id: "opportunity", label: "Opportunity" },
+      { id: "mapped", label: "Mapped" },
+      { id: "build", label: "Build" },
+      { id: "approval", label: "Approval" },
+      { id: "live", label: "Live" },
+      { id: "retention", label: "Retention" }
+    ]
+  },
+  {
+    id: "commerce",
+    label: "Commerce Ops",
+    description: "Storefront, products, payments, fulfillment, growth offers, and care workflows.",
+    system: "Storefront + payments + reporting",
+    serviceKeys: ["ecommerce"],
+    stages: [
+      { id: "storefront", label: "Storefront" },
+      { id: "products", label: "Products" },
+      { id: "payments", label: "Payments" },
+      { id: "fulfillment", label: "Fulfillment" },
+      { id: "growth", label: "Growth" },
+      { id: "care", label: "Care" }
+    ]
+  }
+];
+
 const seededClientProfiles = [
   {
     id: "gray-matters-tech",
@@ -392,6 +579,14 @@ const seededClientProfiles = [
     source: "client-deployment-map"
   }
 ];
+
+function titleFromSlug(value) {
+  return String(value || "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 function getSeededClientProfilesForUi() {
   return seededClientProfiles.map((client) => ({
@@ -1136,9 +1331,9 @@ function renderPerceptionLayer(execution, agents, intelligence, autonomy) {
 function getViewLabel(view) {
   const labels = {
     "mission-control": "Overview",
-    clients: "Clients",
+    clients: "Web Clients",
     onboarding: "Onboarding",
-    services: "Services",
+    services: "Service Pipelines",
     "web-helpers": "Web Helpers",
     tools: "Tool Registry",
     "build-queue": "Build Queue"
@@ -1174,9 +1369,9 @@ function setFocusMode(enabled, targetView = activeView) {
 function getPaletteActions() {
   const viewLabels = {
     "mission-control": "Overview",
-    clients: "Clients",
+    clients: "Web Clients",
     onboarding: "Onboarding",
-    services: "Services",
+    services: "Service Pipelines",
     "web-helpers": "Web Helpers",
     tools: "Tool Registry",
     "build-queue": "Build Queue"
@@ -3781,8 +3976,97 @@ function renderClientPipeline(clients) {
     .join("");
 }
 
+function getClientServiceDefinition(serviceKey) {
+  const definition = clientServiceDefinitions[serviceKey];
+  if (definition) {
+    return definition;
+  }
+
+  return {
+    label: titleFromSlug(serviceKey || "Unmapped Service"),
+    category: "Custom",
+    agreement: "Custom service agreement",
+    system: "Manual operator",
+    pipeline: "custom"
+  };
+}
+
+function getClientServiceAgreementStatus(client, serviceKey) {
+  const stage = getClientStage(client);
+  const hasBaseAgreement = Boolean(client.proposalSigned || client.depositPaid || !["lead", "deposit-paid"].includes(stage));
+  const hasGrowthAgreement = Boolean(client.partnershipSigned || stage === "growth-services");
+
+  if (serviceKey === "website-build") {
+    return hasBaseAgreement ? "scope active" : "agreement needed";
+  }
+
+  if (serviceKey === "web-helper-care") {
+    return client.partnershipSigned || ["web-helper-care", "growth-services", "paused-archived"].includes(stage)
+      ? "care active"
+      : "care agreement needed";
+  }
+
+  if (["search-intelligence", "local-service", "lead-funnel", "content-social", "paid-ads", "ai-automation"].includes(serviceKey)) {
+    return hasGrowthAgreement ? "growth active" : "growth agreement needed";
+  }
+
+  if (serviceKey === "ecommerce" || serviceKey === "mobile-app" || serviceKey === "software-tool") {
+    return hasBaseAgreement ? "scope active" : "agreement needed";
+  }
+
+  return hasBaseAgreement ? "agreement active" : "agreement needed";
+}
+
+function getAgreementTone(status) {
+  if (/needed|missing/i.test(status)) {
+    return "tone-yellow";
+  }
+
+  if (/active|signed|ready|complete/i.test(status)) {
+    return "tone-green";
+  }
+
+  return "tone-blue";
+}
+
+function getClientServiceBreakdown(client) {
+  return (client.services || []).map((serviceKey) => {
+    const definition = getClientServiceDefinition(serviceKey);
+    const pipeline = servicePipelineDefinitions.find((entry) => entry.id === definition.pipeline);
+    const agreementStatus = getClientServiceAgreementStatus(client, serviceKey);
+    return {
+      key: serviceKey,
+      ...definition,
+      pipelineLabel: pipeline?.label || titleFromSlug(definition.pipeline || "custom"),
+      agreementStatus
+    };
+  });
+}
+
+function renderClientServiceBreakdown(client) {
+  const services = getClientServiceBreakdown(client);
+  if (!services.length) {
+    return `<div class="pipeline-empty">No services mapped yet.</div>`;
+  }
+
+  return `<div class="client-service-breakdown">
+    ${services.map((service) => `<article class="client-service-row">
+      <div>
+        <span class="eyebrow">${escapeHtml(service.category)}</span>
+        <h4>${escapeHtml(service.label)}</h4>
+        <p>${escapeHtml(service.agreement)}</p>
+      </div>
+      <div class="client-service-meta">
+        <span class="pill ${getAgreementTone(service.agreementStatus)}">${escapeHtml(service.agreementStatus)}</span>
+        <span>${escapeHtml(service.pipelineLabel)}</span>
+        <span>${escapeHtml(service.system)}</span>
+      </div>
+    </article>`).join("")}
+  </div>`;
+}
+
 function openClientDetail(clientId) {
-  const clients = liveClients?.clients || [];
+  const clients = liveClients?.clients?.length ? liveClients.clients : buildClientPayloadFallback().clients;
   const client = clients.find((entry) => entry.id === clientId);
   if (!client || !elements.clientDetailDrawer || !elements.clientDetailContent) {
     return;
@@ -3819,8 +4103,8 @@ function openClientDetail(clientId) {
       </div>
     </div>
     <div class="client-detail-section">
-      <h3>Services</h3>
-      <div class="ops-chip-row">${(client.services || []).map((service) => `<span>${escapeHtml(service)}</span>`).join("") || "<span>Not set</span>"}</div>
+      <h3>Ordered Services</h3>
+      ${renderClientServiceBreakdown(client)}
     </div>
     <div class="client-detail-section">
       <h3>Operator Handoff</h3>
@@ -4148,6 +4432,39 @@ const fallbackServiceCatalog = [
     nextActions: ["Collect ad account access", "Confirm budget rules", "Connect tracking"]
   },
   {
+    id: "ecommerce",
+    name: "Commerce Ops",
+    status: "active",
+    category: "Commerce",
+    owner: "Commerce Operator",
+    description: "Storefront maintenance, product updates, checkout health, fulfillment handoffs, and growth offers.",
+    connectedSystems: ["Storefront", "Payments", "Inventory", "Client Reports"],
+    triggers: ["Product update", "Checkout issue", "Promotion launch"],
+    nextActions: ["Map product workflow", "Connect payment health", "Define fulfillment checks"]
+  },
+  {
+    id: "mobile-app",
+    name: "Mobile App Builds",
+    status: "planned",
+    category: "Mobile",
+    owner: "App Build Operator",
+    description: "Mobile app scoping, build pipeline, store release path, and post-launch care.",
+    connectedSystems: ["App Build Queue", "Client Approvals", "Store Accounts"],
+    triggers: ["Mobile app sold", "Client app idea approved", "Portal expansion"],
+    nextActions: ["Define app scope", "Collect store accounts", "Create release checklist"]
+  },
+  {
+    id: "ai-automation",
+    name: "AI Automation",
+    status: "planned",
+    category: "Automation",
+    owner: "Automation Operator",
+    description: "Workflow agents, lead systems, CRM automations, Slack approvals, and revenue operations.",
+    connectedSystems: ["Ghost Lead Command", "GhostCRM", "Slack", "Tool Registry"],
+    triggers: ["Automation package sold", "Manual process identified", "Lead system requested"],
+    nextActions: ["Map workflow", "Define approval gates", "Connect CRM and Slack"]
+  },
+  {
     id: "reporting",
     name: "Client Reporting",
     status: "planned",
@@ -4393,17 +4710,21 @@ async function loadServices() {
 
 function renderServices(payload) {
   const services = payload?.services?.length ? payload.services : fallbackServiceCatalog;
-  const summary = payload?.summary || {
-    serviceCount: services.length,
-    activeCount: services.filter((service) => service.status === "active").length,
-    integrationNeeded: services.filter((service) => service.status === "integration-needed").length,
-    plannedCount: services.filter((service) => service.status === "planned").length
+  const clientPayload = liveClients?.clients?.length ? mergeClientPayloadWithSeed(liveClients) : buildClientPayloadFallback();
+  const clients = clientPayload.clients || [];
+  const serviceBreakdown = clients.flatMap((client) => getClientServiceBreakdown(client).map((service) => ({ client, service })));
+  const agreementNeeded = serviceBreakdown.filter((entry) => /needed|missing/i.test(entry.service.agreementStatus)).length;
+  const summary = {
+    servicePipelines: servicePipelineDefinitions.length,
+    serviceClients: clients.filter((client) => client.services?.length).length,
+    mappedServices: serviceBreakdown.length,
+    agreementNeeded
   };
   renderOpsSummary(elements.serviceSummary, [
-    { label: "Services", value: summary.serviceCount },
-    { label: "Active", value: summary.activeCount },
-    { label: "Integrations", value: summary.integrationNeeded },
-    { label: "Planned", value: summary.plannedCount }
+    { label: "Pipelines", value: summary.servicePipelines },
+    { label: "Service Clients", value: summary.serviceClients },
+    { label: "Mapped Services", value: summary.mappedServices },
+    { label: "Agreements Needed", value: summary.agreementNeeded }
   ]);
 
   const activeServices = services.filter((service) => service.status === "active");
@@ -4418,17 +4739,22 @@ function renderServices(payload) {
   elements.serviceCards.innerHTML = services.length
     ? `<div class="service-command-strip">
         <article>
-          <span>Core Flow</span>
-          <strong>Build -> Care -> Growth -> Reporting</strong>
-          <p>Each client should map to the services they bought, the tools required, and the approval rules that control execution.</p>
+          <span>Operating Model</span>
+          <strong>Web first, then service pipelines</strong>
+          <p>Web Clients stays focused on launch and care. Expansion services route through their own kanban lanes with agreement status visible in the client modal.</p>
         </article>
         <article>
-          <span>GEO Integration</span>
-          <strong>geo.ghostai.solutions</strong>
-          <p>Connect API credentials, map each client site to a GEO profile, and route recommendations into Web Helper tasks.</p>
+          <span>Connected Systems</span>
+          <strong>GEO, Lead Command, CRM, cards, apps</strong>
+          <p>Each service pipeline can later connect to its own operator system without making the web client board carry every detail.</p>
         </article>
       </div>
-      <div class="service-lane-grid">
+      <div class="service-pipeline-stack">
+        ${servicePipelineDefinitions.map((pipeline) => renderServicePipeline(pipeline, clients)).join("")}
+      </div>
+      <details class="service-catalog-details">
+        <summary>Service Package Catalog</summary>
+        <div class="service-lane-grid">
         ${serviceGroups.map((group) => `<section class="service-lane">
           <div class="service-lane-head">
             <div>
@@ -4441,7 +4767,8 @@ function renderServices(payload) {
             ${group.services.length ? group.services.map(renderServiceCard).join("") : `<div class="pipeline-empty">No services</div>`}
           </div>
         </section>`).join("")}
-      </div>`
+        </div>
+      </details>`
     : `<article class="ops-card"><h3>No services loaded</h3><p>Service catalog will appear when the backend is available.</p></article>`;
 
   const actions = payload?.actions?.length ? payload.actions : [
@@ -4452,6 +4779,133 @@ function renderServices(payload) {
   ];
   renderOpsActions(elements.serviceActions, actions, "Service actions will appear here.");
   updateNavBadges();
+}
+
+function getServicePipelineStatus(client, pipeline, serviceKey) {
+  const stage = getClientStage(client);
+  const issues = getClientIssueTags(client).join(" ").toLowerCase();
+
+  if (pipeline.id === "web-care") {
+    if (stage === "web-helper-care") {
+      return issues.includes("missing") ? "memory" : "active-care";
+    }
+    if (stage === "growth-services") {
+      return "reporting";
+    }
+    return "handoff";
+  }
+
+  if (pipeline.id === "seo-geo") {
+    if (stage === "growth-services") {
+      return "active";
+    }
+    if (issues.includes("gbp") || issues.includes("geo")) {
+      return "audit-needed";
+    }
+    if (["web-helper-care", "launch-handoff"].includes(stage)) {
+      return "strategy";
+    }
+    return "eligible";
+  }
+
+  if (pipeline.id === "social") {
+    if (issues.includes("social")) {
+      return "access";
+    }
+    return stage === "growth-services" ? "publishing" : "candidate";
+  }
+
+  if (pipeline.id === "ads") {
+    if (issues.includes("ads") || issues.includes("analytics")) {
+      return "tracking";
+    }
+    return stage === "growth-services" ? "optimize" : "candidate";
+  }
+
+  if (pipeline.id === "mobile-apps") {
+    return stage === "client-review" ? "review" : stage === "launch-handoff" ? "release" : stage === "web-helper-care" ? "care" : "scope";
+  }
+
+  if (pipeline.id === "automations") {
+    if (stage === "growth-services") {
+      return "live";
+    }
+    if (stage === "paused-archived") {
+      return "retention";
+    }
+    return serviceKey === "lead-funnel" ? "mapped" : "build";
+  }
+
+  if (pipeline.id === "commerce") {
+    if (stage === "web-helper-care") {
+      return "care";
+    }
+    if (stage === "growth-services") {
+      return "growth";
+    }
+    return "storefront";
+  }
+
+  return pipeline.stages[0]?.id || "queued";
+}
+
+function getServicePipelineCards(pipeline, clients) {
+  return clients.flatMap((client) =>
+    (client.services || [])
+      .filter((serviceKey) => pipeline.serviceKeys.includes(serviceKey))
+      .map((serviceKey) => {
+        const service = getClientServiceDefinition(serviceKey);
+        return {
+          client,
+          serviceKey,
+          serviceLabel: service.label,
+          agreementStatus: getClientServiceAgreementStatus(client, serviceKey),
+          stage: getServicePipelineStatus(client, pipeline, serviceKey),
+          issueCount: getClientIssueTags(client).length
+        };
+      })
+  );
+}
+
+function renderServicePipeline(pipeline, clients) {
+  const cards = getServicePipelineCards(pipeline, clients);
+  return `<section class="service-pipeline-board">
+    <div class="service-pipeline-head">
+      <div>
+        <span class="eyebrow">${escapeHtml(pipeline.system)}</span>
+        <h3>${escapeHtml(pipeline.label)}</h3>
+        <p>${escapeHtml(pipeline.description)}</p>
+      </div>
+      <span class="pill ${cards.length ? "tone-green" : "tone-blue"}">${cards.length} mapped</span>
+    </div>
+    <div class="service-pipeline-lanes">
+      ${pipeline.stages.map((stage) => {
+        const stageCards = cards.filter((card) => card.stage === stage.id);
+        return `<section class="service-pipeline-lane">
+          <div class="pipeline-column-head">
+            <h3>${escapeHtml(stage.label)}</h3>
+            <span>${stageCards.length}</span>
+          </div>
+          ${stageCards.length ? stageCards.map(renderServiceClientCard).join("") : `<div class="pipeline-empty">No clients</div>`}
+        </section>`;
+      }).join("")}
+    </div>
+  </section>`;
+}
+
+function renderServiceClientCard(card) {
+  const displayUrl = getClientDisplayUrl(card.client);
+  return `<article class="service-client-card" data-client-detail="${escapeHtml(card.client.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(card.client.clientName)} service details">
+    <div class="pipeline-card-head">
+      <h3>${escapeHtml(card.client.clientName)}</h3>
+      <span>${card.issueCount}</span>
+    </div>
+    <p>${escapeHtml(card.serviceLabel)}</p>
+    <div class="service-client-card-meta">
+      <span class="pill ${getAgreementTone(card.agreementStatus)}">${escapeHtml(card.agreementStatus)}</span>
+      <span>${escapeHtml(displayUrl || card.client.repo || "details pending")}</span>
+    </div>
+  </article>`;
 }
 
 function renderServiceCard(service) {
@@ -5258,6 +5712,31 @@ async function init() {
     openClientDetail(detailTarget.dataset.clientDetail);
   });
   elements.clientsPanel?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const detailTarget = event.target.closest("[data-client-detail]");
+    if (!detailTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    openClientDetail(detailTarget.dataset.clientDetail);
+  });
+  elements.servicesPanel?.addEventListener("click", (event) => {
+    const detailTarget = event.target.closest("[data-client-detail]");
+    if (!detailTarget) {
+      return;
+    }
+
+    if (event.target.closest("a")) {
+      return;
+    }
+
+    openClientDetail(detailTarget.dataset.clientDetail);
+  });
+  elements.servicesPanel?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") {
       return;
     }

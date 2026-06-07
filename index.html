@@ -23,13 +23,13 @@
           <button class="nav-item active" type="button" data-view="mission-control">Overview</button>
           <p class="nav-group-label">Client Ops</p>
           <button class="nav-item" type="button" data-view="clients">
-            <span>Clients</span><span id="navBadgeClients" class="nav-badge"></span>
+            <span>Web Clients</span><span id="navBadgeClients" class="nav-badge"></span>
           </button>
           <button class="nav-item" type="button" data-view="onboarding">
             <span>Onboarding</span><span id="navBadgeOnboarding" class="nav-badge"></span>
           </button>
           <button class="nav-item" type="button" data-view="services">
-            <span>Services</span><span id="navBadgeServices" class="nav-badge"></span>
+            <span>Service Pipelines</span><span id="navBadgeServices" class="nav-badge"></span>
           </button>
           <button class="nav-item" type="button" data-view="web-helpers">
             <span>Web Helpers</span><span id="navBadgeWebHelpers" class="nav-badge"></span>
@@ -105,17 +105,17 @@
 
       <section class="layout-grid">
         <div class="main-column">
-          <section class="module-panel view-panel" id="clientsPanel" aria-label="Client registry">
+          <section class="module-panel view-panel" id="clientsPanel" aria-label="Web client registry">
             <div class="panel-header client-pipeline-header">
               <div>
-                <h2>Client Pipeline</h2>
-                <p>Move each client from deposit and build through launch, Web Helper care, GEO growth, and long-term operations.</p>
+                <h2>Web Client Pipeline</h2>
+                <p>Move website clients from deposit and build through launch, Web Helper care, GEO growth, and long-term operations.</p>
               </div>
               <button id="openClientModalButton" class="new-client-button" type="button">New Client</button>
             </div>
             <div id="clientSummary" class="ops-summary"></div>
             <div class="client-toolbar" aria-label="Client filters">
-              <input id="clientSearchInput" class="client-search-input" type="search" placeholder="Search clients, services, links..." aria-label="Search clients" />
+              <input id="clientSearchInput" class="client-search-input" type="search" placeholder="Search web clients, services, links..." aria-label="Search web clients" />
               <select id="clientStageFilter" class="client-filter-select" aria-label="Filter clients by stage">
                 <option value="all">All stages</option>
                 <option value="lead">Lead / Prospect</option>
@@ -180,10 +180,10 @@
             <div id="onboardingStages" class="ops-card-grid"></div>
           </section>
 
-          <section class="module-panel view-panel" id="servicesPanel" aria-label="Client services">
+          <section class="module-panel view-panel" id="servicesPanel" aria-label="Service pipelines">
             <div class="panel-header">
-              <h2>Service Hub</h2>
-              <p>Run website, SEO, AEO, GEO, lead, content, reporting, and maintenance services from one command layer.</p>
+              <h2>Service Pipelines</h2>
+              <p>Track SEO, GEO, social, ads, mobile apps, automations, commerce, reporting, and expansion work by service line.</p>
             </div>
             <div id="serviceSummary" class="ops-summary"></div>
             <div id="serviceCards" class="service-board"></div>
