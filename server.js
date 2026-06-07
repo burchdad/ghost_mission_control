@@ -1808,6 +1808,8 @@ const liveDeploymentMap = {
   "barbara-consulting": {
     provider: "Vercel",
     url: "https://www.graymatterstech.com",
+    railwayUrl: "https://barbaraconsulting-production.up.railway.app",
+    databaseAttached: true,
     status: "Live custom domain",
     clientName: "Gray Matters Tech",
     canonicalRepo: "barbara_consulting",
@@ -1830,6 +1832,7 @@ const liveDeploymentMap = {
   "ghost-alpha-terminal": {
     provider: "Vercel",
     url: "https://www.alphaghost.org",
+    railwayUrl: "https://ghostalphaterminal-production.up.railway.app",
     status: "Live custom domain",
     clientName: "Alpha Ghost",
     canonicalRepo: "ghost-alpha-terminal",
@@ -1841,6 +1844,8 @@ const liveDeploymentMap = {
   ghostaisolutions: {
     provider: "Vercel",
     url: "https://www.ghostai.solutions",
+    railwayUrl: "https://ghostaisolutions-production.up.railway.app",
+    databaseAttached: true,
     status: "Live custom domain",
     clientName: "Ghost AI Solutions",
     canonicalRepo: "ghostaisolutions",
@@ -1852,6 +1857,8 @@ const liveDeploymentMap = {
   ghostcrm: {
     provider: "Vercel",
     url: "https://www.ghostcrm.ai",
+    railwayUrl: "https://ghostcrm-core-production.up.railway.app",
+    databaseAttached: true,
     status: "Live custom domain",
     clientName: "GhostCRM",
     canonicalRepo: "ghostcrm",
@@ -1897,6 +1904,8 @@ const liveDeploymentMap = {
   "peptides-ecommerce": {
     provider: "Vercel",
     url: "https://www.peppersandvibes.com",
+    railwayUrl: "https://e-commercepeptides-production.up.railway.app",
+    databaseAttached: true,
     status: "Live custom domain",
     clientName: "Peppers and Vibes",
     canonicalRepo: "e-commerce_peptides",
@@ -1908,6 +1917,8 @@ const liveDeploymentMap = {
   "price-consulting-site": {
     provider: "Vercel",
     url: "https://price-consulting-site.vercel.app",
+    railwayUrl: "https://price-consulting-site-production.up.railway.app",
+    databaseAttached: true,
     status: "Live preview domain",
     clientName: "Price Consulting",
     canonicalRepo: "price-consulting-site",
@@ -1916,6 +1927,102 @@ const liveDeploymentMap = {
     services: ["website-build", "web-helper-care"],
     finalDomainPurchased: false,
     notes: "Final custom domain has not been purchased."
+  },
+  "consult-prototype": {
+    provider: "Railway",
+    url: "https://consultprototype-production.up.railway.app",
+    railwayUrl: "https://consultprototype-production.up.railway.app",
+    databaseAttached: true,
+    status: "Live Railway app",
+    canonicalRepo: "consult_prototype",
+    category: "Prototype Websites",
+    services: ["website-build"],
+    finalDomainPurchased: false
+  },
+  "ghost-hvac": {
+    provider: "Railway",
+    url: "https://ghost-hvac-production.up.railway.app",
+    railwayUrl: "https://ghost-hvac-production.up.railway.app",
+    status: "Live Railway app",
+    canonicalRepo: "ghost-hvac",
+    category: "Sellable Software",
+    services: ["software-product"]
+  },
+  "ghost-mission-control": {
+    provider: "Railway",
+    url: "https://ghostmissioncontrol-production.up.railway.app",
+    railwayUrl: "https://ghostmissioncontrol-production.up.railway.app",
+    status: "Live Railway backend",
+    canonicalRepo: "ghost_mission_control",
+    category: "Internal Dashboards",
+    services: ["reporting", "web-helper-care"]
+  },
+  "ghost-visibility-command": {
+    provider: "Railway",
+    url: "https://ghost-visibility-command-production.up.railway.app",
+    railwayUrl: "https://ghost-visibility-command-production.up.railway.app",
+    databaseAttached: true,
+    status: "Live Railway app",
+    canonicalRepo: "ghost-visibility-command",
+    category: "Internal Dashboards",
+    services: ["search-intelligence", "reporting"]
+  },
+  "ghost-voice-tts": {
+    provider: "Railway",
+    url: "https://ghost-voice-tts-production.up.railway.app",
+    railwayUrl: "https://ghost-voice-tts-production.up.railway.app",
+    status: "Live Railway app",
+    canonicalRepo: "ghost-voice-tts",
+    category: "Voice Revenue Tools",
+    services: ["voice-ai"]
+  },
+  "ghostcrm-core": {
+    provider: "Railway",
+    url: "https://ghostcrm-core-production.up.railway.app",
+    railwayUrl: "https://ghostcrm-core-production.up.railway.app",
+    databaseAttached: true,
+    status: "Live Railway backend",
+    canonicalRepo: "ghostcrm-core",
+    category: "Lead Funnel Tools",
+    services: ["lead-funnel"]
+  },
+  piddy: {
+    provider: "Railway",
+    url: "https://piddy-production.up.railway.app",
+    railwayUrl: "https://piddy-production.up.railway.app",
+    status: "Live Railway app",
+    canonicalRepo: "Piddy",
+    repoAliases: ["piddy"],
+    category: "Piddy Local AI",
+    services: ["local-ai"]
+  },
+  "piddy-growth": {
+    provider: "Railway",
+    url: "https://piddy-production-4103.up.railway.app",
+    railwayUrl: "https://piddy-production-4103.up.railway.app",
+    status: "Live Railway app",
+    canonicalRepo: "piddy-growth",
+    category: "Piddy Local AI",
+    services: ["local-ai"]
+  },
+  "piddy-microservices": {
+    provider: "Railway",
+    url: "https://piddy-production-485b.up.railway.app",
+    railwayUrl: "https://piddy-production-485b.up.railway.app",
+    status: "Live Railway app",
+    canonicalRepo: "piddy-microservices",
+    category: "Piddy Local AI",
+    services: ["local-ai"]
+  },
+  relateos: {
+    provider: "Railway",
+    url: "https://relateos-production.up.railway.app",
+    railwayUrl: "https://relateos-production.up.railway.app",
+    databaseAttached: true,
+    status: "Live Railway app",
+    canonicalRepo: "relateos",
+    category: "Sellable Software",
+    services: ["software-product"]
   }
 };
 
@@ -1938,6 +2045,9 @@ function getSeededClientProfiles() {
   const seen = new Set();
   return Object.values(liveDeploymentMap)
     .filter((deployment) => {
+      if (!deployment.clientName) {
+        return false;
+      }
       const canonicalRepo = deployment.canonicalRepo || deployment.url;
       if (seen.has(canonicalRepo)) {
         return false;
@@ -1951,6 +2061,7 @@ function getSeededClientProfiles() {
         clientName: deployment.clientName || deployment.canonicalRepo,
         websiteUrl: deployment.url,
         vercelUrl: deployment.url,
+        railwayUrl: deployment.railwayUrl,
         repo: `${GITHUB_OWNER}/${deployment.canonicalRepo}`,
         stage: deployment.stage || "web-helper-care",
         services: deployment.services || ["website-build", "web-helper-care"],
