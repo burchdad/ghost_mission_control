@@ -187,16 +187,20 @@ function parseMonitoredSites() {
   }
 
   if (!sites.length && typeof getSeededClientProfiles === "function") {
-    sites = getSeededClientProfiles()
-      .filter((client) => client.websiteUrl)
-      .map((client) => ({
-        name: client.clientName,
-        domain: "",
-        rootUrl: client.websiteUrl,
-        pages: [client.websiteUrl],
-        autoDiscoverPages: true,
-        source: "client-deployment-map"
-      }));
+    try {
+      sites = getSeededClientProfiles()
+        .filter((client) => client.websiteUrl)
+        .map((client) => ({
+          name: client.clientName,
+          domain: "",
+          rootUrl: client.websiteUrl,
+          pages: [client.websiteUrl],
+          autoDiscoverPages: true,
+          source: "client-deployment-map"
+        }));
+    } catch (error) {
+      console.warn("Seeded client monitor fallback is unavailable during startup.", error?.message || error);
+    }
   }
 
   return sites
