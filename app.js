@@ -247,6 +247,321 @@ const clientPipelineStages = [
   { id: "paused-archived", label: "Paused / Archived" }
 ];
 
+const seededClientProfiles = [
+  {
+    id: "gray-matters-tech",
+    clientName: "Gray Matters Tech",
+    websiteUrl: "https://www.graymatterstech.com",
+    repo: "barbara_consulting",
+    githubUrl: "https://github.com/burchdad/barbara_consulting",
+    stage: "web-helper-care",
+    plan: "Client website care",
+    services: ["website-build", "web-helper-care"],
+    contact: "Barbara Consulting",
+    source: "client-deployment-map"
+  },
+  {
+    id: "peppers-and-vibes",
+    clientName: "Peppers and Vibes",
+    websiteUrl: "https://www.peppersandvibes.com",
+    repo: "e-commerce_peptides",
+    githubUrl: "https://github.com/burchdad/e-commerce_peptides",
+    stage: "web-helper-care",
+    plan: "Client commerce website care",
+    services: ["website-build", "web-helper-care", "ecommerce"],
+    source: "client-deployment-map"
+  },
+  {
+    id: "design-haven-build",
+    clientName: "Design Haven Build",
+    websiteUrl: "https://www.designhavenbuild.com",
+    repo: "Design-and-Renovation",
+    githubUrl: "https://github.com/burchdad/Design-and-Renovation",
+    stage: "web-helper-care",
+    plan: "Client website care",
+    services: ["website-build", "web-helper-care", "search-intelligence"],
+    source: "client-deployment-map"
+  },
+  {
+    id: "ghost-ai-solutions",
+    clientName: "Ghost AI Solutions",
+    websiteUrl: "https://www.ghostai.solutions",
+    repo: "ghostaisolutions",
+    githubUrl: "https://github.com/burchdad/ghostaisolutions",
+    stage: "growth-services",
+    plan: "Internal growth and authority site",
+    services: ["website-build", "search-intelligence", "lead-funnel"],
+    source: "client-deployment-map"
+  },
+  {
+    id: "price-consulting",
+    clientName: "Price Consulting",
+    websiteUrl: "https://price-consulting-site.vercel.app",
+    repo: "price-consulting-site",
+    githubUrl: "https://github.com/burchdad/price-consulting-site",
+    stage: "client-review",
+    plan: "Client website build",
+    services: ["website-build"],
+    finalDomainPurchased: false,
+    source: "client-deployment-map"
+  },
+  {
+    id: "arcane-randd",
+    clientName: "Arcane R&D",
+    websiteUrl: "https://arcane-randd.vercel.app",
+    repo: "arcane_randd",
+    githubUrl: "https://github.com/burchdad/arcane_randd",
+    stage: "client-review",
+    plan: "Client website build",
+    services: ["website-build"],
+    finalDomainPurchased: false,
+    source: "client-deployment-map"
+  },
+  {
+    id: "stephen-burch",
+    clientName: "Stephen Burch",
+    websiteUrl: "https://www.stephenburch.app",
+    repo: "i-need-to-make-a-quick",
+    githubUrl: "https://github.com/burchdad/i-need-to-make-a-quick",
+    stage: "web-helper-care",
+    plan: "Personal digital business card",
+    services: ["website-build", "web-helper-care"],
+    source: "client-deployment-map"
+  },
+  {
+    id: "alpha-ghost",
+    clientName: "Alpha Ghost",
+    websiteUrl: "https://www.alphaghost.org",
+    repo: "ghost-alpha-terminal",
+    githubUrl: "https://github.com/burchdad/ghost-alpha-terminal",
+    stage: "growth-services",
+    plan: "Trading intelligence product",
+    services: ["software-tool", "search-intelligence"],
+    source: "client-deployment-map"
+  },
+  {
+    id: "ghostcrm",
+    clientName: "GhostCRM",
+    websiteUrl: "https://www.ghostcrm.ai",
+    repo: "ghostcrm",
+    githubUrl: "https://github.com/burchdad/ghostcrm",
+    stage: "paused-archived",
+    plan: "Dealership CRM product",
+    services: ["software-tool"],
+    source: "client-deployment-map"
+  },
+  {
+    id: "keisha-law",
+    clientName: "Keisha Law",
+    websiteUrl: "https://keisha-law.vercel.app",
+    repo: "keisha-law",
+    githubUrl: "https://github.com/burchdad/keisha-law",
+    stage: "client-review",
+    plan: "Client website build",
+    services: ["website-build"],
+    clientDetailsPending: true,
+    source: "client-deployment-map"
+  },
+  {
+    id: "mobile-detailing",
+    clientName: "Mobile Detailing",
+    websiteUrl: "https://mobile-detailing-sigma.vercel.app",
+    repo: "mobile-detailing",
+    githubUrl: "https://github.com/burchdad/mobile-detailing",
+    stage: "client-review",
+    plan: "Client website build",
+    services: ["website-build"],
+    finalDomainPurchased: false,
+    source: "client-deployment-map"
+  },
+  {
+    id: "annas-air",
+    clientName: "Anna's Air",
+    websiteUrl: "https://www.annasair.com",
+    repo: "anna_air",
+    githubUrl: "https://github.com/burchdad/anna_air",
+    stage: "web-helper-care",
+    plan: "Client website care",
+    services: ["website-build", "web-helper-care", "local-service"],
+    source: "client-deployment-map"
+  }
+];
+
+function getSeededClientProfilesForUi() {
+  return seededClientProfiles.map((client) => ({
+    finalDomainPurchased: true,
+    clientDetailsPending: false,
+    proposalSigned: false,
+    partnershipSigned: false,
+    businessEmail: "",
+    businessPhone: "",
+    socialUrls: [],
+    notes: "",
+    actions: [],
+    ...client
+  }));
+}
+
+function summarizeClientsForUi(clients) {
+  return clients.reduce((summary, client) => {
+    const stage = getClientStage(client);
+    const issues = getClientIssueTags(client);
+    summary.clientCount += 1;
+    if (["lead", "deposit-paid"].includes(stage)) {
+      summary.onboardingCount += 1;
+    }
+    if (["web-helper-care", "growth-services", "paused-archived"].includes(stage)) {
+      summary.liveCount += 1;
+    }
+    if (client.services?.includes("search-intelligence")) {
+      summary.searchClients += 1;
+    }
+    if (client.repo) {
+      summary.repoLinked += 1;
+    }
+    if (stage === "website-build") {
+      summary.websiteBuildCount += 1;
+    }
+    summary.connectionGaps += issues.length;
+    return summary;
+  }, {
+    clientCount: 0,
+    onboardingCount: 0,
+    liveCount: 0,
+    searchClients: 0,
+    repoLinked: 0,
+    websiteBuildCount: 0,
+    connectionGaps: 0
+  });
+}
+
+function getClientFallbackActions(clients) {
+  return clients
+    .flatMap((client) => {
+      const actions = [];
+      if (client.finalDomainPurchased === false) {
+        actions.push(`${client.clientName}: buy or connect final custom domain.`);
+      }
+      if (client.clientDetailsPending) {
+        actions.push(`${client.clientName}: collect final business details and approval notes.`);
+      }
+      if (client.services?.includes("search-intelligence") && !client.googleBusinessUrl) {
+        actions.push(`${client.clientName}: connect Google Business / GEO authority source.`);
+      }
+      if (["web-helper-care", "growth-services"].includes(getClientStage(client))) {
+        actions.push(`${client.clientName}: assign Web Helper care rhythm and health checks.`);
+      }
+      return actions;
+    })
+    .slice(0, 12);
+}
+
+function buildClientPayloadFallback(reason = "") {
+  const clients = getSeededClientProfilesForUi();
+  const actions = getClientFallbackActions(clients);
+  if (reason) {
+    actions.unshift(`Live client API fallback active: ${reason}`);
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    source: "frontend-seeded-client-map",
+    summary: summarizeClientsForUi(clients),
+    clients,
+    actions
+  };
+}
+
+function mergeClientPayloadWithSeed(payload = {}) {
+  const seeded = getSeededClientProfilesForUi();
+  const incoming = Array.isArray(payload.clients) ? payload.clients : [];
+  const byKey = new Map();
+
+  seeded.forEach((client) => {
+    byKey.set(client.id || client.repo || client.clientName, client);
+  });
+
+  incoming.forEach((client) => {
+    const key = client.id || client.repo || client.clientName;
+    const existing = byKey.get(key) || {};
+    byKey.set(key, {
+      ...existing,
+      ...client,
+      services: client.services?.length ? client.services : existing.services,
+      socialUrls: client.socialUrls?.length ? client.socialUrls : existing.socialUrls,
+      actions: client.actions?.length ? client.actions : existing.actions
+    });
+  });
+
+  const clients = [...byKey.values()];
+  return {
+    ...payload,
+    source: payload.source || "client-map",
+    clients,
+    summary: summarizeClientsForUi(clients),
+    actions: payload.actions?.length ? payload.actions : getClientFallbackActions(clients)
+  };
+}
+
+function getActiveClientPayload() {
+  return liveClients?.clients?.length ? liveClients : buildClientPayloadFallback();
+}
+
+function getActiveClients() {
+  return getActiveClientPayload().clients || [];
+}
+
+function buildFallbackMissionWebsites(clients = getSeededClientProfilesForUi()) {
+  return clients
+    .filter((client) => client.websiteUrl)
+    .map((client) => {
+      let domain = client.websiteUrl;
+      try {
+        domain = new URL(client.websiteUrl).hostname;
+      } catch {
+        domain = client.websiteUrl.replace(/^https?:\/\//, "");
+      }
+
+      return {
+        id: client.id || slugForUi(client.clientName),
+        name: client.clientName,
+        domain,
+        rootUrl: client.websiteUrl,
+        status: "Monitoring Ready",
+        kpis: [
+          { label: "Client Site", value: "live", delta: "seeded" },
+          { label: "Repo", value: client.repo ? "linked" : "missing", delta: client.repo || "connect repo" }
+        ],
+        missionStrip: {
+          summary: `${client.clientName} is loaded from the client deployment map. Connect live probes for uptime, forms, SEO, and service checks.`,
+          statuses: [
+            { label: client.repo ? "Repo Linked" : "Repo Missing", tone: client.repo ? "green" : "yellow" },
+            { label: client.finalDomainPurchased === false ? "Domain Needed" : "Domain Ready", tone: client.finalDomainPurchased === false ? "yellow" : "green" }
+          ]
+        },
+        modules: [],
+        crossInsights: [
+          {
+            title: "Client target seeded",
+            detail: "Mission Control can use this client map while live monitoring, Vercel, Railway, and GitHub enrichments hydrate."
+          }
+        ],
+        alerts: client.finalDomainPurchased === false
+          ? [{ title: "Final domain needed", detail: "Client is live on a temporary deployment URL.", tone: "yellow" }]
+          : [],
+        activityFeed: [
+          {
+            title: "Client loaded from deployment map",
+            detail: `${client.repo || "Repo"} linked for ${client.clientName}.`,
+            time: new Date().toISOString()
+          }
+        ],
+        agents: [],
+        buildQueue: buildClientBuildQueue([client])
+      };
+    });
+}
+
 function getActiveSite() {
   return missionData.websites.find((entry) => entry.id === activeSiteId) ?? missionData.websites[0] ?? null;
 }
@@ -312,10 +627,10 @@ async function loadMissionSnapshot(forceRefresh = false) {
 
     const payload = await response.json();
     missionData = {
-      websites: payload.websites || []
+      websites: payload.websites?.length ? payload.websites : buildFallbackMissionWebsites()
     };
   } catch {
-    missionData = { websites: [] };
+    missionData = { websites: buildFallbackMissionWebsites() };
   }
 }
 
@@ -3006,7 +3321,7 @@ function renderBuildQueue(site) {
   const buildQueue = {
     ...(site.buildQueue || {})
   };
-  const clientBuildQueue = buildClientBuildQueue(liveClients?.clients || []);
+  const clientBuildQueue = buildClientBuildQueue(getActiveClients());
   Object.entries(clientBuildQueue).forEach(([column, items]) => {
     buildQueue[column] = [...(buildQueue[column] || []), ...items];
   });
@@ -3121,11 +3436,17 @@ async function loadClients() {
       throw new Error(`Clients request failed with status ${response.status}`);
     }
 
-    liveClients = await response.json();
+    liveClients = mergeClientPayloadWithSeed(await response.json());
     renderClients(liveClients);
-  } catch {
-    liveClients = null;
-    renderClients(null);
+  } catch (error) {
+    liveClients = buildClientPayloadFallback(String(error.message || error));
+    renderClients(liveClients);
+  }
+
+  const activeSite = getActiveSite() || getEmptySiteState();
+  renderBuildQueue(activeSite);
+  if (activeView === "web-helpers") {
+    loadWebHelpers(activeSite.id);
   }
 }
 
@@ -3481,15 +3802,8 @@ function closeClientDetail() {
 }
 
 function renderClients(payload) {
-  const summary = payload?.summary || {
-    clientCount: 0,
-    onboardingCount: 0,
-    liveCount: 0,
-    searchClients: 0,
-    repoLinked: 0,
-    websiteBuildCount: 0,
-    connectionGaps: 0
-  };
+  const activePayload = payload?.clients?.length ? mergeClientPayloadWithSeed(payload) : buildClientPayloadFallback();
+  const summary = activePayload.summary;
 
   renderOpsSummary(elements.clientSummary, [
     { label: "Clients", value: summary.clientCount },
@@ -3499,7 +3813,7 @@ function renderClients(payload) {
     { label: "Connection Gaps", value: summary.connectionGaps }
   ]);
 
-  const clients = payload?.clients || [];
+  const clients = activePayload.clients || [];
   const filteredClients = getFilteredClients(clients);
   renderClientPipeline(filteredClients);
 
@@ -3546,7 +3860,7 @@ function renderClients(payload) {
   const clientActions = clients.flatMap((client) =>
     (client.actions || []).slice(0, 3).map((action) => `${client.clientName}: ${action}`)
   );
-  renderOpsActions(elements.clientActions, clientActions.length ? clientActions : payload?.actions || [], "Client actions will appear here.");
+  renderOpsActions(elements.clientActions, clientActions.length ? clientActions : activePayload.actions || [], "Client actions will appear here.");
   updateNavBadges();
 }
 
@@ -3608,8 +3922,8 @@ async function submitClientOnboarding(event) {
       throw new Error(result.error || `Client create failed with status ${response.status}`);
     }
 
-    liveClients = result;
-    renderClients(result);
+    liveClients = mergeClientPayloadWithSeed(result);
+    renderClients(liveClients);
     elements.clientOnboardForm.reset();
     if (elements.clientStageInput) {
       elements.clientStageInput.value = "website-build";
@@ -4263,12 +4577,93 @@ async function loadWebHelpers(siteId = activeSiteId) {
     }
 
     const payload = await response.json();
-    liveWebHelpers = payload.helpers || [];
-    renderWebHelpers(payload);
-  } catch {
-    liveWebHelpers = [];
-    renderWebHelpers(null);
+    const hydratedPayload = payload.helpers?.length ? payload : buildFallbackWebHelpersPayload(siteId, "Live helper queue has no client helpers yet.");
+    liveWebHelpers = hydratedPayload.helpers || [];
+    renderWebHelpers(hydratedPayload);
+  } catch (error) {
+    const fallbackPayload = buildFallbackWebHelpersPayload(siteId, String(error.message || error));
+    liveWebHelpers = fallbackPayload.helpers || [];
+    renderWebHelpers(fallbackPayload);
   }
+}
+
+function buildFallbackWebHelpersPayload(siteId = activeSiteId, reason = "") {
+  const clients = getActiveClients();
+  const scopedClients = clients.filter((client) =>
+    client.websiteUrl && ["web-helper-care", "growth-services", "client-review", "launch-handoff"].includes(getClientStage(client))
+  );
+  const helperClients = scopedClients.length ? scopedClients : clients.filter((client) => client.websiteUrl).slice(0, 6);
+
+  const helpers = helperClients.map((client) => {
+    const requests = [];
+    if (client.finalDomainPurchased === false) {
+      requests.push({
+        title: "Connect final domain",
+        summary: `${client.clientName} is still running on a temporary deployment URL. Confirm final domain purchase and DNS handoff.`,
+        type: "domain",
+        status: "queued",
+        sla: "owner review",
+        approvalRequired: true
+      });
+    }
+    if (client.clientDetailsPending) {
+      requests.push({
+        title: "Collect client details",
+        summary: `${client.clientName} needs final business details before automated helper actions can safely run.`,
+        type: "intake",
+        status: "queued",
+        sla: "before launch",
+        approvalRequired: true
+      });
+    }
+    if (!requests.length) {
+      requests.push({
+        title: "Monthly health check",
+        summary: `Review ${client.clientName} for uptime, broken links, conversion forms, visible content drift, and new service opportunities.`,
+        type: "maintenance",
+        status: "ready",
+        sla: "monthly",
+        approvalRequired: false
+      });
+    }
+
+    return {
+      id: `${client.id || slugForUi(client.clientName)}-web-helper`,
+      name: `${client.clientName} Web Helper`,
+      clientName: client.clientName,
+      websiteUrl: client.websiteUrl,
+      status: ["web-helper-care", "growth-services"].includes(getClientStage(client)) ? "active" : "needs-approval",
+      statusLabel: ["web-helper-care", "growth-services"].includes(getClientStage(client)) ? "active" : "handoff",
+      autonomyLevel: "owner-gated",
+      plan: client.plan || "Client website care",
+      repo: client.repo || "",
+      deployment: client.vercelUrl ? "Vercel linked" : "Deployment pending",
+      lastDeploymentLabel: "seeded",
+      scope: [
+        "copy updates",
+        "page checks",
+        "form checks",
+        "domain handoff",
+        "owner approval"
+      ],
+      requests
+    };
+  });
+
+  const openRequests = helpers.flatMap((helper) => helper.requests || []);
+  return {
+    generatedAt: new Date().toISOString(),
+    source: "frontend-seeded-client-map",
+    reason,
+    helpers,
+    summary: {
+      helperCount: helpers.length,
+      activeCount: helpers.filter((helper) => helper.status === "active").length,
+      openRequests: openRequests.length,
+      pendingApprovals: openRequests.filter((request) => request.approvalRequired).length,
+      templateReadyCount: helpers.length
+    }
+  };
 }
 
 function renderWebHelpers(payload) {
