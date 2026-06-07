@@ -709,6 +709,9 @@ const viewVisibility = {
 
 function setActiveView(view) {
   activeView = view;
+  if (elements.body) {
+    elements.body.dataset.activeView = view;
+  }
   let visiblePanels = new Set(viewVisibility[view] || []);
 
   if (view === "execution") {
@@ -3642,6 +3645,29 @@ function renderClientQuickActions(client) {
   </div>`;
 }
 
+function getClientDisplayUrl(client) {
+  const value = client.websiteUrl || client.vercelUrl || client.repo || "";
+  if (!value) {
+    return "";
+  }
+
+  try {
+    return new URL(value.startsWith("http") ? value : `https://${value}`).hostname.replace(/^www\./, "");
+  } catch {
+    return String(value).replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+  }
+}
+
+function renderClientModalStats(client) {
+  const issueCount = getClientIssueTags(client).length;
+  return `<div class="client-modal-stats">
+    <div><span>Stage</span><strong>${escapeHtml(getClientStageLabel(getClientStage(client)))}</strong></div>
+    <div><span>Plan</span><strong>${escapeHtml(client.plan || "Launch + Care")}</strong></div>
+    <div><span>Connections</span><strong>${escapeHtml(issueCount ? `${issueCount} gaps` : "Ready")}</strong></div>
+    <div><span>Source</span><strong>${escapeHtml(client.source || "deployment-map")}</strong></div>
+  </div>`;
+}
+
 function getClientHandoffItems(client) {
   const items = [
     {
@@ -3730,22 +3756,18 @@ function renderClientPipeline(clients) {
   elements.clientPipeline.innerHTML = clientPipelineStages
     .map((stage) => {
       const stageClients = clients.filter((client) => getClientStage(client) === stage.id);
-      const visibleStageClients = stageClients.slice(0, 2);
-      const hiddenCount = Math.max(0, stageClients.length - visibleStageClients.length);
       const cards = stageClients.length
-        ? `${visibleStageClients.map((client) => `<article class="pipeline-card" data-client-detail="${escapeHtml(client.id)}">
+        ? stageClients.map((client) => {
+          const issueCount = getClientIssueTags(client).length;
+          const displayUrl = getClientDisplayUrl(client);
+          return `<article class="pipeline-card pipeline-card-compact" data-client-detail="${escapeHtml(client.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(client.clientName)} details">
             <div class="pipeline-card-head">
               <h3>${escapeHtml(client.clientName)}</h3>
-              <span>${getClientIssueTags(client).length}</span>
+              <span>${issueCount}</span>
             </div>
-            <p>${escapeHtml(client.plan || "Launch + Care")}</p>
-            <span>${escapeHtml(client.websiteUrl || client.repo || "Connections needed")}</span>
-            ${renderClientIssueBadges(client)}
-            <div class="ops-chip-row">
-              ${(client.services || []).slice(0, 3).map((service) => `<span>${escapeHtml(service)}</span>`).join("")}
-            </div>
-          </article>`).join("")}
-          ${hiddenCount ? `<div class="pipeline-empty">+${hiddenCount} more in client directory</div>` : ""}`
+            <p>${escapeHtml(displayUrl || "Open details")}</p>
+          </article>`;
+        }).join("")
         : `<div class="pipeline-empty">No clients</div>`;
 
       return `<section class="pipeline-column">
@@ -3770,6 +3792,15 @@ function openClientDetail(clientId) {
   elements.clientDetailTitle.textContent = client.clientName;
   elements.clientDetailSubtitle.textContent = `${getClientStageLabel(getClientStage(client))} - ${client.plan || "Launch + Care"}`;
   elements.clientDetailContent.innerHTML = `
+    <section class="client-modal-overview">
+      <div>
+        <span class="eyebrow">${escapeHtml(getClientStageLabel(getClientStage(client)))}</span>
+        <h3>${escapeHtml(getClientDisplayUrl(client) || client.websiteUrl || client.repo || "Connection details pending")}</h3>
+        <p>${escapeHtml(client.notes || "Open links, inspect gaps, confirm handoff state, and route the next operator action.")}</p>
+      </div>
+      <span class="pill ${getClientIssueTags(client).length ? "tone-yellow" : "tone-green"}">${escapeHtml(getClientIssueTags(client).length ? `${getClientIssueTags(client).length} gaps` : "ready")}</span>
+    </section>
+    ${renderClientModalStats(client)}
     ${renderClientIssueBadges(client)}
     <div class="client-detail-section">
       <h3>Quick Actions</h3>
@@ -3844,51 +3875,17 @@ function renderClients(payload) {
 
   const clients = activePayload.clients || [];
   const filteredClients = getFilteredClients(clients);
-  const clientFilters = getClientFilterState();
-  const hasClientFilters = Boolean(clientFilters.query || clientFilters.stage !== "all" || clientFilters.issue !== "all");
-  const visibleDirectoryClients = hasClientFilters ? filteredClients : filteredClients.slice(0, 9);
-  const hiddenDirectoryCount = Math.max(0, filteredClients.length - visibleDirectoryClients.length);
   renderClientPipeline(filteredClients);
 
   elements.clientCards.innerHTML = clients.length
     ? filteredClients.length
-      ? `<div class="client-directory-head">
+      ? `<div class="client-board-note">
           <div>
-            <h3>Client Directory</h3>
-            <p>${hasClientFilters ? "Filtered view" : "Focused view"} showing ${visibleDirectoryClients.length} of ${filteredClients.length} clients.</p>
+            <h3>Client Detail Mode</h3>
+            <p>Click any client card to open links, handoff state, connection gaps, services, and operator notes in a centered command modal.</p>
           </div>
-          ${hiddenDirectoryCount ? `<span>+${hiddenDirectoryCount} hidden until filtered</span>` : ""}
-        </div>
-        ${visibleDirectoryClients.map((client) => `<article class="ops-card client-detail-card">
-        <div class="ops-card-head">
-          <h3>${escapeHtml(client.clientName)}</h3>
-          <span class="pill ${["web-helper-care", "growth-services"].includes(getClientStage(client)) ? "tone-green" : "tone-blue"}">${escapeHtml(getClientStageLabel(getClientStage(client)))}</span>
-        </div>
-        <p>${escapeHtml(client.websiteUrl || "No website linked yet")}</p>
-        ${renderClientIssueBadges(client)}
-        ${renderClientQuickActions(client)}
-        <div class="ops-meta-grid">
-          <div><span>Plan</span>${escapeHtml(client.plan)}</div>
-          <div><span>Repo</span>${escapeHtml(client.repo || "Not linked")}</div>
-          <div><span>Contact</span>${escapeHtml(client.contact || "Not set")}</div>
-          <div><span>Source</span>${escapeHtml(client.source)}</div>
-        </div>
-        <div class="connection-list">
-          ${renderClientLink("Website", client.websiteUrl)}
-          ${renderClientLink("GitHub", client.githubUrl || client.repo)}
-          ${renderClientLink("Railway Backend", client.railwayUrl, { sensitive: true })}
-          ${renderClientLink("Vercel", client.vercelUrl)}
-          ${renderClientLink("Mobile App", client.mobileAppUrl)}
-          ${renderClientLink("Google Business", client.googleBusinessUrl)}
-          ${renderSocialLinks(client.socialUrls)}
-        </div>
-        ${client.railwayUrl ? `<p class="sensitive-link-note">Backend links should stay internal until auth, role masking, and audit logging are in place.</p>` : ""}
-        <div class="ops-chip-row">
-          ${(client.services || []).map((service) => `<span>${escapeHtml(service)}</span>`).join("")}
-        </div>
-        ${client.notes ? `<p>${escapeHtml(client.notes)}</p>` : ""}
-      </article>`).join("")
-        }`
+          <span>${filteredClients.length} visible</span>
+        </div>`
       : `<article class="ops-card">
         <h3>No clients match the filters</h3>
         <p>Adjust search, stage, or issue filters to bring clients back into view.</p>
@@ -5258,6 +5255,19 @@ async function init() {
       return;
     }
 
+    openClientDetail(detailTarget.dataset.clientDetail);
+  });
+  elements.clientsPanel?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const detailTarget = event.target.closest("[data-client-detail]");
+    if (!detailTarget) {
+      return;
+    }
+
+    event.preventDefault();
     openClientDetail(detailTarget.dataset.clientDetail);
   });
   elements.clientOnboardModal?.addEventListener("click", (event) => {
