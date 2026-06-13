@@ -251,77 +251,77 @@ const clientServiceDefinitions = {
   "website-build": {
     label: "Website Build",
     category: "Web",
-    agreement: "Website build / launch agreement",
+    agreement: "Website build proposal agreement",
     system: "GitHub + Vercel",
     pipeline: "web-delivery"
   },
   "web-helper-care": {
     label: "Web Helper Care",
     category: "Care",
-    agreement: "Maintenance / Web Helper care agreement",
+    agreement: "Maintenance / Web Helper care contract",
     system: "Web Helper Agent",
     pipeline: "web-care"
   },
   "search-intelligence": {
     label: "SEO / AEO / GEO",
     category: "Growth",
-    agreement: "Search intelligence / GEO growth agreement",
+    agreement: "SEO integration contract",
     system: "geo.ghostai.solutions",
     pipeline: "seo-geo"
   },
   "local-service": {
     label: "Local Service Growth",
     category: "Growth",
-    agreement: "Local service growth agreement",
+    agreement: "Local SEO integration contract",
     system: "GBP + GEO + Web Helper",
     pipeline: "seo-geo"
   },
   "lead-funnel": {
     label: "Lead Funnel",
     category: "Growth",
-    agreement: "Lead generation / funnel agreement",
+    agreement: "Lead generation / funnel contract",
     system: "Ghost Lead Command + GhostCRM",
     pipeline: "automations"
   },
   "software-tool": {
     label: "Software Tool",
     category: "Software",
-    agreement: "Software build / automation agreement",
+    agreement: "Software build / automation contract",
     system: "Tool registry + deployment map",
     pipeline: "automations"
   },
   "ai-automation": {
     label: "AI Automation",
     category: "Automation",
-    agreement: "AI workflow / agent automation agreement",
+    agreement: "AI workflow / agent automation contract",
     system: "Lead Command + GhostCRM + Slack approvals",
     pipeline: "automations"
   },
   ecommerce: {
     label: "Ecommerce",
     category: "Commerce",
-    agreement: "Ecommerce operations agreement",
+    agreement: "Ecommerce operations contract",
     system: "Storefront + payments",
     pipeline: "commerce"
   },
   "content-social": {
     label: "Content + Social",
     category: "Social",
-    agreement: "Social/content management agreement",
+    agreement: "Social/content management contract",
     system: "Content operator + social pages",
     pipeline: "social"
   },
   "paid-ads": {
     label: "Paid Ads",
     category: "Ads",
-    agreement: "Ads management agreement",
+    agreement: "Ads management contract",
     system: "Meta Ads + Google Ads + reporting",
     pipeline: "ads"
   },
   "mobile-app": {
     label: "Mobile App",
     category: "Mobile",
-    agreement: "Mobile app build agreement",
+    agreement: "Mobile app build contract",
     system: "App build queue + stores",
     pipeline: "mobile-apps"
   }
@@ -352,7 +352,7 @@ const servicePipelineDefinitions = [
       { id: "eligible", label: "Eligible" },
       { id: "audit-needed", label: "Audit Needed" },
       { id: "strategy", label: "Strategy" },
-      { id: "approval", label: "Approval" },
+      { id: "approval", label: "Contract" },
       { id: "active", label: "Active" },
       { id: "reporting", label: "Reporting" }
     ]
@@ -444,7 +444,7 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/barbara_consulting",
     stage: "web-helper-care",
     plan: "Client website care",
-    services: ["website-build", "web-helper-care"],
+    services: ["website-build", "web-helper-care", "search-intelligence"],
     contact: "Barbara Consulting",
     source: "client-deployment-map"
   },
@@ -457,7 +457,7 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/e-commerce_peptides",
     stage: "web-helper-care",
     plan: "Client commerce website care",
-    services: ["website-build", "web-helper-care", "ecommerce"],
+    services: ["website-build", "web-helper-care", "ecommerce", "search-intelligence"],
     source: "client-deployment-map"
   },
   {
@@ -480,7 +480,7 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/ghostaisolutions",
     stage: "growth-services",
     plan: "Internal growth and authority site",
-    services: ["website-build", "web-helper-care", "search-intelligence", "lead-funnel"],
+    services: ["website-build", "web-helper-care", "search-intelligence", "lead-funnel", "content-social"],
     source: "client-deployment-map"
   },
   {
@@ -490,22 +490,11 @@ const seededClientProfiles = [
     railwayUrl: "https://price-consulting-site-production.up.railway.app",
     repo: "price-consulting-site",
     githubUrl: "https://github.com/burchdad/price-consulting-site",
-    stage: "launch-handoff",
-    plan: "Client website build",
-    services: ["website-build", "web-helper-care"],
+    stage: "web-helper-care",
+    plan: "Client website care",
+    services: ["website-build", "web-helper-care", "search-intelligence"],
     finalDomainPurchased: false,
-    source: "client-deployment-map"
-  },
-  {
-    id: "arcane-randd",
-    clientName: "Arcane R&D",
-    websiteUrl: "https://arcane-randd.vercel.app",
-    repo: "arcane_randd",
-    githubUrl: "https://github.com/burchdad/arcane_randd",
-    stage: "launch-handoff",
-    plan: "Client website build",
-    services: ["website-build", "web-helper-care"],
-    finalDomainPurchased: false,
+    notes: "Website is launched and ready for SEO/monthly maintenance contract review.",
     source: "client-deployment-map"
   },
   {
@@ -516,7 +505,7 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/i-need-to-make-a-quick",
     stage: "web-helper-care",
     plan: "Personal digital business card",
-    services: ["website-build", "web-helper-care"],
+    services: ["website-build", "web-helper-care", "search-intelligence"],
     source: "client-deployment-map"
   },
   {
@@ -549,10 +538,10 @@ const seededClientProfiles = [
     websiteUrl: "https://keisha-law.vercel.app",
     repo: "keisha-law",
     githubUrl: "https://github.com/burchdad/keisha-law",
-    stage: "launch-handoff",
-    plan: "Client website build",
-    services: ["website-build", "web-helper-care"],
-    clientDetailsPending: true,
+    stage: "web-helper-care",
+    plan: "Client website care",
+    services: ["website-build", "web-helper-care", "search-intelligence"],
+    notes: "Website is launched and ready for SEO/monthly maintenance contract review.",
     source: "client-deployment-map"
   },
   {
@@ -561,10 +550,12 @@ const seededClientProfiles = [
     websiteUrl: "https://mobile-detailing-sigma.vercel.app",
     repo: "mobile-detailing",
     githubUrl: "https://github.com/burchdad/mobile-detailing",
-    stage: "launch-handoff",
-    plan: "Client website build",
-    services: ["website-build", "web-helper-care"],
+    stage: "growth-services",
+    plan: "Partner web care and social management",
+    services: ["website-build", "web-helper-care", "search-intelligence", "content-social"],
     finalDomainPurchased: false,
+    partnershipSigned: true,
+    notes: "Partner site is live. Buy the final custom domain, then continue SEO and social management.",
     source: "client-deployment-map"
   },
   {
@@ -574,15 +565,15 @@ const seededClientProfiles = [
     railwayUrl: "https://railway.com/project/3032a264-caf7-4d92-a0f8-406d00cd395c",
     repo: "bougie_and_company",
     githubUrl: "https://github.com/burchdad/bougie_and_company",
-    stage: "launch-handoff",
+    stage: "web-helper-care",
     plan: "Launch + Care",
-    services: ["website-build", "web-helper-care", "ecommerce", "content-social"],
+    services: ["website-build", "web-helper-care", "ecommerce", "search-intelligence"],
     socialUrls: [
       "https://www.facebook.com/people/Bougie-Company/61585356908803/",
       "https://www.instagram.com/bougieandcompanytx/",
       "https://www.tiktok.com/@bougieandcompany"
     ],
-    notes: "Website finished, domain wrapped, final website payment accepted. Activate Web Helper memory for launch and care.",
+    notes: "Website finished, domain wrapped, final website payment accepted. Web Helper care is active; SEO/monthly contract is the next service step.",
     source: "client-deployment-map"
   },
   {
@@ -632,7 +623,7 @@ function summarizeClientsForUi(clients) {
     if (["web-helper-care", "growth-services", "paused-archived"].includes(stage)) {
       summary.liveCount += 1;
     }
-    if (client.services?.includes("search-intelligence")) {
+    if (client.services?.includes("search-intelligence") || client.services?.includes("local-service")) {
       summary.searchClients += 1;
     }
     if (client.repo) {
@@ -659,12 +650,15 @@ function getClientFallbackActions(clients) {
     .flatMap((client) => {
       const actions = [];
       if (client.finalDomainPurchased === false) {
-        actions.push(`${client.clientName}: buy or connect final custom domain.`);
+        actions.push(`${client.clientName}: buy or connect final custom domain for the launched preview-domain site.`);
       }
       if (client.clientDetailsPending) {
         actions.push(`${client.clientName}: collect final business details and approval notes.`);
       }
-      if (client.services?.includes("search-intelligence") && !client.googleBusinessUrl) {
+      if (
+        (client.services?.includes("search-intelligence") || client.services?.includes("local-service")) &&
+        !client.googleBusinessUrl
+      ) {
         actions.push(`${client.clientName}: connect Google Business / GEO authority source.`);
       }
       if (["web-helper-care", "growth-services"].includes(getClientStage(client))) {
@@ -764,7 +758,7 @@ function buildClientOverviewModules(client) {
 
   if (needsDomain || needsDetails) {
     modules.push({
-      name: "Handoff Blockers",
+      name: "Post-launch Tasks",
       status: "Needs Approval",
       tone: "yellow",
       priority: "P2 High Value",
@@ -3909,6 +3903,10 @@ function mergeClientRecordsForUi(existing, incoming) {
     services: [...new Set([...(existing.services || []), ...(incoming.services || [])])],
     finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
     clientDetailsPending: Boolean(existing.clientDetailsPending || incoming.clientDetailsPending),
+    proposalSigned: Boolean(existing.proposalSigned || incoming.proposalSigned),
+    partnershipSigned: Boolean(existing.partnershipSigned || incoming.partnershipSigned),
+    depositPaid: Boolean(existing.depositPaid || incoming.depositPaid),
+    finalPaymentPaid: Boolean(existing.finalPaymentPaid || incoming.finalPaymentPaid),
     actions: incoming.actions?.length ? incoming.actions : existing.actions
   };
 }
@@ -3932,6 +3930,9 @@ function getClientStageLabel(stageId) {
 
 function getClientIssueTags(client) {
   const issues = [];
+  const services = client.services || [];
+  const needsSearch = services.includes("search-intelligence") || services.includes("local-service");
+  const needsSocial = services.includes("content-social");
   if (!client.websiteUrl) {
     issues.push({ id: "missing-website", label: "Missing website" });
   }
@@ -3941,13 +3942,13 @@ function getClientIssueTags(client) {
   if (!client.vercelUrl) {
     issues.push({ id: "missing-vercel", label: "Missing Vercel" });
   }
-  if (!client.googleBusinessUrl) {
+  if (needsSearch && !client.googleBusinessUrl) {
     issues.push({ id: "missing-gbp", label: "Missing GBP" });
   }
-  if (!client.socialUrls?.length) {
+  if (needsSocial && !client.socialUrls?.length) {
     issues.push({ id: "missing-socials", label: "Missing socials" });
   }
-  if (client.services?.includes("search-intelligence")) {
+  if (needsSearch) {
     issues.push({ id: "needs-geo", label: "Needs GEO setup" });
   }
   if (client.finalDomainPurchased === false) {
@@ -4211,7 +4212,7 @@ function getClientServiceDefinition(serviceKey) {
   return {
     label: titleFromSlug(serviceKey || "Unmapped Service"),
     category: "Custom",
-    agreement: "Custom service agreement",
+    agreement: "Custom service contract",
     system: "Manual operator",
     pipeline: "custom"
   };
@@ -4223,28 +4224,36 @@ function getClientServiceAgreementStatus(client, serviceKey) {
   const hasGrowthAgreement = Boolean(client.partnershipSigned || stage === "growth-services");
 
   if (serviceKey === "website-build") {
-    return hasBaseAgreement ? "scope active" : "agreement needed";
+    return hasBaseAgreement ? "build agreement complete" : "proposal agreement needed";
   }
 
   if (serviceKey === "web-helper-care") {
     return client.partnershipSigned || ["web-helper-care", "growth-services", "paused-archived"].includes(stage)
-      ? "care active"
-      : "care agreement needed";
+      ? "care contract active"
+      : "care contract pending";
   }
 
-  if (["search-intelligence", "local-service", "lead-funnel", "content-social", "paid-ads", "ai-automation"].includes(serviceKey)) {
-    return hasGrowthAgreement ? "growth active" : "growth agreement needed";
+  if (["search-intelligence", "local-service"].includes(serviceKey)) {
+    return hasGrowthAgreement ? "SEO contract active" : "SEO contract pending";
+  }
+
+  if (serviceKey === "content-social") {
+    return hasGrowthAgreement ? "social contract active" : "social contract pending";
+  }
+
+  if (["lead-funnel", "paid-ads", "ai-automation"].includes(serviceKey)) {
+    return hasGrowthAgreement ? "growth contract active" : "growth contract pending";
   }
 
   if (serviceKey === "ecommerce" || serviceKey === "mobile-app" || serviceKey === "software-tool") {
-    return hasBaseAgreement ? "scope active" : "agreement needed";
+    return hasBaseAgreement ? "scope active" : "scope contract pending";
   }
 
-  return hasBaseAgreement ? "agreement active" : "agreement needed";
+  return hasBaseAgreement ? "contract active" : "contract pending";
 }
 
 function getAgreementTone(status) {
-  if (/needed|missing/i.test(status)) {
+  if (/needed|missing|pending/i.test(status)) {
     return "tone-yellow";
   }
 
@@ -4940,18 +4949,18 @@ function renderServices(payload) {
   const clientPayload = liveClients?.clients?.length ? mergeClientPayloadWithSeed(liveClients) : buildClientPayloadFallback();
   const clients = clientPayload.clients || [];
   const serviceBreakdown = clients.flatMap((client) => getClientServiceBreakdown(client).map((service) => ({ client, service })));
-  const agreementNeeded = serviceBreakdown.filter((entry) => /needed|missing/i.test(entry.service.agreementStatus)).length;
+  const contractPending = serviceBreakdown.filter((entry) => /pending/i.test(entry.service.agreementStatus)).length;
   const summary = {
     servicePipelines: servicePipelineDefinitions.length,
     serviceClients: clients.filter((client) => client.services?.length).length,
     mappedServices: serviceBreakdown.length,
-    agreementNeeded
+    contractPending
   };
   renderOpsSummary(elements.serviceSummary, [
     { label: "Pipelines", value: summary.servicePipelines },
     { label: "Service Clients", value: summary.serviceClients },
     { label: "Mapped Services", value: summary.mappedServices },
-    { label: "Agreements Needed", value: summary.agreementNeeded }
+    { label: "Contracts Pending", value: summary.contractPending }
   ]);
 
   const activeServices = services.filter((service) => service.status === "active");
@@ -4968,7 +4977,7 @@ function renderServices(payload) {
         <article>
           <span>Operating Model</span>
           <strong>Web first, then service pipelines</strong>
-          <p>Web Clients stays focused on launch and care. Expansion services route through their own kanban lanes with agreement status visible in the client modal.</p>
+          <p>Web Clients stays focused on launch and care. Expansion services route through their own kanban lanes with recurring contract status visible in the client modal.</p>
         </article>
         <article>
           <span>Connected Systems</span>
@@ -5010,11 +5019,15 @@ function renderServices(payload) {
 
 function getServicePipelineStatus(client, pipeline, serviceKey) {
   const stage = getClientStage(client);
-  const issues = getClientIssueTags(client).join(" ").toLowerCase();
+  const issueTags = getClientIssueTags(client);
+  const issues = issueTags.map((issue) => `${issue.id} ${issue.label}`).join(" ").toLowerCase();
+  const hasCoreConnectionGap = issueTags.some((issue) =>
+    ["missing-website", "missing-repo", "missing-vercel", "details-pending"].includes(issue.id)
+  );
 
   if (pipeline.id === "web-care") {
     if (stage === "web-helper-care") {
-      return issues.includes("missing") ? "memory" : "active-care";
+      return hasCoreConnectionGap ? "memory" : "active-care";
     }
     if (stage === "growth-services") {
       return "reporting";
@@ -5023,8 +5036,11 @@ function getServicePipelineStatus(client, pipeline, serviceKey) {
   }
 
   if (pipeline.id === "seo-geo") {
-    if (stage === "growth-services") {
+    if (stage === "growth-services" || client.partnershipSigned) {
       return "active";
+    }
+    if (["search-intelligence", "local-service"].includes(serviceKey)) {
+      return "approval";
     }
     if (issues.includes("gbp") || issues.includes("geo")) {
       return "audit-needed";

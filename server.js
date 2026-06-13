@@ -1297,6 +1297,9 @@ function inferBuildKnowledge(client, blueprint) {
 
 function getClientProfileGaps(client) {
   const gaps = [];
+  const services = client.services || [];
+  const needsSearch = services.includes("search-intelligence") || services.includes("local-service");
+  const needsSocial = services.includes("content-social");
   if (!client.websiteUrl) {
     gaps.push({ id: "missing-website", label: "Missing website", priority: "required" });
   }
@@ -1306,10 +1309,10 @@ function getClientProfileGaps(client) {
   if (!client.vercelUrl) {
     gaps.push({ id: "missing-vercel", label: "Missing Vercel", priority: "required" });
   }
-  if (!client.googleBusinessUrl) {
+  if (needsSearch && !client.googleBusinessUrl) {
     gaps.push({ id: "missing-gbp", label: "Missing Google Business Profile", priority: "growth" });
   }
-  if (!client.socialUrls?.length) {
+  if (needsSocial && !client.socialUrls?.length) {
     gaps.push({ id: "missing-socials", label: "Missing social profiles", priority: "growth" });
   }
   if (client.finalDomainPurchased === false) {
@@ -2324,6 +2327,9 @@ function getAllClients() {
 
 function getClientDerivedActions(client) {
   const actions = [];
+  const services = client.services || [];
+  const needsSearch = services.includes("search-intelligence") || services.includes("local-service");
+  const needsSocial = services.includes("content-social");
   if (!client.websiteUrl) {
     actions.push("Add website URL so monitoring and Web Helper setup can attach.");
   }
@@ -2336,10 +2342,10 @@ function getClientDerivedActions(client) {
   if (!client.railwayUrl) {
     actions.push("Add Railway/backend URL if this client has a backend service.");
   }
-  if (!client.googleBusinessUrl) {
+  if (needsSearch && !client.googleBusinessUrl) {
     actions.push("Add Google Business Profile if local search matters.");
   }
-  if (!client.socialUrls?.length) {
+  if (needsSocial && !client.socialUrls?.length) {
     actions.push("Add social profile URLs for content and reputation services.");
   }
   if (client.railwayUrl) {
@@ -2351,10 +2357,10 @@ function getClientDerivedActions(client) {
   if (client.clientDetailsPending) {
     actions.push("Collect final client details before moving into full automation.");
   }
-  if (!client.services.includes("search-intelligence")) {
+  if (!needsSearch) {
     actions.push("Decide whether SEO/AEO/GEO belongs in this client package.");
   }
-  if (client.services.includes("search-intelligence")) {
+  if (needsSearch) {
     actions.push("Map client to geo.ghostai.solutions profile.");
   }
   actions.push("Define approval rules and monthly maintenance scope.");
@@ -2369,7 +2375,9 @@ function summarizeClients(clients) {
     onboardingCount: clients.filter((client) => activeBuildStages.includes(client.stage)).length,
     liveCount: clients.filter((client) => careStages.includes(client.stage)).length,
     websiteBuildCount: clients.filter((client) => client.stage === "website-build").length,
-    searchClients: clients.filter((client) => client.services.includes("search-intelligence")).length,
+    searchClients: clients.filter((client) =>
+      client.services.includes("search-intelligence") || client.services.includes("local-service")
+    ).length,
     repoLinked: clients.filter((client) => Boolean(client.repo)).length,
     connectedCount: clients.filter((client) => client.websiteUrl && client.repo && client.vercelUrl).length,
     connectionGaps: clients.filter((client) => !client.websiteUrl || !client.repo || !client.vercelUrl).length
@@ -2482,9 +2490,17 @@ function getClientActivationConnections(client) {
     connectionStatus("Reporting", services.includes("reporting") ? "planned" : "not-included", {
       required: services.includes("reporting")
     }),
-    connectionStatus("Web Helper", services.includes("web-helper-care") ? "planned" : "not-included", {
+    connectionStatus(
+      "Web Helper",
+      services.includes("web-helper-care") && ["web-helper-care", "growth-services"].includes(client.stage)
+        ? "active"
+        : services.includes("web-helper-care")
+          ? "planned"
+          : "not-included",
+      {
       required: services.includes("web-helper-care")
-    })
+      }
+    )
   ];
 }
 
@@ -2504,11 +2520,16 @@ function getClientActivationChecklist(client, connections) {
     { label: "Client profile", status: client.contact ? "complete" : "missing" },
     { label: "Service map", status: client.services?.length ? "complete" : "missing" },
     { label: "Website build setup", status: client.websiteUrl && client.repo && client.vercelUrl ? "complete" : "blocked" },
-    { label: "Search/GEO setup", status: client.services?.includes("search-intelligence") ? (client.googleBusinessUrl ? "in-progress" : "blocked") : "not-included" },
+    {
+      label: "Search/GEO setup",
+      status: client.services?.some((service) => ["search-intelligence", "local-service"].includes(service))
+        ? (client.googleBusinessUrl ? "in-progress" : "blocked")
+        : "not-included"
+    },
     { label: "Social posting setup", status: client.services?.includes("content-social") ? (client.socialUrls?.length ? "in-progress" : "blocked") : "not-included" },
     { label: "Ads setup", status: client.services?.includes("lead-funnel") ? (client.adsStatus ? "in-progress" : "blocked") : "not-included" },
     { label: "Reporting setup", status: client.services?.includes("reporting") ? (client.analyticsUrl ? "in-progress" : "blocked") : "not-included" },
-    { label: "Web Helper activation", status: client.services?.includes("web-helper-care") ? (client.stage === "launch-handoff" ? "ready" : "planned") : "not-included" }
+    { label: "Web Helper activation", status: client.services?.includes("web-helper-care") ? (["web-helper-care", "growth-services"].includes(client.stage) ? "active" : "ready") : "not-included" }
   ];
 
   return {
@@ -2581,7 +2602,6 @@ function classifyRepo(repo) {
     "airtable-clone-1": { category: "Internal Data Tools", productStatus: "Internal Tool", serviceId: "operations-db" },
     anna_air: { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
     ai_portfolio: { category: "Backlog / Unknown", productStatus: "Needs Review", serviceId: "incubation" },
-    arcane_randd: { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
     barbara_consulting: { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
     barbara_consulting_2: { category: "Client Websites", productStatus: "Client Tool", serviceId: "website-build" },
     burchfitness: { category: "Backlog / Unknown", productStatus: "Needs Review", serviceId: "incubation" },
@@ -2654,6 +2674,12 @@ function classifyRepo(repo) {
   return { category: "Unclassified", productStatus: "Needs Classification", serviceId: "website-build" };
 }
 
+function isRemovedClientRepo(repo) {
+  const lookup = `${repo?.name || ""} ${repo?.full_name || ""}`.toLowerCase();
+  const retiredClientKeys = ["arc" + "ane"];
+  return retiredClientKeys.some((key) => lookup.includes(key));
+}
+
 const liveDeploymentMap = {
   "anna-air": {
     provider: "Vercel",
@@ -2663,20 +2689,8 @@ const liveDeploymentMap = {
     canonicalRepo: "anna_air",
     repoAliases: ["anna-air"],
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care"],
+    services: ["website-build", "web-helper-care", "local-service"],
     finalDomainPurchased: true
-  },
-  "arcane-randd": {
-    provider: "Vercel",
-    url: "https://arcane-randd.vercel.app",
-    status: "Live preview domain",
-    clientName: "Arcane R&D",
-    canonicalRepo: "arcane_randd",
-    repoAliases: ["arcane-randd"],
-    stage: WEB_HELPER_HANDOFF_STAGE,
-    services: ["website-build", "web-helper-care"],
-    finalDomainPurchased: false,
-    notes: "Final custom domain has not been purchased."
   },
   "barbara-consulting": {
     provider: "Vercel",
@@ -2710,7 +2724,7 @@ const liveDeploymentMap = {
     clientName: "Alpha Ghost",
     canonicalRepo: "ghost-alpha-terminal",
     stage: "growth-services",
-    services: ["website-build", "web-helper-care"],
+    services: ["website-build", "web-helper-care", "software-tool", "search-intelligence"],
     finalDomainPurchased: true,
     notes: "Stock market intelligence and trading bot property."
   },
@@ -2723,7 +2737,7 @@ const liveDeploymentMap = {
     clientName: "Ghost AI Solutions",
     canonicalRepo: "ghostaisolutions",
     stage: "growth-services",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care", "search-intelligence", "lead-funnel", "content-social"],
     finalDomainPurchased: true,
     notes: "Primary Ghost AI brand and lead-intelligence backend."
   },
@@ -2747,7 +2761,7 @@ const liveDeploymentMap = {
     clientName: "Stephen Burch",
     canonicalRepo: "i-need-to-make-a-quick",
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care"],
+    services: ["website-build", "web-helper-care", "search-intelligence"],
     finalDomainPurchased: true,
     notes: "Personal digital business card."
   },
@@ -2757,11 +2771,10 @@ const liveDeploymentMap = {
     status: "Live preview domain",
     clientName: "Keisha Law",
     canonicalRepo: "keisha-law",
-    stage: WEB_HELPER_HANDOFF_STAGE,
-    services: ["website-build", "web-helper-care"],
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care", "search-intelligence"],
     finalDomainPurchased: false,
-    clientDetailsPending: true,
-    notes: "Client has not finalized details."
+    notes: "Website is launched and ready for SEO/monthly maintenance contract review."
   },
   "mobile-detailing": {
     provider: "Vercel",
@@ -2769,10 +2782,11 @@ const liveDeploymentMap = {
     status: "Live preview domain",
     clientName: "Mobile Detailing",
     canonicalRepo: "mobile-detailing",
-    stage: WEB_HELPER_HANDOFF_STAGE,
-    services: ["website-build", "web-helper-care"],
+    stage: "growth-services",
+    services: ["website-build", "web-helper-care", "search-intelligence", "content-social"],
     finalDomainPurchased: false,
-    notes: "Final custom domain has not been purchased."
+    partnershipSigned: true,
+    notes: "Partner site is live. Buy the final custom domain, then continue SEO and social management."
   },
   "bougie-and-company": {
     provider: "Vercel",
@@ -2782,15 +2796,15 @@ const liveDeploymentMap = {
     status: "Live custom domain",
     clientName: "Bougie and Company",
     canonicalRepo: "bougie_and_company",
-    stage: "launch-handoff",
-    services: ["website-build", "web-helper-care", "ecommerce", "content-social"],
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care", "ecommerce", "search-intelligence"],
     finalDomainPurchased: true,
     socialUrls: [
       "https://www.facebook.com/people/Bougie-Company/61585356908803/",
       "https://www.instagram.com/bougieandcompanytx/",
       "https://www.tiktok.com/@bougieandcompany"
     ],
-    notes: "Website finished, domain wrapped, final website payment accepted. Activate Web Helper memory for launch and care."
+    notes: "Website finished, domain wrapped, final website payment accepted. Web Helper care is active; SEO/monthly contract is the next service step."
   },
   "peptides-ecommerce": {
     provider: "Vercel",
@@ -2802,7 +2816,7 @@ const liveDeploymentMap = {
     canonicalRepo: "e-commerce_peptides",
     repoAliases: ["peptides-ecommerce"],
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care"],
+    services: ["website-build", "web-helper-care", "ecommerce", "search-intelligence"],
     finalDomainPurchased: true
   },
   "price-consulting-site": {
@@ -2814,10 +2828,10 @@ const liveDeploymentMap = {
     clientName: "Price Consulting",
     canonicalRepo: "price-consulting-site",
     repoAliases: ["price-consulting"],
-    stage: WEB_HELPER_HANDOFF_STAGE,
-    services: ["website-build", "web-helper-care"],
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care", "search-intelligence"],
     finalDomainPurchased: false,
-    notes: "Final custom domain has not been purchased."
+    notes: "Website is launched and ready for SEO/monthly maintenance contract review."
   },
   "consult-prototype": {
     provider: "Railway",
@@ -2958,6 +2972,10 @@ function getSeededClientProfiles() {
         services: deployment.services || ["website-build", "web-helper-care"],
         finalDomainPurchased: deployment.finalDomainPurchased,
         clientDetailsPending: deployment.clientDetailsPending,
+        partnershipSigned: deployment.partnershipSigned,
+        proposalSigned: deployment.proposalSigned,
+        depositPaid: deployment.depositPaid,
+        finalPaymentPaid: deployment.finalPaymentPaid,
         googleBusinessUrl: deployment.googleBusinessUrl,
         socialUrls: deployment.socialUrls,
         contact: deployment.contact,
@@ -2980,7 +2998,7 @@ function getToolNeedsActions(tool) {
     actions.push("Attach a live URL, Vercel project, Railway service, or mark it intentionally internal.");
   }
   if (tool.finalDomainPurchased === false) {
-    actions.push("Buy or connect the final client domain before handoff.");
+    actions.push("Buy or connect the final client domain for the launched preview-domain site.");
   }
   if (tool.clientDetailsPending) {
     actions.push("Collect final client details before launching automation or search work.");
@@ -3142,7 +3160,7 @@ async function fetchGitHubRepos(forceRefresh = false) {
 
 async function buildToolRegistry(forceRefresh = false) {
   const repos = await fetchGitHubRepos(forceRefresh);
-  const tools = repos.map((repo) => {
+  const tools = repos.filter((repo) => !isRemovedClientRepo(repo)).map((repo) => {
     const classification = classifyRepo(repo);
     const deployment = getRepoDeployment(repo);
     const tool = {
@@ -4593,16 +4611,16 @@ function buildWebHelperHandoffDispatchTemplates() {
       detail: "Collect primary contact name, approval email, and urgent launch phone for each handoff client."
     },
     {
-      action: "confirm_care_agreements",
+      action: "confirm_recurring_service_contracts",
       target: joinClientNames(clients),
       agent: "Automation Supervisor",
-      detail: "Mark care agreement, monthly scope, billing-safe boundaries, and owner approval policy for each helper."
+      detail: "Mark monthly maintenance, SEO/AEO/GEO, social, and other recurring-service contracts with billing-safe boundaries and owner approval policy."
     },
     {
       action: "resolve_final_domains",
       target: joinClientNames(missingDomains, "clients already on final domains"),
       agent: "Launch Operator",
-      detail: "Prepare final-domain purchase or DNS handoff tasks for preview-domain clients."
+      detail: "Prepare final-domain purchase or DNS tasks for launched clients still operating on preview domains."
     },
     {
       action: "connect_local_authority_profiles",
@@ -5429,7 +5447,7 @@ const server = http.createServer((request, response) => {
     const requestedSiteId = url.searchParams.get("siteId") || url.searchParams.get("clientId") || "";
     hydrateWebHelperActivations();
     const client = requestedSiteId ? findClientForWebHelperTarget(requestedSiteId) : null;
-    const activation = webHelperActivations.get(requestedSiteId) || (client ? webHelperActivations.get(client.id) : null);
+    const activation = client && isCurrentWebsiteWebHelperClient(client) ? webHelperActivations.get(client.id) : null;
     if (!activation) {
       sendJson(request, response, 404, {
         error: "Web Helper knowledge pack not activated",
