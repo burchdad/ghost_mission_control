@@ -695,21 +695,14 @@ function mergeClientPayloadWithSeed(payload = {}) {
   const seeded = getSeededClientProfilesForUi();
   const incoming = Array.isArray(payload.clients) ? payload.clients : [];
   const byKey = new Map();
+  const aliases = new Map();
 
   seeded.forEach((client) => {
-    byKey.set(client.id || client.repo || client.clientName, client);
+    addClientToMergedUiRoster(byKey, aliases, client);
   });
 
   incoming.forEach((client) => {
-    const key = client.id || client.repo || client.clientName;
-    const existing = byKey.get(key) || {};
-    byKey.set(key, {
-      ...existing,
-      ...client,
-      services: client.services?.length ? client.services : existing.services,
-      socialUrls: client.socialUrls?.length ? client.socialUrls : existing.socialUrls,
-      actions: client.actions?.length ? client.actions : existing.actions
-    });
+    addClientToMergedUiRoster(byKey, aliases, client);
   });
 
   const clients = [...byKey.values()];
@@ -728,6 +721,114 @@ function getActiveClientPayload() {
 
 function getActiveClients() {
   return getActiveClientPayload().clients || [];
+}
+
+function buildClientOverviewModules(client) {
+  const stage = getClientStage(client);
+  const needsDomain = client.finalDomainPurchased === false;
+  const needsDetails = Boolean(client.clientDetailsPending);
+  const hasWebHelper = client.services?.includes("web-helper-care");
+  const needsGbp = (client.services || []).some((service) => ["search-intelligence", "local-service"].includes(service)) && !client.googleBusinessUrl;
+  const modules = [];
+
+  modules.push({
+    name: "Web Helper Operations",
+    status: hasWebHelper ? (stage === "launch-handoff" ? "Handoff" : "Active") : "Not Included",
+    tone: hasWebHelper ? (stage === "launch-handoff" ? "yellow" : "green") : "gray",
+    priority: hasWebHelper ? "P2 High Value" : "P4 Nice to Improve",
+    priorityHeat: hasWebHelper && stage === "launch-handoff" ? "high" : "monitor",
+    owner: `${client.clientName} Web Helper`,
+    metrics: {
+      Stage: getClientStageLabel(stage),
+      Repo: client.repo ? "linked" : "missing",
+      "Approval Rules": stage === "launch-handoff" ? "needed" : "owner-gated",
+      "Memory Status": hasWebHelper ? "ready" : "not included"
+    },
+    revenue: {
+      influenced: "client retention",
+      generated: "n/a",
+      pipeline: client.plan || "Launch + Care"
+    },
+    ownership: {
+      confidence: hasWebHelper ? "86%" : "55%",
+      autonomy: "Owner-gated",
+      lastDecision: hasWebHelper ? "Web Helper can prepare small approved updates." : "Add Web Helper Care if this site needs maintenance.",
+      needsHuman: stage === "launch-handoff" || needsDetails ? "Yes" : "No"
+    },
+    autoAction: {
+      enabled: hasWebHelper,
+      lastFix: hasWebHelper ? "Prepared handoff and care workflow" : "No helper assigned",
+      escalation: stage === "launch-handoff" ? "Approval Required" : "Normal"
+    }
+  });
+
+  if (needsDomain || needsDetails) {
+    modules.push({
+      name: "Handoff Blockers",
+      status: "Needs Approval",
+      tone: "yellow",
+      priority: "P2 High Value",
+      priorityHeat: "high",
+      owner: "Launch Operator",
+      metrics: {
+        "Final Domain": needsDomain ? "needed" : "ready",
+        "Client Details": needsDetails ? "needed" : "ready",
+        "Current Stage": getClientStageLabel(stage),
+        "Approval Path": "owner review"
+      },
+      revenue: {
+        influenced: "launch completion",
+        generated: "n/a",
+        pipeline: "handoff"
+      },
+      ownership: {
+        confidence: "78%",
+        autonomy: "Guided",
+        lastDecision: "Resolve handoff blockers before full care rhythm.",
+        needsHuman: "Yes"
+      },
+      autoAction: {
+        enabled: true,
+        lastFix: "Queued handoff requirement follow-up",
+        escalation: "Required"
+      }
+    });
+  }
+
+  if (needsGbp) {
+    modules.push({
+      name: "Local Authority Setup",
+      status: "Connection Needed",
+      tone: "blue",
+      priority: "P3 Important",
+      priorityHeat: "monitor",
+      owner: "Search Intelligence Agent",
+      metrics: {
+        "Google Business": "missing",
+        "GEO Eligible": "yes",
+        "Search Layer": "planned",
+        "Client Type": client.services?.includes("local-service") ? "local service" : "growth"
+      },
+      revenue: {
+        influenced: "growth services",
+        generated: "n/a",
+        pipeline: "SEO/AEO/GEO"
+      },
+      ownership: {
+        confidence: "74%",
+        autonomy: "Guided",
+        lastDecision: "Add GBP/GEO authority source when available.",
+        needsHuman: "Yes"
+      },
+      autoAction: {
+        enabled: true,
+        lastFix: "Flagged authority profile gap",
+        escalation: "Review Suggested"
+      }
+    });
+  }
+
+  return modules;
 }
 
 function buildFallbackMissionWebsites(clients = getSeededClientProfilesForUi()) {
@@ -758,11 +859,17 @@ function buildFallbackMissionWebsites(clients = getSeededClientProfilesForUi()) 
             { label: client.finalDomainPurchased === false ? "Domain Needed" : "Domain Ready", tone: client.finalDomainPurchased === false ? "yellow" : "green" }
           ]
         },
-        modules: [],
+        modules: buildClientOverviewModules(client),
         crossInsights: [
           {
             title: "Client target seeded",
             detail: "Mission Control can use this client map while live monitoring, Vercel, Railway, and GitHub enrichments hydrate."
+          },
+          {
+            title: "Web Helper state",
+            detail: client.services?.includes("web-helper-care")
+              ? `${client.clientName} is mapped into Web Helper operations.`
+              : `${client.clientName} has no Web Helper service mapped yet.`
           }
         ],
         alerts: client.finalDomainPurchased === false
@@ -779,6 +886,30 @@ function buildFallbackMissionWebsites(clients = getSeededClientProfilesForUi()) 
         buildQueue: buildClientBuildQueue([client])
       };
     });
+}
+
+function mergeMissionWebsitesWithFallback(websites = []) {
+  const fallbackWebsites = buildFallbackMissionWebsites();
+  const fallbackByKey = new Map();
+  fallbackWebsites.forEach((site) => {
+    fallbackByKey.set(normalizeIdentityDomainForUi(site.rootUrl || site.domain || site.name), site);
+    fallbackByKey.set(`id:${slugForUi(site.id)}`, site);
+  });
+
+  return websites.map((site) => {
+    const fallback = fallbackByKey.get(normalizeIdentityDomainForUi(site.rootUrl || site.pages?.[0]?.url || site.domain)) ||
+      fallbackByKey.get(`id:${slugForUi(site.id)}`) ||
+      {};
+    return {
+      ...fallback,
+      ...site,
+      modules: site.modules?.length ? site.modules : fallback.modules || [],
+      crossInsights: site.crossInsights?.length ? site.crossInsights : fallback.crossInsights || [],
+      activityFeed: site.activityFeed?.length ? site.activityFeed : fallback.activityFeed || [],
+      alerts: site.alerts?.length ? site.alerts : fallback.alerts || [],
+      missionStrip: site.missionStrip || fallback.missionStrip
+    };
+  });
 }
 
 function getActiveSite() {
@@ -846,7 +977,7 @@ async function loadMissionSnapshot(forceRefresh = false) {
 
     const payload = await response.json();
     missionData = {
-      websites: payload.websites?.length ? payload.websites : buildFallbackMissionWebsites()
+      websites: payload.websites?.length ? mergeMissionWebsitesWithFallback(payload.websites) : buildFallbackMissionWebsites()
     };
   } catch {
     missionData = { websites: buildFallbackMissionWebsites() };
@@ -3714,6 +3845,83 @@ function slugForUi(value) {
     .replace(/^-+|-+$/g, "") || "item";
 }
 
+function compactIdentityKey(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeIdentityDomainForUi(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    return new URL(raw.startsWith("http") ? raw : `https://${raw}`).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return raw.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0].toLowerCase();
+  }
+}
+
+function normalizeRepoIdentityForUi(value) {
+  const raw = String(value || "").trim().replace(/\.git$/, "");
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(raw.startsWith("http") ? raw : `https://${raw}`);
+    const parts = parsed.pathname.replace(/^\/+/, "").split("/");
+    return compactIdentityKey(parts[1] || parts[0] || raw);
+  } catch {
+    const parts = raw.split("/");
+    return compactIdentityKey(parts[parts.length - 1] || raw);
+  }
+}
+
+function getClientIdentityKeysForUi(client) {
+  return [
+    client?.websiteUrl ? `site:${normalizeIdentityDomainForUi(client.websiteUrl)}` : "",
+    client?.vercelUrl ? `site:${normalizeIdentityDomainForUi(client.vercelUrl)}` : "",
+    client?.repo || client?.githubUrl ? `repo:${normalizeRepoIdentityForUi(client.repo || client.githubUrl)}` : "",
+    client?.clientName ? `name:${compactIdentityKey(client.clientName)}` : "",
+    client?.id ? `id:${slugForUi(client.id)}` : ""
+  ].filter(Boolean);
+}
+
+function mergeClientRecordsForUi(existing, incoming) {
+  if (!existing) {
+    return incoming;
+  }
+
+  return {
+    ...existing,
+    ...incoming,
+    id: incoming.id || existing.id,
+    websiteUrl: incoming.websiteUrl || existing.websiteUrl,
+    repo: incoming.repo || existing.repo,
+    githubUrl: incoming.githubUrl || existing.githubUrl,
+    railwayUrl: incoming.railwayUrl || existing.railwayUrl,
+    vercelUrl: incoming.vercelUrl || existing.vercelUrl,
+    mobileAppUrl: incoming.mobileAppUrl || existing.mobileAppUrl,
+    googleBusinessUrl: incoming.googleBusinessUrl || existing.googleBusinessUrl,
+    analyticsUrl: incoming.analyticsUrl || existing.analyticsUrl,
+    socialUrls: [...new Set([...(existing.socialUrls || []), ...(incoming.socialUrls || [])])],
+    services: [...new Set([...(existing.services || []), ...(incoming.services || [])])],
+    finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
+    clientDetailsPending: Boolean(existing.clientDetailsPending || incoming.clientDetailsPending),
+    actions: incoming.actions?.length ? incoming.actions : existing.actions
+  };
+}
+
+function addClientToMergedUiRoster(merged, aliases, client) {
+  const keys = getClientIdentityKeysForUi(client);
+  const existingPrimaryKey = keys.map((key) => aliases.get(key)).find(Boolean);
+  const primaryKey = existingPrimaryKey || `id:${slugForUi(client.id || client.clientName)}`;
+  const mergedClient = mergeClientRecordsForUi(merged.get(primaryKey), client);
+  merged.set(primaryKey, mergedClient);
+  getClientIdentityKeysForUi(mergedClient).forEach((key) => aliases.set(key, primaryKey));
+}
+
 function getClientStage(client) {
   return client?.stage || client?.status || "website-build";
 }
@@ -5147,26 +5355,46 @@ function summarizeWebHelpersForUi(helpers) {
 }
 
 function getWebHelperMergeKey(helper) {
-  return slugForUi(helper?.clientName || helper?.id || helper?.name || "");
+  const keys = getClientIdentityKeysForUi({
+    id: helper?.siteId || helper?.id,
+    clientName: helper?.clientName || helper?.name,
+    websiteUrl: helper?.websiteUrl,
+    repo: helper?.repo
+  });
+  return keys[0] || `name:${slugForUi(helper?.clientName || helper?.id || helper?.name || "")}`;
 }
 
 function mergeWebHelpersWithSeed(payload = {}, siteId = activeSiteId) {
   const seededPayload = buildFallbackWebHelpersPayload(siteId, "Merged with seeded client map.");
   const mergedHelpers = new Map();
+  const aliases = new Map();
 
-  (seededPayload.helpers || []).forEach((helper) => {
-    mergedHelpers.set(getWebHelperMergeKey(helper), helper);
-  });
-
-  (payload.helpers || []).forEach((helper) => {
-    const key = getWebHelperMergeKey(helper);
+  const addHelper = (helper) => {
+    const keys = getClientIdentityKeysForUi({
+      id: helper?.siteId || helper?.id,
+      clientName: helper?.clientName || helper?.name,
+      websiteUrl: helper?.websiteUrl,
+      repo: helper?.repo
+    });
+    const existingKey = keys.map((key) => aliases.get(key)).find(Boolean);
+    const key = existingKey || getWebHelperMergeKey(helper);
     const seeded = mergedHelpers.get(key) || {};
-    mergedHelpers.set(key, {
+    const merged = {
       ...seeded,
       ...helper,
       scope: helper.scope?.length ? helper.scope : seeded.scope || [],
       requests: helper.requests?.length ? helper.requests : seeded.requests || []
-    });
+    };
+    mergedHelpers.set(key, merged);
+    keys.forEach((item) => aliases.set(item, key));
+  };
+
+  (seededPayload.helpers || []).forEach((helper) => {
+    addHelper(helper);
+  });
+
+  (payload.helpers || []).forEach((helper) => {
+    addHelper(helper);
   });
 
   const helpers = [...mergedHelpers.values()];
@@ -5182,9 +5410,16 @@ function mergeWebHelpersWithSeed(payload = {}, siteId = activeSiteId) {
 function buildFallbackWebHelpersPayload(siteId = activeSiteId, reason = "") {
   const clients = getActiveClients();
   const scopedClients = clients.filter((client) =>
-    client.websiteUrl && ["web-helper-care", "growth-services", "client-review", "launch-handoff"].includes(getClientStage(client))
+    client.websiteUrl &&
+    client.repo &&
+    client.services?.includes("website-build") &&
+    client.services?.includes("web-helper-care") &&
+    getClientStage(client) !== "paused-archived" &&
+    ["web-helper-care", "growth-services", "client-review", "launch-handoff"].includes(getClientStage(client))
   );
-  const helperClients = scopedClients.length ? scopedClients : clients.filter((client) => client.websiteUrl).slice(0, 6);
+  const helperClients = scopedClients.length
+    ? scopedClients
+    : clients.filter((client) => client.websiteUrl && getClientStage(client) !== "paused-archived").slice(0, 6);
 
   const helpers = helperClients.map((client) => {
     const requests = [];
@@ -5660,7 +5895,10 @@ async function runMissionCommand() {
     const activationNote = plan.webHelperActivation?.agentName
       ? ` ${plan.webHelperActivation.agentName} knowledge pack activated.`
       : "";
-    sourceResponse.textContent = `${plan.summary}${aiNote}${activationNote}`;
+    const bulkActivationNote = plan.webHelperBulkActivation
+      ? ` Web Helper handoff checked ${plan.webHelperBulkActivation.targetCount || 0} clients: ${plan.webHelperBulkActivation.activatedCount || 0} activated, ${plan.webHelperBulkActivation.existingCount || 0} already active, ${plan.webHelperBulkActivation.failedCount || 0} failed.`
+      : "";
+    sourceResponse.textContent = `${plan.summary}${aiNote}${activationNote}${bulkActivationNote}`;
     if (sourceResponse !== elements.commandResponse) {
       elements.commandResponse.textContent = sourceResponse.textContent;
     }

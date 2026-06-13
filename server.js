@@ -139,6 +139,10 @@ function normalizeDomain(value) {
   return trimmed.replace(/\/+$/, "").toLowerCase();
 }
 
+function normalizeIdentityDomain(value) {
+  return normalizeDomain(value).replace(/^www\./, "");
+}
+
 function ensureHttpsUrl(value) {
   const trimmed = String(value || "").trim();
   if (!trimmed) {
@@ -1468,8 +1472,8 @@ function findClientForWebHelperTarget(targetId) {
       client.id,
       slugify(client.clientName),
       `${client.id}-web-helper`,
-      normalizeDomain(client.websiteUrl),
-      normalizeDomain(client.vercelUrl),
+      normalizeIdentityDomain(client.websiteUrl),
+      normalizeIdentityDomain(client.vercelUrl),
       repoFullName,
       repoFullName.split("/")[1] || ""
     ]
@@ -1482,6 +1486,31 @@ function findClientForWebHelperTarget(targetId) {
       looseLookupKey(value) === targetLoose
     );
   }) || null;
+}
+
+function webHelperTargetMatchesClient(client, targetId) {
+  if (!targetId) {
+    return false;
+  }
+
+  const normalizedTarget = String(targetId || "").trim();
+  const targetSlug = slugify(normalizedTarget);
+  const targetLoose = looseLookupKey(normalizedTarget);
+  return getClientIdentityKeys(client).some((key) => {
+    const value = key.split(":").slice(1).join(":");
+    return value === normalizedTarget || slugify(value) === targetSlug || looseLookupKey(value) === targetLoose;
+  });
+}
+
+function findClientForMonitoredSite(site) {
+  const siteDomain = normalizeIdentityDomain(site?.rootUrl || site?.pages?.[0]?.url || site?.domain);
+  const siteSlug = slugify(site?.id || site?.name || site?.domain);
+  return getAllClients().find((client) =>
+    normalizeIdentityDomain(client.websiteUrl) === siteDomain ||
+    normalizeIdentityDomain(client.vercelUrl) === siteDomain ||
+    slugify(client.id) === siteSlug ||
+    slugify(client.clientName) === siteSlug
+  ) || null;
 }
 
 function buildClientFromMonitoredSite(site) {
@@ -1748,10 +1777,15 @@ function buildWebHelperRequests(site) {
 function buildWebHelperAgents(snapshot, requestedSiteId = "") {
   const websites = snapshot.websites || [];
   const filteredSites = requestedSiteId
-    ? websites.filter((site) => site.id === requestedSiteId)
+    ? websites.filter((site) => site.id === requestedSiteId || webHelperTargetMatchesClient(findClientForMonitoredSite(site), requestedSiteId))
     : websites;
 
   return filteredSites.map((site) => {
+    const client = findClientForMonitoredSite(site);
+    if (client && !isCurrentWebsiteWebHelperClient(client)) {
+      return null;
+    }
+
     const requests = buildWebHelperRequests(site);
     const pendingApprovals = requests.filter((request) => request.approvalRequired).length;
     const status = pendingApprovals > 0 ? "needs-approval" : "active";
@@ -1765,17 +1799,17 @@ function buildWebHelperAgents(snapshot, requestedSiteId = "") {
     }
 
     return {
-      id: `${site.id}-web-helper`,
-      siteId: site.id,
-      name: `${site.name} Web Helper`,
-      clientName: site.name,
+      id: `${client?.id || site.id}-web-helper`,
+      siteId: client?.id || site.id,
+      name: `${client?.clientName || site.name} Web Helper`,
+      clientName: client?.clientName || site.name,
       websiteUrl: rootUrl,
-      repo: "",
+      repo: client?.repo || "",
       deployment: "Vercel / monitored site",
       status,
       statusLabel: status === "needs-approval" ? "Needs Approval" : "Active",
       autonomyLevel: "Level 1 - prepare changes, owner approves deploy",
-      plan: "Post-launch maintenance template",
+      plan: client?.plan || "Post-launch maintenance template",
       openRequests: requests.length,
       pendingApprovals,
       lastDeployment: snapshot.generatedAt,
@@ -1789,34 +1823,26 @@ function buildWebHelperAgents(snapshot, requestedSiteId = "") {
         "scope-rules.md",
         "update-history.md"
       ],
-      activation: getWebHelperActivationSummary(site.id),
+      activation: getWebHelperActivationSummary(client?.id || site.id),
       requests
     };
-  });
+  }).filter(Boolean);
 }
 
 function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpers = []) {
   const existingUrls = new Set(
     (existingHelpers || [])
       .map((helper) => {
-        try {
-          return new URL(helper.websiteUrl).origin;
-        } catch {
-          return "";
-        }
+        return normalizeIdentityDomain(helper.websiteUrl);
       })
       .filter(Boolean)
   );
 
   return (clients || [])
-    .filter((client) => client.websiteUrl && client.repo)
-    .filter((client) => !requestedSiteId || client.id === requestedSiteId)
+    .filter(isCurrentWebsiteWebHelperClient)
+    .filter((client) => !requestedSiteId || webHelperTargetMatchesClient(client, requestedSiteId))
     .filter((client) => {
-      try {
-        return !existingUrls.has(new URL(client.websiteUrl).origin);
-      } catch {
-        return true;
-      }
+      return !existingUrls.has(normalizeIdentityDomain(client.websiteUrl));
     })
     .map((client) => {
       const requests = [];
@@ -2218,15 +2244,79 @@ function buildClientRecord(input) {
   return normalized;
 }
 
+function normalizeRepoIdentity(value) {
+  const repoFullName = normalizeGithubRepoFullName(value);
+  const repoName = repoFullName ? repoFullName.split("/")[1] : String(value || "");
+  return repoName.toLowerCase().replace(/\.git$/, "").replace(/[^a-z0-9]+/g, "");
+}
+
+function getClientIdentityKeys(client) {
+  return [
+    client?.websiteUrl ? `site:${normalizeIdentityDomain(client.websiteUrl)}` : "",
+    client?.vercelUrl ? `site:${normalizeIdentityDomain(client.vercelUrl)}` : "",
+    client?.repo || client?.githubUrl ? `repo:${normalizeRepoIdentity(client.repo || client.githubUrl)}` : "",
+    client?.clientName ? `name:${looseLookupKey(client.clientName)}` : "",
+    client?.id ? `id:${slugify(client.id)}` : ""
+  ].filter(Boolean);
+}
+
+function mergeClientRecords(existing, incoming) {
+  if (!existing) {
+    return incoming;
+  }
+
+  return {
+    ...existing,
+    ...incoming,
+    id: existing.id || incoming.id,
+    clientName: incoming.clientName || existing.clientName,
+    websiteUrl: incoming.websiteUrl || existing.websiteUrl,
+    repo: incoming.repo || existing.repo,
+    githubUrl: incoming.githubUrl || existing.githubUrl,
+    railwayUrl: incoming.railwayUrl || existing.railwayUrl,
+    vercelUrl: incoming.vercelUrl || existing.vercelUrl,
+    mobileAppUrl: incoming.mobileAppUrl || existing.mobileAppUrl,
+    googleBusinessUrl: incoming.googleBusinessUrl || existing.googleBusinessUrl,
+    analyticsUrl: incoming.analyticsUrl || existing.analyticsUrl,
+    adsStatus: incoming.adsStatus || existing.adsStatus,
+    socialUrls: uniq([...(existing.socialUrls || []), ...(incoming.socialUrls || [])]),
+    services: uniq([...(existing.services || []), ...(incoming.services || [])]),
+    finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
+    clientDetailsPending: Boolean(existing.clientDetailsPending || incoming.clientDetailsPending),
+    proposalSigned: Boolean(existing.proposalSigned || incoming.proposalSigned),
+    partnershipSigned: Boolean(existing.partnershipSigned || incoming.partnershipSigned),
+    depositPaid: Boolean(existing.depositPaid || incoming.depositPaid),
+    finalPaymentPaid: Boolean(existing.finalPaymentPaid || incoming.finalPaymentPaid),
+    businessEmail: incoming.businessEmail || existing.businessEmail,
+    businessPhone: incoming.businessPhone || existing.businessPhone,
+    plan: incoming.plan || existing.plan,
+    contact: incoming.contact || existing.contact,
+    notes: incoming.notes || existing.notes,
+    source: incoming.source || existing.source
+  };
+}
+
+function addClientToMergedRoster(merged, aliases, client) {
+  if (!client?.id) {
+    return;
+  }
+
+  const keys = getClientIdentityKeys(client);
+  const existingPrimaryKey = keys.map((key) => aliases.get(key)).find(Boolean);
+  const primaryKey = existingPrimaryKey || `id:${slugify(client.id)}`;
+  const mergedClient = mergeClientRecords(merged.get(primaryKey), client);
+  merged.set(primaryKey, mergedClient);
+  getClientIdentityKeys(mergedClient).forEach((key) => aliases.set(key, primaryKey));
+}
+
 function getAllClients() {
   const seeded = getSeededClientProfiles();
   const configured = parseConfiguredClients();
   const merged = new Map();
+  const aliases = new Map();
 
   [...seeded, ...configured, ...runtimeClients].forEach((client) => {
-    if (client?.id) {
-      merged.set(client.id, client);
-    }
+    addClientToMergedRoster(merged, aliases, client);
   });
 
   return [...merged.values()].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
@@ -4466,8 +4556,72 @@ function getDispatchWeight(agentName, siteId) {
   };
 }
 
+function joinClientNames(clients, fallback = "current live website clients") {
+  const names = (clients || []).map((client) => client.clientName).filter(Boolean);
+  return names.length ? names.join(", ") : fallback;
+}
+
+function getWebHelperHandoffClients() {
+  const handoffClients = getCurrentWebsiteWebHelperClients().filter((client) => client.stage === WEB_HELPER_HANDOFF_STAGE);
+  return handoffClients.length ? handoffClients : getCurrentWebsiteWebHelperClients();
+}
+
+function isWebHelperHandoffCommand(command) {
+  return String(command || "").toLowerCase().includes("handoff");
+}
+
+function buildWebHelperHandoffDispatchTemplates() {
+  const clients = getWebHelperHandoffClients();
+  const missingContacts = clients.filter((client) => !client.contact && !client.businessEmail);
+  const missingDomains = clients.filter((client) => client.finalDomainPurchased === false);
+  const missingAuthority = clients.filter((client) =>
+    !client.googleBusinessUrl &&
+    (client.services || []).some((service) => ["search-intelligence", "local-service"].includes(service))
+  );
+
+  return [
+    {
+      action: "ensure_web_helper_memory",
+      target: joinClientNames(clients),
+      agent: "Web Helper Agent",
+      detail: "Confirm every handoff client has activated helper memory, repo map, scope rules, and update history."
+    },
+    {
+      action: "collect_handoff_contacts",
+      target: joinClientNames(missingContacts, "handoff approval contacts"),
+      agent: "Automation Supervisor",
+      detail: "Collect primary contact name, approval email, and urgent launch phone for each handoff client."
+    },
+    {
+      action: "confirm_care_agreements",
+      target: joinClientNames(clients),
+      agent: "Automation Supervisor",
+      detail: "Mark care agreement, monthly scope, billing-safe boundaries, and owner approval policy for each helper."
+    },
+    {
+      action: "resolve_final_domains",
+      target: joinClientNames(missingDomains, "clients already on final domains"),
+      agent: "Launch Operator",
+      detail: "Prepare final-domain purchase or DNS handoff tasks for preview-domain clients."
+    },
+    {
+      action: "connect_local_authority_profiles",
+      target: joinClientNames(missingAuthority, "clients without local authority gaps"),
+      agent: "Search Intelligence Agent",
+      detail: "Queue Google Business Profile and GEO authority mapping wherever local search or GEO service is included."
+    },
+    {
+      action: "schedule_first_health_checks",
+      target: joinClientNames(clients),
+      agent: "Monitoring Agent",
+      detail: "Create the first post-handoff health check covering uptime, links, forms, content drift, and owner-visible notes."
+    }
+  ];
+}
+
 function buildDispatchActions(command, category, priority, siteId) {
   const normalizedPriority = normalizePriority(priority);
+  const normalizedCommand = String(command || "").toLowerCase();
 
   const templates = {
     lead: [
@@ -4654,7 +4808,9 @@ function buildDispatchActions(command, category, priority, siteId) {
     ]
   };
 
-  const selected = templates[category] || templates.general;
+  const selected = category === "web_helper" && normalizedCommand.includes("handoff")
+    ? buildWebHelperHandoffDispatchTemplates()
+    : templates[category] || templates.general;
 
   return selected.map((entry, index) => {
     const weight = getDispatchWeight(entry.agent, siteId);
@@ -4976,7 +5132,7 @@ function getCommandPlan(command, siteId) {
       }
     },
     {
-      match: ["web helper", "client update", "website update", "change hours", "broken link", "content edit", "post-launch"],
+      match: ["web helper", "handoff", "client update", "website update", "change hours", "broken link", "content edit", "post-launch"],
       payload: {
         category: "web_helper",
         summary: "Web Helper directive accepted. Client request triage and review-ready site change workflow are queued.",
@@ -5396,13 +5552,20 @@ const server = http.createServer((request, response) => {
         const execution = createExecutionRun(command, siteId, plan);
         const baseRationale = getDecisionRationale(plan.category || "general");
         const aiGuidance = await getAiGuidance(command, siteId, plan);
-        const webHelperActivation = plan.category === "web_helper"
+        const isBulkWebHelperHandoff = plan.category === "web_helper" && isWebHelperHandoffCommand(command);
+        const webHelperBulkActivation = isBulkWebHelperHandoff
+          ? await getWebHelperAutoActivation({ command })
+          : null;
+        const webHelperActivation = plan.category === "web_helper" && !isBulkWebHelperHandoff
           ? await activateWebHelperForTarget(siteId, { command })
           : null;
         const rationale = [...baseRationale, ...aiGuidance.rationaleAdditions];
         const autoActions = [
           ...(plan.autoActions || []),
           ...aiGuidance.autoActionsAdditions,
+          ...(webHelperBulkActivation
+            ? [`Checked ${webHelperBulkActivation.targetCount} Web Helper handoff clients: ${webHelperBulkActivation.activatedCount} activated, ${webHelperBulkActivation.existingCount} already active, ${webHelperBulkActivation.failedCount} failed.`]
+            : []),
           ...(webHelperActivation
             ? [`Activated ${webHelperActivation.agent.name} knowledge pack with ${webHelperActivation.memoryDocuments.length} memory documents.`]
             : [])
@@ -5422,6 +5585,7 @@ const server = http.createServer((request, response) => {
           rationale,
           aiCopilot: aiGuidance,
           webHelperActivation: summarizeWebHelperActivation(webHelperActivation),
+          webHelperBulkActivation,
           execution: {
             id: execution.id,
             status: execution.status,
