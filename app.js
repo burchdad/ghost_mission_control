@@ -3670,7 +3670,7 @@ async function loadClients() {
   const activeSite = getActiveSite() || getEmptySiteState();
   renderBuildQueue(activeSite);
   if (activeView === "web-helpers") {
-    loadWebHelpers(activeSite.id);
+    loadWebHelpers("");
   }
 }
 
@@ -5592,7 +5592,7 @@ function renderSite(siteId) {
   renderStrategyCommand(liveStrategicPlan);
   renderAgents(site);
   renderBuildQueue(site);
-  loadWebHelpers(site.id);
+  loadWebHelpers("");
 }
 
 async function runMissionCommand() {

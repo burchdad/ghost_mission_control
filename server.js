@@ -30,6 +30,9 @@ const GITHUB_OWNER = String(process.env.GITHUB_OWNER || "burchdad").trim();
 const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "").trim();
 const GITHUB_REPO_CACHE_TTL_MS = Number(process.env.GITHUB_REPO_CACHE_TTL_MS || 300000);
 const GITHUB_MAX_REPO_PAGES = Math.max(1, Number(process.env.GITHUB_MAX_REPO_PAGES || 10));
+const WEB_HELPER_ACTIVATIONS_PATH = String(
+  process.env.WEB_HELPER_ACTIVATIONS_PATH || path.join(ROOT, ".ghost-web-helper-activations.json")
+).trim();
 const runtimeClients = [];
 
 const CLIENT_PIPELINE_STAGES = [
@@ -87,6 +90,7 @@ const githubRepoCache = {
 };
 const repoKnowledgeCache = new Map();
 const webHelperActivations = new Map();
+let webHelperActivationsHydrated = false;
 
 function parseBool(value, fallback = false) {
   if (typeof value === "boolean") {
@@ -922,6 +926,57 @@ function formatWebHelperDate(value) {
   }
 }
 
+function hydrateWebHelperActivations() {
+  if (webHelperActivationsHydrated) {
+    return;
+  }
+
+  webHelperActivationsHydrated = true;
+
+  try {
+    if (!WEB_HELPER_ACTIVATIONS_PATH || !fs.existsSync(WEB_HELPER_ACTIVATIONS_PATH)) {
+      return;
+    }
+
+    const raw = fs.readFileSync(WEB_HELPER_ACTIVATIONS_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    const entries = Array.isArray(parsed?.activations)
+      ? parsed.activations
+      : Object.entries(parsed?.activations || {});
+
+    entries.forEach((entry) => {
+      const key = Array.isArray(entry) ? entry[0] : entry?.siteId || entry?.clientId;
+      const activation = Array.isArray(entry) ? entry[1] : entry;
+      if (key && activation?.agent?.name && activation?.knowledge) {
+        webHelperActivations.set(String(key), activation);
+      }
+    });
+  } catch (error) {
+    console.warn(`Unable to hydrate Web Helper activations: ${String(error?.message || error)}`);
+  }
+}
+
+function persistWebHelperActivations() {
+  if (!WEB_HELPER_ACTIVATIONS_PATH) {
+    return;
+  }
+
+  try {
+    const dir = path.dirname(WEB_HELPER_ACTIVATIONS_PATH);
+    fs.mkdirSync(dir, { recursive: true });
+    const payload = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      activations: Object.fromEntries(webHelperActivations.entries())
+    };
+    const tempPath = `${WEB_HELPER_ACTIVATIONS_PATH}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2));
+    fs.renameSync(tempPath, WEB_HELPER_ACTIVATIONS_PATH);
+  } catch (error) {
+    console.warn(`Unable to persist Web Helper activations: ${String(error?.message || error)}`);
+  }
+}
+
 function normalizeGithubRepoFullName(value) {
   const trimmed = String(value || "").trim().replace(/\.git$/, "");
   if (!trimmed) {
@@ -1025,14 +1080,27 @@ function getPackageManager(paths) {
   return "unknown";
 }
 
-function routePathFromAppFile(filePath, fileName) {
+function getAppRelativePath(filePath) {
   const normalized = String(filePath || "").replace(/\\/g, "/");
+  if (normalized.startsWith("src/app/")) {
+    return normalized.slice("src/app/".length);
+  }
+
+  if (normalized.startsWith("app/")) {
+    return normalized.slice("app/".length);
+  }
+
+  return "";
+}
+
+function routePathFromAppFile(filePath, fileName) {
+  const normalized = getAppRelativePath(filePath);
   const suffix = `/${fileName}`;
-  if (!normalized.startsWith("app/") || !normalized.endsWith(suffix)) {
+  if (!normalized || !normalized.endsWith(fileName)) {
     return "";
   }
 
-  const withoutPrefix = normalized.slice(4, -suffix.length);
+  const withoutPrefix = normalized === fileName ? "" : normalized.slice(0, -suffix.length);
   const cleaned = withoutPrefix
     .split("/")
     .filter((segment) => segment && !/^\(.+\)$/.test(segment))
@@ -1116,7 +1184,7 @@ function inferFramework(packageJson, paths) {
     ...(packageJson?.devDependencies || {})
   };
 
-  if (dependencies.next || paths.some((filePath) => filePath.startsWith("app/"))) {
+  if (dependencies.next || paths.some((filePath) => filePath.startsWith("app/") || filePath.startsWith("src/app/"))) {
     return "Next.js App Router";
   }
 
@@ -1166,8 +1234,12 @@ function inferBuildKnowledge(client, blueprint) {
   }
 
   const safeEditFiles = pickMatching(paths, (filePath) =>
-    /^app\/(page|about\/page|contact\/page|shipping-returns\/page|privacy-policy\/page)\.tsx$/.test(filePath) ||
-    /^components\/(site-header|site-footer|category-menu|product-showcase|review-carousel|contact-form|newsletter-form)\.tsx$/.test(filePath) ||
+    /^(src\/)?app\/(page|about\/page|about-us\/page|contact\/page|service-areas\/page|services\/page|testimonials\/page|shipping-returns\/page|privacy-policy\/page)\.tsx$/.test(filePath) ||
+    /^(src\/)?app\/globals\.css$/.test(filePath) ||
+    /^(src\/)?components\/(site-header|site-footer|category-menu|product-showcase|review-carousel|contact-form|newsletter-form)\.tsx$/.test(filePath) ||
+    /^src\/components\/(layout|sections|forms|seo)\//.test(filePath) ||
+    filePath === "src/content/site.ts" ||
+    filePath === "src/lib/seo.ts" ||
     filePath === "lib/data.ts" ||
     filePath === "app/globals.css"
   );
@@ -1177,7 +1249,9 @@ function inferBuildKnowledge(client, blueprint) {
     filePath === "package-lock.json" ||
     filePath.startsWith("database/") ||
     filePath.startsWith("app/api/admin/") ||
+    filePath.startsWith("src/app/api/admin/") ||
     filePath.startsWith("app/api/epos/") ||
+    filePath.startsWith("src/app/api/epos/") ||
     ["lib/db.ts", "lib/orders.ts", "lib/epos.ts", "lib/epos-sync.ts", "lib/admin-products.ts", "scripts/sync-epos-catalog.mjs"].includes(filePath)
   );
 
@@ -1193,8 +1267,8 @@ function inferBuildKnowledge(client, blueprint) {
     envKeys,
     pageRoutes: pageRoutes.slice(0, 24),
     apiRoutes: apiRoutes.slice(0, 32),
-    componentFiles: pickMatching(paths, (filePath) => filePath.startsWith("components/") && filePath.endsWith(".tsx"), 24),
-    libFiles: pickMatching(paths, (filePath) => filePath.startsWith("lib/") && /\.(ts|tsx|js)$/.test(filePath), 28),
+    componentFiles: pickMatching(paths, (filePath) => /^(src\/)?components\/.+\.tsx$/.test(filePath), 24),
+    libFiles: pickMatching(paths, (filePath) => /^(src\/)?lib\/.+\.(ts|tsx|js)$/.test(filePath) || /^src\/content\/.+\.(ts|tsx|js)$/.test(filePath), 28),
     assetFiles: pickMatching(paths, (filePath) => filePath.startsWith("public/"), 20),
     databaseFiles: pickMatching(paths, (filePath) => filePath.startsWith("database/"), 8),
     integrations: uniq(integrations),
@@ -1371,12 +1445,18 @@ function summarizeWebHelperActivation(activation) {
 }
 
 function getWebHelperActivationSummary(siteId) {
+  hydrateWebHelperActivations();
   return summarizeWebHelperActivation(webHelperActivations.get(siteId));
+}
+
+function looseLookupKey(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function findClientForWebHelperTarget(targetId) {
   const normalizedTarget = String(targetId || "").trim();
   const targetSlug = slugify(normalizedTarget);
+  const targetLoose = looseLookupKey(normalizedTarget);
   const clients = getAllClients();
 
   return clients.find((client) => {
@@ -1393,7 +1473,11 @@ function findClientForWebHelperTarget(targetId) {
       .map((value) => String(value || "").trim())
       .filter(Boolean);
 
-    return possibleIds.some((value) => value === normalizedTarget || slugify(value) === targetSlug);
+    return possibleIds.some((value) =>
+      value === normalizedTarget ||
+      slugify(value) === targetSlug ||
+      looseLookupKey(value) === targetLoose
+    );
   }) || null;
 }
 
@@ -1503,6 +1587,7 @@ async function buildWebHelperKnowledgePack(client, options = {}) {
 }
 
 async function activateWebHelperForTarget(targetId, options = {}) {
+  hydrateWebHelperActivations();
   const client = await findWebHelperTarget(targetId);
   if (!client) {
     return null;
@@ -1510,6 +1595,7 @@ async function activateWebHelperForTarget(targetId, options = {}) {
 
   const activation = await buildWebHelperKnowledgePack(client, options);
   webHelperActivations.set(client.id, activation);
+  persistWebHelperActivations();
   return activation;
 }
 
@@ -5050,7 +5136,9 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && url.pathname === "/mission/web-helpers/knowledge") {
     const requestedSiteId = url.searchParams.get("siteId") || url.searchParams.get("clientId") || "";
-    const activation = webHelperActivations.get(requestedSiteId);
+    hydrateWebHelperActivations();
+    const client = requestedSiteId ? findClientForWebHelperTarget(requestedSiteId) : null;
+    const activation = webHelperActivations.get(requestedSiteId) || (client ? webHelperActivations.get(client.id) : null);
     if (!activation) {
       sendJson(request, response, 404, {
         error: "Web Helper knowledge pack not activated",
