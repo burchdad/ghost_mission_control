@@ -3799,7 +3799,7 @@ function renderClientLink(label, value, options = {}) {
 
   const safeHref = escapeHtml(href);
   return `<a class="connection-link${options.sensitive ? " is-sensitive" : ""}" href="${safeHref}" target="_blank" rel="noreferrer">
-    <span>${escapeHtml(label)}</span>
+    <span>${escapeHtml(options.sensitive ? `${label} / internal` : label)}</span>
     <strong>${escapeHtml(href)}</strong>
   </a>`;
 }
@@ -4101,6 +4101,7 @@ function openClientDetail(clientId) {
         ${renderClientLink("Google Business", client.googleBusinessUrl)}
         ${renderSocialLinks(client.socialUrls)}
       </div>
+      ${client.railwayUrl ? `<p class="sensitive-link-note">Railway is highlighted because backend/project links are internal infrastructure and stay owner-gated.</p>` : ""}
     </div>
     <div class="client-detail-section">
       <h3>Ordered Services</h3>
@@ -5082,6 +5083,40 @@ async function loadWebHelpers(siteId = activeSiteId) {
   }
 }
 
+async function activateWebHelper(targetId, options = {}) {
+  if (!targetId) {
+    elements.commandResponse.textContent = "No helper target found for activation.";
+    return;
+  }
+
+  elements.commandResponse.textContent = "Activating Web Helper knowledge pack...";
+
+  try {
+    const response = await fetch(apiUrl("/mission/web-helpers/activate"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        siteId: targetId,
+        command: options.command || "Activate Web Helper from dashboard",
+        refresh: Boolean(options.refresh)
+      })
+    });
+
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error || `Activation failed with status ${response.status}`);
+    }
+
+    const activated = payload.activated || {};
+    elements.commandResponse.textContent = `${activated.agentName || "Web Helper"} activated. Learned ${activated.routeCount || 0} routes, ${activated.apiRouteCount || 0} APIs, and ${activated.memoryDocumentCount || 0} memory docs.`;
+    await loadWebHelpers("");
+  } catch (error) {
+    elements.commandResponse.textContent = `Web Helper activation failed: ${String(error.message || error)}`;
+  }
+}
+
 function summarizeWebHelpersForUi(helpers) {
   const openRequests = helpers.flatMap((helper) => helper.requests || []);
   return {
@@ -5168,6 +5203,7 @@ function buildFallbackWebHelpersPayload(siteId = activeSiteId, reason = "") {
 
     return {
       id: `${client.id || slugForUi(client.clientName)}-web-helper`,
+      siteId: client.id || slugForUi(client.clientName),
       name: `${client.clientName} Web Helper`,
       clientName: client.clientName,
       websiteUrl: client.websiteUrl,
@@ -5203,6 +5239,24 @@ function buildFallbackWebHelpersPayload(siteId = activeSiteId, reason = "") {
       templateReadyCount: helpers.length
     }
   };
+}
+
+function renderWebHelperKnowledge(helper) {
+  const activation = helper.activation;
+  if (!activation) {
+    return `<div class="web-helper-knowledge is-pending">
+      <div><span>Knowledge</span><strong>Not activated</strong></div>
+      <p>Repo map and helper memory will populate after activation.</p>
+    </div>`;
+  }
+
+  return `<div class="web-helper-knowledge">
+    <div><span>Knowledge</span><strong>${escapeHtml(activation.framework || "Learned")}</strong></div>
+    <div><span>Routes</span><strong>${escapeHtml(String(activation.routeCount || 0))}</strong></div>
+    <div><span>APIs</span><strong>${escapeHtml(String(activation.apiRouteCount || 0))}</strong></div>
+    <div><span>Memory</span><strong>${escapeHtml(String(activation.memoryDocumentCount || 0))} docs</strong></div>
+    <p>${escapeHtml((activation.nextActions || [])[0] || "Knowledge pack ready for owner-reviewed updates.")}</p>
+  </div>`;
 }
 
 function renderWebHelpers(payload) {
@@ -5306,6 +5360,8 @@ function renderWebHelpers(payload) {
   elements.webHelperCards.innerHTML = helpers
     .map((helper) => {
       const tone = helper.status === "active" ? "green" : helper.status === "needs-approval" ? "yellow" : "gray";
+      const targetId = helper.siteId || helper.id || helper.clientName;
+      const activationLabel = helper.activation ? "Relearn Build" : "Activate Helper";
       return `<article class="web-helper-card">
         <div class="web-helper-card-head">
           <h3>${escapeHtml(helper.clientName)}</h3>
@@ -5322,6 +5378,10 @@ function renderWebHelpers(payload) {
         </div>
         <div class="web-helper-scope">
           ${(helper.scope || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+        </div>
+        ${renderWebHelperKnowledge(helper)}
+        <div class="web-helper-actions">
+          <button type="button" data-web-helper-activate="${escapeHtml(targetId)}">${activationLabel}</button>
         </div>
       </article>`;
     })
@@ -5579,7 +5639,10 @@ async function runMissionCommand() {
     activeCommandPlan = plan;
     commandMemory = plan.memory || commandMemory;
     const aiNote = plan.aiCopilot?.confidenceNote ? ` ${plan.aiCopilot.confidenceNote}` : "";
-    sourceResponse.textContent = `${plan.summary}${aiNote}`;
+    const activationNote = plan.webHelperActivation?.agentName
+      ? ` ${plan.webHelperActivation.agentName} knowledge pack activated.`
+      : "";
+    sourceResponse.textContent = `${plan.summary}${aiNote}${activationNote}`;
     if (sourceResponse !== elements.commandResponse) {
       elements.commandResponse.textContent = sourceResponse.textContent;
     }
@@ -5766,6 +5829,16 @@ async function init() {
     }
 
     openAgentBuildModal(buildButton.dataset.agentBuildIndex);
+  });
+  elements.webHelperCards?.addEventListener("click", (event) => {
+    const activateButton = event.target.closest("[data-web-helper-activate]");
+    if (!activateButton) {
+      return;
+    }
+
+    activateWebHelper(activateButton.dataset.webHelperActivate, {
+      refresh: Boolean(event.shiftKey)
+    });
   });
   elements.onboardingPanel?.addEventListener("click", (event) => {
     const skipButton = event.target.closest("[data-onboarding-skip-client][data-onboarding-skip-item]");

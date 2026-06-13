@@ -85,6 +85,8 @@ const githubRepoCache = {
   lastSuccessAt: 0,
   lastError: ""
 };
+const repoKnowledgeCache = new Map();
+const webHelperActivations = new Map();
 
 function parseBool(value, fallback = false) {
   if (typeof value === "boolean") {
@@ -920,6 +922,597 @@ function formatWebHelperDate(value) {
   }
 }
 
+function normalizeGithubRepoFullName(value) {
+  const trimmed = String(value || "").trim().replace(/\.git$/, "");
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+    if (parsed.hostname.toLowerCase() === "github.com") {
+      const [owner, repo] = parsed.pathname.replace(/^\/+/, "").split("/");
+      return owner && repo ? `${owner}/${repo.replace(/\.git$/, "")}` : "";
+    }
+  } catch {
+    // Fall through to owner/repo or repo-name handling.
+  }
+
+  if (/^[\w.-]+\/[\w.-]+$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^[\w.-]+$/.test(trimmed)) {
+    return `${GITHUB_OWNER}/${trimmed}`;
+  }
+
+  return "";
+}
+
+function getGitHubApiHeaders(purpose = "web-helper") {
+  const headers = {
+    "User-Agent": `GhostMissionControl/1.0 (+${purpose})`,
+    Accept: "application/vnd.github+json"
+  };
+
+  if (GITHUB_TOKEN) {
+    headers.Authorization = `Bearer ${GITHUB_TOKEN}`;
+  }
+
+  return headers;
+}
+
+async function fetchGitHubApiJson(apiUrl, purpose = "web-helper") {
+  const response = await fetch(apiUrl, {
+    method: "GET",
+    headers: getGitHubApiHeaders(purpose)
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub API request failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
+async function fetchGitHubTextFile(repoFullName, filePath, ref = "main") {
+  try {
+    const [owner, repo] = repoFullName.split("/");
+    if (!owner || !repo) {
+      return "";
+    }
+
+    const payload = await fetchGitHubApiJson(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${filePath}?ref=${encodeURIComponent(ref)}`,
+      "web-helper-file"
+    );
+
+    if (!payload?.content || payload.encoding !== "base64") {
+      return "";
+    }
+
+    return Buffer.from(String(payload.content).replace(/\s/g, ""), "base64").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+function safeParseJson(raw, fallback = null) {
+  try {
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getPackageManager(paths) {
+  if (paths.includes("pnpm-lock.yaml")) {
+    return "pnpm";
+  }
+
+  if (paths.includes("yarn.lock")) {
+    return "yarn";
+  }
+
+  if (paths.includes("bun.lockb") || paths.includes("bun.lock")) {
+    return "bun";
+  }
+
+  if (paths.includes("package-lock.json")) {
+    return "npm";
+  }
+
+  return "unknown";
+}
+
+function routePathFromAppFile(filePath, fileName) {
+  const normalized = String(filePath || "").replace(/\\/g, "/");
+  const suffix = `/${fileName}`;
+  if (!normalized.startsWith("app/") || !normalized.endsWith(suffix)) {
+    return "";
+  }
+
+  const withoutPrefix = normalized.slice(4, -suffix.length);
+  const cleaned = withoutPrefix
+    .split("/")
+    .filter((segment) => segment && !/^\(.+\)$/.test(segment))
+    .map((segment) => segment.replace(/^\[(.+)\]$/, ":$1"))
+    .join("/");
+
+  return cleaned ? `/${cleaned}` : "/";
+}
+
+function parseEnvKeys(raw) {
+  return String(raw || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#") && line.includes("="))
+    .map((line) => line.split("=")[0].trim())
+    .filter(Boolean);
+}
+
+function uniq(values) {
+  return [...new Set((values || []).filter(Boolean))];
+}
+
+function pickMatching(paths, predicate, limit = 18) {
+  return paths.filter(predicate).slice(0, limit);
+}
+
+async function fetchGitHubRepoBlueprint(repoFullName, forceRefresh = false) {
+  const cacheKey = repoFullName.toLowerCase();
+  const cached = repoKnowledgeCache.get(cacheKey);
+  const now = Date.now();
+  if (!forceRefresh && cached && now - cached.generatedAt < GITHUB_REPO_CACHE_TTL_MS) {
+    return cached.blueprint;
+  }
+
+  const [owner, repo] = repoFullName.split("/");
+  if (!owner || !repo) {
+    throw new Error("Invalid GitHub repo name.");
+  }
+
+  const repoMeta = await fetchGitHubApiJson(
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+    "web-helper-repo"
+  );
+  const defaultBranch = repoMeta.default_branch || "main";
+  const treePayload = await fetchGitHubApiJson(
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(defaultBranch)}?recursive=1`,
+    "web-helper-tree"
+  );
+  const paths = (Array.isArray(treePayload?.tree) ? treePayload.tree : [])
+    .filter((entry) => entry.type === "blob")
+    .map((entry) => String(entry.path || ""))
+    .filter(Boolean)
+    .sort();
+  const packageJsonRaw = await fetchGitHubTextFile(repoFullName, "package.json", defaultBranch);
+  const envExampleRaw = await fetchGitHubTextFile(repoFullName, ".env.example", defaultBranch);
+
+  const blueprint = {
+    repo: repoFullName,
+    defaultBranch,
+    description: repoMeta.description || "",
+    visibility: repoMeta.visibility || (repoMeta.private ? "private" : "public"),
+    updatedAt: repoMeta.updated_at || "",
+    pushedAt: repoMeta.pushed_at || "",
+    treeTruncated: Boolean(treePayload?.truncated),
+    paths,
+    packageJson: safeParseJson(packageJsonRaw, {}),
+    envKeys: parseEnvKeys(envExampleRaw)
+  };
+
+  repoKnowledgeCache.set(cacheKey, {
+    generatedAt: now,
+    blueprint
+  });
+
+  return blueprint;
+}
+
+function inferFramework(packageJson, paths) {
+  const dependencies = {
+    ...(packageJson?.dependencies || {}),
+    ...(packageJson?.devDependencies || {})
+  };
+
+  if (dependencies.next || paths.some((filePath) => filePath.startsWith("app/"))) {
+    return "Next.js App Router";
+  }
+
+  if (dependencies.vite) {
+    return "Vite";
+  }
+
+  if (dependencies.react) {
+    return "React";
+  }
+
+  return "Unknown web framework";
+}
+
+function inferBuildKnowledge(client, blueprint) {
+  const paths = blueprint?.paths || [];
+  const packageJson = blueprint?.packageJson || {};
+  const dependencies = {
+    ...(packageJson.dependencies || {}),
+    ...(packageJson.devDependencies || {})
+  };
+  const dependencyNames = Object.keys(dependencies);
+  const scripts = packageJson.scripts || {};
+  const pageRoutes = uniq(paths.map((filePath) => routePathFromAppFile(filePath, "page.tsx")).filter(Boolean));
+  const apiRoutes = uniq(paths.map((filePath) => routePathFromAppFile(filePath, "route.ts")).filter(Boolean));
+  const envKeys = blueprint?.envKeys || [];
+  const integrations = [];
+
+  if (dependencyNames.includes("@neondatabase/serverless") || envKeys.includes("DATABASE_URL")) {
+    integrations.push("Neon Postgres / DATABASE_URL");
+  }
+
+  if (dependencyNames.includes("@vercel/blob") || envKeys.includes("BLOB_READ_WRITE_TOKEN")) {
+    integrations.push("Vercel Blob product/image storage");
+  }
+
+  if (envKeys.some((key) => key.startsWith("EPOS_")) || apiRoutes.some((route) => route.includes("/api/epos"))) {
+    integrations.push("Epos Now catalog, stock, order, and webhook sync");
+  }
+
+  if (envKeys.includes("RESEND_API_KEY") || envKeys.includes("FORMSPREE_ENDPOINT")) {
+    integrations.push("Contact form email delivery");
+  }
+
+  if (envKeys.includes("ADMIN_ACCESS_KEY") || apiRoutes.some((route) => route.includes("/api/admin"))) {
+    integrations.push("Owner admin dashboard and protected admin APIs");
+  }
+
+  const safeEditFiles = pickMatching(paths, (filePath) =>
+    /^app\/(page|about\/page|contact\/page|shipping-returns\/page|privacy-policy\/page)\.tsx$/.test(filePath) ||
+    /^components\/(site-header|site-footer|category-menu|product-showcase|review-carousel|contact-form|newsletter-form)\.tsx$/.test(filePath) ||
+    filePath === "lib/data.ts" ||
+    filePath === "app/globals.css"
+  );
+
+  const protectedFiles = pickMatching(paths, (filePath) =>
+    filePath === ".env.example" ||
+    filePath === "package-lock.json" ||
+    filePath.startsWith("database/") ||
+    filePath.startsWith("app/api/admin/") ||
+    filePath.startsWith("app/api/epos/") ||
+    ["lib/db.ts", "lib/orders.ts", "lib/epos.ts", "lib/epos-sync.ts", "lib/admin-products.ts", "scripts/sync-epos-catalog.mjs"].includes(filePath)
+  );
+
+  return {
+    repo: blueprint?.repo || normalizeGithubRepoFullName(client.repo || client.githubUrl),
+    repoStatus: blueprint ? "learned" : "not-indexed",
+    lastRepoUpdate: blueprint?.pushedAt || blueprint?.updatedAt || "",
+    framework: inferFramework(packageJson, paths),
+    language: paths.includes("tsconfig.json") ? "TypeScript" : "JavaScript",
+    packageManager: getPackageManager(paths),
+    scripts,
+    dependencies: dependencyNames.slice(0, 24),
+    envKeys,
+    pageRoutes: pageRoutes.slice(0, 24),
+    apiRoutes: apiRoutes.slice(0, 32),
+    componentFiles: pickMatching(paths, (filePath) => filePath.startsWith("components/") && filePath.endsWith(".tsx"), 24),
+    libFiles: pickMatching(paths, (filePath) => filePath.startsWith("lib/") && /\.(ts|tsx|js)$/.test(filePath), 28),
+    assetFiles: pickMatching(paths, (filePath) => filePath.startsWith("public/"), 20),
+    databaseFiles: pickMatching(paths, (filePath) => filePath.startsWith("database/"), 8),
+    integrations: uniq(integrations),
+    safeEditFiles,
+    protectedFiles,
+    approvalGates: [
+      "Deploys and public client replies require owner approval.",
+      "Admin, order, product, inventory, discount, shipping, and Epos sync changes require owner approval.",
+      "Database schema, environment variables, webhook secrets, and auth/session changes require owner approval.",
+      "Product image imports, stock repair, and order retry actions require owner approval before execution."
+    ],
+    standardChecks: [
+      scripts.build ? "npm run build" : "",
+      scripts.lint ? "npm run lint" : "",
+      "Check homepage, shop, contact, admin login, product APIs, contact form, newsletter, and order/admin flows after relevant changes."
+    ].filter(Boolean)
+  };
+}
+
+function getClientProfileGaps(client) {
+  const gaps = [];
+  if (!client.websiteUrl) {
+    gaps.push({ id: "missing-website", label: "Missing website", priority: "required" });
+  }
+  if (!client.repo) {
+    gaps.push({ id: "missing-repo", label: "Missing repo", priority: "required" });
+  }
+  if (!client.vercelUrl) {
+    gaps.push({ id: "missing-vercel", label: "Missing Vercel", priority: "required" });
+  }
+  if (!client.googleBusinessUrl) {
+    gaps.push({ id: "missing-gbp", label: "Missing Google Business Profile", priority: "growth" });
+  }
+  if (!client.socialUrls?.length) {
+    gaps.push({ id: "missing-socials", label: "Missing social profiles", priority: "growth" });
+  }
+  if (client.finalDomainPurchased === false) {
+    gaps.push({ id: "final-domain-needed", label: "Final domain needed", priority: "launch" });
+  }
+  if (client.clientDetailsPending) {
+    gaps.push({ id: "details-pending", label: "Client details pending", priority: "launch" });
+  }
+  return gaps;
+}
+
+function buildMemoryDocument(title, fileName, lines) {
+  return {
+    title,
+    fileName,
+    content: lines.filter((line) => line !== null && line !== undefined && line !== "").join("\n")
+  };
+}
+
+function buildWebHelperMemoryDocuments(client, knowledge, activationMeta) {
+  const gaps = getClientProfileGaps(client);
+  const connectionLines = [
+    `- Website: ${client.websiteUrl || "not linked"}`,
+    `- GitHub: ${client.githubUrl || client.repo || "not linked"}`,
+    `- Vercel: ${client.vercelUrl || "not linked"}`,
+    `- Railway/backend: ${client.railwayUrl || "not linked"}`,
+    `- Google Business: ${client.googleBusinessUrl || "not linked"}`,
+    `- Socials: ${client.socialUrls?.length ? client.socialUrls.join(", ") : "not linked"}`
+  ];
+  const routeLines = knowledge.pageRoutes.length ? knowledge.pageRoutes.map((route) => `- ${route}`) : ["- No page routes learned yet."];
+  const apiLines = knowledge.apiRoutes.length ? knowledge.apiRoutes.map((route) => `- ${route}`) : ["- No API routes learned yet."];
+  const safeFiles = knowledge.safeEditFiles.length ? knowledge.safeEditFiles.map((filePath) => `- ${filePath}`) : ["- Confirm repo map before editing."];
+  const protectedFiles = knowledge.protectedFiles.length ? knowledge.protectedFiles.map((filePath) => `- ${filePath}`) : ["- Treat backend, auth, data, payment, and deployment files as approval-gated."];
+
+  return [
+    buildMemoryDocument("Client Profile", "client-profile.md", [
+      `# ${client.clientName} Web Helper Profile`,
+      "",
+      `Activated: ${activationMeta.createdAt}`,
+      `Stage: ${client.stage || "unknown"}`,
+      `Plan: ${client.plan || "Launch + Care"}`,
+      `Services: ${(client.services || []).join(", ") || "not mapped"}`,
+      "",
+      "## Connections",
+      ...connectionLines,
+      "",
+      "## Known Gaps",
+      ...(gaps.length ? gaps.map((gap) => `- ${gap.label} (${gap.priority})`) : ["- No known gaps."]),
+      "",
+      "## Notes",
+      client.notes || "No notes recorded."
+    ]),
+    buildMemoryDocument("Website Stack", "website-stack.md", [
+      `# ${client.clientName} Website Stack`,
+      "",
+      `Repo: ${knowledge.repo || "not linked"}`,
+      `Framework: ${knowledge.framework}`,
+      `Language: ${knowledge.language}`,
+      `Package manager: ${knowledge.packageManager}`,
+      `Last repo update: ${knowledge.lastRepoUpdate || "unknown"}`,
+      "",
+      "## Integrations",
+      ...(knowledge.integrations.length ? knowledge.integrations.map((item) => `- ${item}`) : ["- No integrations learned yet."]),
+      "",
+      "## Environment Keys",
+      ...(knowledge.envKeys.length ? knowledge.envKeys.map((key) => `- ${key}`) : ["- No .env.example keys learned yet."]),
+      "",
+      "## Page Routes",
+      ...routeLines,
+      "",
+      "## API Routes",
+      ...apiLines
+    ]),
+    buildMemoryDocument("Scope Rules", "scope-rules.md", [
+      `# ${client.clientName} Scope Rules`,
+      "",
+      "## Safe First-Pass Changes",
+      "- Copy edits",
+      "- Image swaps using approved assets",
+      "- Hours, contact, social, and non-sensitive content updates",
+      "- Minor layout polish on public marketing pages",
+      "- Broken link fixes",
+      "",
+      "## Safe Edit Files",
+      ...safeFiles,
+      "",
+      "## Approval-Gated Areas",
+      ...knowledge.approvalGates.map((rule) => `- ${rule}`),
+      "",
+      "## Protected Files",
+      ...protectedFiles
+    ]),
+    buildMemoryDocument("Repo Map", "repo-map.md", [
+      `# ${client.clientName} Repo Map`,
+      "",
+      "## Components",
+      ...(knowledge.componentFiles.length ? knowledge.componentFiles.map((filePath) => `- ${filePath}`) : ["- No component files learned yet."]),
+      "",
+      "## Libraries",
+      ...(knowledge.libFiles.length ? knowledge.libFiles.map((filePath) => `- ${filePath}`) : ["- No library files learned yet."]),
+      "",
+      "## Assets",
+      ...(knowledge.assetFiles.length ? knowledge.assetFiles.map((filePath) => `- ${filePath}`) : ["- No public assets learned yet."]),
+      "",
+      "## Database",
+      ...(knowledge.databaseFiles.length ? knowledge.databaseFiles.map((filePath) => `- ${filePath}`) : ["- No database files learned yet."])
+    ]),
+    buildMemoryDocument("Update History", "update-history.md", [
+      `# ${client.clientName} Update History`,
+      "",
+      `- ${activationMeta.createdAt}: Web Helper knowledge pack activated by Mission Control.`,
+      activationMeta.command ? `- Trigger command: ${activationMeta.command}` : "",
+      "",
+      "## Verification Checklist",
+      ...knowledge.standardChecks.map((check) => `- ${check}`)
+    ])
+  ];
+}
+
+function summarizeWebHelperActivation(activation) {
+  if (!activation) {
+    return null;
+  }
+
+  return {
+    id: activation.id,
+    status: activation.status,
+    agentName: activation.agent.name,
+    learnedAt: activation.createdAt,
+    updatedAt: activation.updatedAt,
+    repoStatus: activation.knowledge.repoStatus,
+    framework: activation.knowledge.framework,
+    routeCount: activation.knowledge.pageRoutes.length,
+    apiRouteCount: activation.knowledge.apiRoutes.length,
+    integrationCount: activation.knowledge.integrations.length,
+    memoryDocumentCount: activation.memoryDocuments.length,
+    knownGapCount: activation.knownGaps.length,
+    nextActions: activation.nextActions.slice(0, 4)
+  };
+}
+
+function getWebHelperActivationSummary(siteId) {
+  return summarizeWebHelperActivation(webHelperActivations.get(siteId));
+}
+
+function findClientForWebHelperTarget(targetId) {
+  const normalizedTarget = String(targetId || "").trim();
+  const targetSlug = slugify(normalizedTarget);
+  const clients = getAllClients();
+
+  return clients.find((client) => {
+    const repoFullName = normalizeGithubRepoFullName(client.repo || client.githubUrl);
+    const possibleIds = [
+      client.id,
+      slugify(client.clientName),
+      `${client.id}-web-helper`,
+      normalizeDomain(client.websiteUrl),
+      normalizeDomain(client.vercelUrl),
+      repoFullName,
+      repoFullName.split("/")[1] || ""
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+
+    return possibleIds.some((value) => value === normalizedTarget || slugify(value) === targetSlug);
+  }) || null;
+}
+
+function buildClientFromMonitoredSite(site) {
+  let websiteUrl = site.rootUrl || "";
+  if (!websiteUrl && site.pages?.[0]?.url) {
+    try {
+      websiteUrl = new URL(site.pages[0].url).origin;
+    } catch {
+      websiteUrl = site.pages[0].url;
+    }
+  }
+
+  return normalizeClient({
+    id: site.id,
+    clientName: site.name || site.domain || site.id,
+    websiteUrl,
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care"],
+    plan: "Post-launch maintenance template",
+    source: "monitored-site"
+  });
+}
+
+async function findWebHelperTarget(targetId) {
+  const client = findClientForWebHelperTarget(targetId);
+  if (client) {
+    return client;
+  }
+
+  const snapshot = await getMissionSnapshot(false);
+  const targetSlug = slugify(targetId);
+  const site = (snapshot.websites || []).find((entry) =>
+    entry.id === targetId ||
+    slugify(entry.id) === targetSlug ||
+    slugify(entry.name) === targetSlug ||
+    normalizeDomain(entry.domain) === normalizeDomain(targetId)
+  );
+
+  return site ? buildClientFromMonitoredSite(site) : null;
+}
+
+async function buildWebHelperKnowledgePack(client, options = {}) {
+  const createdAt = new Date().toISOString();
+  const repoFullName = normalizeGithubRepoFullName(client.repo || client.githubUrl);
+  let blueprint = null;
+  let repoError = "";
+
+  if (repoFullName) {
+    try {
+      blueprint = await fetchGitHubRepoBlueprint(repoFullName, Boolean(options.forceRefresh));
+    } catch (error) {
+      repoError = String(error?.message || error || "Unable to learn repo.");
+    }
+  }
+
+  const knowledge = inferBuildKnowledge(client, blueprint);
+  if (repoError) {
+    knowledge.repoStatus = "learn-failed";
+    knowledge.repoError = repoError;
+  }
+
+  const knownGaps = getClientProfileGaps(client);
+  const activation = {
+    id: `${client.id}-web-helper-${Date.now()}`,
+    siteId: client.id,
+    clientId: client.id,
+    status: "active",
+    createdAt,
+    updatedAt: createdAt,
+    command: options.command || "",
+    agent: {
+      name: `${client.clientName} Web Helper`,
+      role: "Post-launch website operator",
+      autonomyLevel: "Level 1 - prepare changes, owner approves deploy",
+      mission: "Keep the website easy to update, safely maintainable, and ready for quick owner-reviewed changes.",
+      allowedWork: ["copy edits", "image swaps", "hours/contact/social updates", "broken link fixes", "minor layout bugs"],
+      approvalRequiredFor: knowledge.approvalGates
+    },
+    clientProfile: {
+      clientName: client.clientName,
+      stage: client.stage,
+      plan: client.plan,
+      services: client.services || [],
+      websiteUrl: client.websiteUrl,
+      repo: repoFullName || client.repo || "",
+      githubUrl: client.githubUrl || (repoFullName ? `https://github.com/${repoFullName}` : ""),
+      vercelUrl: client.vercelUrl,
+      railwayUrl: client.railwayUrl,
+      googleBusinessUrl: client.googleBusinessUrl,
+      socialUrls: client.socialUrls || [],
+      notes: client.notes || ""
+    },
+    knowledge,
+    knownGaps,
+    memoryDocuments: [],
+    nextActions: [
+      knownGaps.find((gap) => gap.id === "missing-gbp") ? "Add Google Business Profile URL when available." : "",
+      "Review generated memory documents before first client-facing update.",
+      "Run build/lint checks before deployment after code changes.",
+      "Keep admin, order, inventory, Epos, database, and deployment work owner-approved."
+    ].filter(Boolean)
+  };
+
+  activation.memoryDocuments = buildWebHelperMemoryDocuments(client, knowledge, activation);
+  return activation;
+}
+
+async function activateWebHelperForTarget(targetId, options = {}) {
+  const client = await findWebHelperTarget(targetId);
+  if (!client) {
+    return null;
+  }
+
+  const activation = await buildWebHelperKnowledgePack(client, options);
+  webHelperActivations.set(client.id, activation);
+  return activation;
+}
+
 function buildWebHelperRequests(site) {
   const failedPages = (site.pages || []).filter((page) => !page.ok);
   const slowPages = (site.pages || []).filter((page) => page.ok && page.latencyMs >= 1500);
@@ -1008,6 +1601,7 @@ function buildWebHelperAgents(snapshot, requestedSiteId = "") {
         "scope-rules.md",
         "update-history.md"
       ],
+      activation: getWebHelperActivationSummary(site.id),
       requests
     };
   });
@@ -1101,6 +1695,7 @@ function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpe
           "scope-rules.md",
           "update-history.md"
         ],
+        activation: getWebHelperActivationSummary(client.id),
         requests
       };
     });
@@ -1901,6 +2496,24 @@ const liveDeploymentMap = {
     finalDomainPurchased: false,
     notes: "Final custom domain has not been purchased."
   },
+  "bougie-and-company": {
+    provider: "Vercel",
+    url: "https://www.bougieandcompany.com",
+    vercelUrl: "https://vercel.com/burchdads-projects/bougie-and-company-oy7t",
+    railwayUrl: "https://railway.com/project/3032a264-caf7-4d92-a0f8-406d00cd395c",
+    status: "Live custom domain",
+    clientName: "Bougie and Company",
+    canonicalRepo: "bougie_and_company",
+    stage: "launch-handoff",
+    services: ["website-build", "web-helper-care", "ecommerce", "content-social"],
+    finalDomainPurchased: true,
+    socialUrls: [
+      "https://www.facebook.com/people/Bougie-Company/61585356908803/",
+      "https://www.instagram.com/bougieandcompanytx/",
+      "https://www.tiktok.com/@bougieandcompany"
+    ],
+    notes: "Website finished, domain wrapped, final website payment accepted. Activate Web Helper memory for launch and care."
+  },
   "peptides-ecommerce": {
     provider: "Vercel",
     url: "https://www.peppersandvibes.com",
@@ -2060,13 +2673,18 @@ function getSeededClientProfiles() {
         id: slugify(deployment.clientName || deployment.canonicalRepo),
         clientName: deployment.clientName || deployment.canonicalRepo,
         websiteUrl: deployment.url,
-        vercelUrl: deployment.url,
+        vercelUrl: deployment.vercelUrl || deployment.url,
         railwayUrl: deployment.railwayUrl,
         repo: `${GITHUB_OWNER}/${deployment.canonicalRepo}`,
         stage: deployment.stage || "web-helper-care",
         services: deployment.services || ["website-build", "web-helper-care"],
         finalDomainPurchased: deployment.finalDomainPurchased,
         clientDetailsPending: deployment.clientDetailsPending,
+        googleBusinessUrl: deployment.googleBusinessUrl,
+        socialUrls: deployment.socialUrls,
+        contact: deployment.contact,
+        businessEmail: deployment.businessEmail,
+        businessPhone: deployment.businessPhone,
         plan: deployment.plan || "Launch + Care",
         notes: deployment.notes || "",
         source: "deployment-map"
@@ -4192,7 +4810,9 @@ function getCommandPlan(command, siteId) {
     }
   ];
 
-  const matchedPlan = plans.find((plan) => plan.match.some((term) => normalized.includes(term)));
+  const matchedPlan =
+    plans.find((plan) => plan.payload.category === "web_helper" && plan.match.some((term) => normalized.includes(term))) ||
+    plans.find((plan) => plan.match.some((term) => normalized.includes(term)));
 
   if (matchedPlan) {
     return matchedPlan.payload;
@@ -4428,6 +5048,52 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/mission/web-helpers/knowledge") {
+    const requestedSiteId = url.searchParams.get("siteId") || url.searchParams.get("clientId") || "";
+    const activation = webHelperActivations.get(requestedSiteId);
+    if (!activation) {
+      sendJson(request, response, 404, {
+        error: "Web Helper knowledge pack not activated",
+        detail: "POST /mission/web-helpers/activate with siteId or clientId to generate one."
+      });
+      return;
+    }
+
+    sendJson(request, response, 200, activation);
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/web-helpers/activate") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const targetId = payload.siteId || payload.clientId || payload.id || payload.websiteUrl || "";
+        if (!targetId) {
+          sendJson(request, response, 400, { error: "siteId, clientId, id, or websiteUrl is required" });
+          return;
+        }
+
+        const activation = await activateWebHelperForTarget(targetId, {
+          command: payload.command || "manual Web Helper activation",
+          forceRefresh: Boolean(payload.refresh)
+        });
+
+        if (!activation) {
+          sendJson(request, response, 404, { error: "Unable to find matching client or monitored site for Web Helper activation" });
+          return;
+        }
+
+        sendJson(request, response, 201, {
+          activated: summarizeWebHelperActivation(activation),
+          activation
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/mission/services") {
     const services = getServiceCatalog();
     sendJson(request, response, 200, {
@@ -4507,8 +5173,17 @@ const server = http.createServer((request, response) => {
         const execution = createExecutionRun(command, siteId, plan);
         const baseRationale = getDecisionRationale(plan.category || "general");
         const aiGuidance = await getAiGuidance(command, siteId, plan);
+        const webHelperActivation = plan.category === "web_helper"
+          ? await activateWebHelperForTarget(siteId, { command })
+          : null;
         const rationale = [...baseRationale, ...aiGuidance.rationaleAdditions];
-        const autoActions = [...(plan.autoActions || []), ...aiGuidance.autoActionsAdditions];
+        const autoActions = [
+          ...(plan.autoActions || []),
+          ...aiGuidance.autoActionsAdditions,
+          ...(webHelperActivation
+            ? [`Activated ${webHelperActivation.agent.name} knowledge pack with ${webHelperActivation.memoryDocuments.length} memory documents.`]
+            : [])
+        ];
         const expectedImpact =
           aiGuidance.growthOpportunities.length > 0
             ? `${plan.expectedImpact} Growth opportunities: ${aiGuidance.growthOpportunities.join(" | ")}`
@@ -4523,6 +5198,7 @@ const server = http.createServer((request, response) => {
           expectedImpact,
           rationale,
           aiCopilot: aiGuidance,
+          webHelperActivation: summarizeWebHelperActivation(webHelperActivation),
           execution: {
             id: execution.id,
             status: execution.status,
