@@ -33,6 +33,8 @@ const GITHUB_MAX_REPO_PAGES = Math.max(1, Number(process.env.GITHUB_MAX_REPO_PAG
 const WEB_HELPER_ACTIVATIONS_PATH = String(
   process.env.WEB_HELPER_ACTIVATIONS_PATH || path.join(ROOT, ".ghost-web-helper-activations.json")
 ).trim();
+const WEB_HELPER_AUTO_ACTIVATE = String(process.env.WEB_HELPER_AUTO_ACTIVATE || "true").toLowerCase() !== "false";
+const WEB_HELPER_HANDOFF_STAGE = "launch-handoff";
 const runtimeClients = [];
 
 const CLIENT_PIPELINE_STAGES = [
@@ -41,7 +43,7 @@ const CLIENT_PIPELINE_STAGES = [
   { id: "website-build", label: "Website Build" },
   { id: "client-review", label: "Client Review" },
   { id: "final-payment", label: "Final Payment" },
-  { id: "launch-handoff", label: "Launch / Handoff" },
+  { id: "launch-handoff", label: "Web Helper Handoff" },
   { id: "web-helper-care", label: "Web Helper Care" },
   { id: "growth-services", label: "Growth Services" },
   { id: "paused-archived", label: "Paused / Archived" }
@@ -91,6 +93,7 @@ const githubRepoCache = {
 const repoKnowledgeCache = new Map();
 const webHelperActivations = new Map();
 let webHelperActivationsHydrated = false;
+let webHelperAutoActivationPromise = null;
 
 function parseBool(value, fallback = false) {
   if (typeof value === "boolean") {
@@ -1599,6 +1602,105 @@ async function activateWebHelperForTarget(targetId, options = {}) {
   return activation;
 }
 
+function isCurrentWebsiteWebHelperClient(client) {
+  const services = client?.services || [];
+  return Boolean(
+    client?.websiteUrl &&
+    client?.repo &&
+    client.stage !== "paused-archived" &&
+    services.includes("website-build") &&
+    services.includes("web-helper-care")
+  );
+}
+
+function getCurrentWebsiteWebHelperClients() {
+  return getAllClients().filter(isCurrentWebsiteWebHelperClient);
+}
+
+async function ensureCurrentWebsiteWebHelpersActivated(options = {}) {
+  hydrateWebHelperActivations();
+  const refreshExisting = Boolean(options.refreshExisting);
+  const command = options.command || "Auto-activate current live website Web Helpers";
+  const targets = getCurrentWebsiteWebHelperClients();
+  const activated = [];
+  const existing = [];
+  const failed = [];
+  let changed = false;
+
+  for (const client of targets) {
+    const current = webHelperActivations.get(client.id);
+    if (current && !refreshExisting) {
+      existing.push(summarizeWebHelperActivation(current));
+      continue;
+    }
+
+    try {
+      const activation = await buildWebHelperKnowledgePack(client, {
+        command,
+        forceRefresh: refreshExisting || Boolean(options.forceRefresh)
+      });
+      webHelperActivations.set(client.id, activation);
+      activated.push(summarizeWebHelperActivation(activation));
+      changed = true;
+    } catch (error) {
+      failed.push({
+        clientId: client.id,
+        clientName: client.clientName,
+        error: String(error?.message || error || "Activation failed")
+      });
+    }
+  }
+
+  if (changed) {
+    persistWebHelperActivations();
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    enabled: true,
+    targetCount: targets.length,
+    activatedCount: activated.length,
+    existingCount: existing.length,
+    failedCount: failed.length,
+    activated,
+    existing,
+    failed
+  };
+}
+
+function getWebHelperAutoActivation(options = {}) {
+  if (!WEB_HELPER_AUTO_ACTIVATE && !options.forceRun) {
+    return Promise.resolve({
+      generatedAt: new Date().toISOString(),
+      enabled: false,
+      targetCount: 0,
+      activatedCount: 0,
+      existingCount: 0,
+      failedCount: 0,
+      activated: [],
+      existing: [],
+      failed: []
+    });
+  }
+
+  if (!options.forceRun && !options.refreshExisting && webHelperAutoActivationPromise) {
+    return webHelperAutoActivationPromise;
+  }
+
+  const activationPromise = ensureCurrentWebsiteWebHelpersActivated(options)
+    .finally(() => {
+      if (webHelperAutoActivationPromise === activationPromise) {
+        webHelperAutoActivationPromise = null;
+      }
+    });
+
+  if (!options.forceRun && !options.refreshExisting) {
+    webHelperAutoActivationPromise = activationPromise;
+  }
+
+  return activationPromise;
+}
+
 function buildWebHelperRequests(site) {
   const failedPages = (site.pages || []).filter((page) => !page.ok);
   const slowPages = (site.pages || []).filter((page) => page.ok && page.latencyMs >= 1500);
@@ -1910,7 +2012,7 @@ function getOnboardingBlueprint() {
       },
       {
         id: "launch-handoff",
-        name: "Launch + Handoff",
+        name: "Web Helper Handoff",
         status: "template-ready",
         description: "After completion payment, activate the client Web Helper and move the site into maintenance.",
         requiredArtifacts: ["launch-checklist.md", "update-history.md", "handoff-summary.md"],
@@ -2481,7 +2583,7 @@ const liveDeploymentMap = {
     clientName: "Arcane R&D",
     canonicalRepo: "arcane_randd",
     repoAliases: ["arcane-randd"],
-    stage: "client-review",
+    stage: WEB_HELPER_HANDOFF_STAGE,
     services: ["website-build", "web-helper-care"],
     finalDomainPurchased: false,
     notes: "Final custom domain has not been purchased."
@@ -2565,8 +2667,8 @@ const liveDeploymentMap = {
     status: "Live preview domain",
     clientName: "Keisha Law",
     canonicalRepo: "keisha-law",
-    stage: "client-review",
-    services: ["website-build"],
+    stage: WEB_HELPER_HANDOFF_STAGE,
+    services: ["website-build", "web-helper-care"],
     finalDomainPurchased: false,
     clientDetailsPending: true,
     notes: "Client has not finalized details."
@@ -2577,7 +2679,7 @@ const liveDeploymentMap = {
     status: "Live preview domain",
     clientName: "Mobile Detailing",
     canonicalRepo: "mobile-detailing",
-    stage: "client-review",
+    stage: WEB_HELPER_HANDOFF_STAGE,
     services: ["website-build", "web-helper-care"],
     finalDomainPurchased: false,
     notes: "Final custom domain has not been purchased."
@@ -2622,7 +2724,7 @@ const liveDeploymentMap = {
     clientName: "Price Consulting",
     canonicalRepo: "price-consulting-site",
     repoAliases: ["price-consulting"],
-    stage: "client-review",
+    stage: WEB_HELPER_HANDOFF_STAGE,
     services: ["website-build", "web-helper-care"],
     finalDomainPurchased: false,
     notes: "Final custom domain has not been purchased."
@@ -5112,14 +5214,20 @@ const server = http.createServer((request, response) => {
     const forceRefresh = url.searchParams.get("refresh") === "true";
     const requestedSiteId = url.searchParams.get("siteId") || "";
 
-    getMissionSnapshot(forceRefresh)
-      .then((snapshot) => {
+    Promise.all([
+      getMissionSnapshot(forceRefresh),
+      getWebHelperAutoActivation({
+        command: "Auto-activate current live website Web Helpers for handoff"
+      })
+    ])
+      .then(([snapshot, autoActivation]) => {
         const monitoredHelpers = buildWebHelperAgents(snapshot, requestedSiteId);
         const clientHelpers = buildClientWebHelperAgents(getAllClients(), requestedSiteId, monitoredHelpers);
         const helpers = [...monitoredHelpers, ...clientHelpers];
         sendJson(request, response, 200, {
           generatedAt: new Date().toISOString(),
           siteId: requestedSiteId || null,
+          autoActivation,
           summary: summarizeWebHelpers(helpers),
           helpers
         });
@@ -5129,6 +5237,33 @@ const server = http.createServer((request, response) => {
           error: "Unable to generate web helper agents",
           detail: String(error?.message || error)
         });
+      });
+
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/web-helpers/activate-all") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const autoActivation = await getWebHelperAutoActivation({
+          forceRun: true,
+          refreshExisting: Boolean(payload.refresh),
+          command: payload.command || "Bulk activate current live website Web Helpers for handoff"
+        });
+        const snapshot = await getMissionSnapshot(Boolean(payload.refresh));
+        const monitoredHelpers = buildWebHelperAgents(snapshot, "");
+        const clientHelpers = buildClientWebHelperAgents(getAllClients(), "", monitoredHelpers);
+        const helpers = [...monitoredHelpers, ...clientHelpers];
+
+        sendJson(request, response, 201, {
+          generatedAt: new Date().toISOString(),
+          autoActivation,
+          summary: summarizeWebHelpers(helpers),
+          helpers
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
       });
 
     return;

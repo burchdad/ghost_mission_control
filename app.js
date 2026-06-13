@@ -241,7 +241,7 @@ const clientPipelineStages = [
   { id: "website-build", label: "Website Build" },
   { id: "client-review", label: "Client Review" },
   { id: "final-payment", label: "Final Payment" },
-  { id: "launch-handoff", label: "Launch / Handoff" },
+  { id: "launch-handoff", label: "Web Helper Handoff" },
   { id: "web-helper-care", label: "Web Helper Care" },
   { id: "growth-services", label: "Growth Services" },
   { id: "paused-archived", label: "Paused / Archived" }
@@ -480,7 +480,7 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/ghostaisolutions",
     stage: "growth-services",
     plan: "Internal growth and authority site",
-    services: ["website-build", "search-intelligence", "lead-funnel"],
+    services: ["website-build", "web-helper-care", "search-intelligence", "lead-funnel"],
     source: "client-deployment-map"
   },
   {
@@ -490,9 +490,9 @@ const seededClientProfiles = [
     railwayUrl: "https://price-consulting-site-production.up.railway.app",
     repo: "price-consulting-site",
     githubUrl: "https://github.com/burchdad/price-consulting-site",
-    stage: "client-review",
+    stage: "launch-handoff",
     plan: "Client website build",
-    services: ["website-build"],
+    services: ["website-build", "web-helper-care"],
     finalDomainPurchased: false,
     source: "client-deployment-map"
   },
@@ -502,9 +502,9 @@ const seededClientProfiles = [
     websiteUrl: "https://arcane-randd.vercel.app",
     repo: "arcane_randd",
     githubUrl: "https://github.com/burchdad/arcane_randd",
-    stage: "client-review",
+    stage: "launch-handoff",
     plan: "Client website build",
-    services: ["website-build"],
+    services: ["website-build", "web-helper-care"],
     finalDomainPurchased: false,
     source: "client-deployment-map"
   },
@@ -528,7 +528,7 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/ghost-alpha-terminal",
     stage: "growth-services",
     plan: "Trading intelligence product",
-    services: ["software-tool", "search-intelligence"],
+    services: ["website-build", "web-helper-care", "software-tool", "search-intelligence"],
     source: "client-deployment-map"
   },
   {
@@ -549,9 +549,9 @@ const seededClientProfiles = [
     websiteUrl: "https://keisha-law.vercel.app",
     repo: "keisha-law",
     githubUrl: "https://github.com/burchdad/keisha-law",
-    stage: "client-review",
+    stage: "launch-handoff",
     plan: "Client website build",
-    services: ["website-build"],
+    services: ["website-build", "web-helper-care"],
     clientDetailsPending: true,
     source: "client-deployment-map"
   },
@@ -561,10 +561,28 @@ const seededClientProfiles = [
     websiteUrl: "https://mobile-detailing-sigma.vercel.app",
     repo: "mobile-detailing",
     githubUrl: "https://github.com/burchdad/mobile-detailing",
-    stage: "client-review",
+    stage: "launch-handoff",
     plan: "Client website build",
-    services: ["website-build"],
+    services: ["website-build", "web-helper-care"],
     finalDomainPurchased: false,
+    source: "client-deployment-map"
+  },
+  {
+    id: "bougie-and-company",
+    clientName: "Bougie and Company",
+    websiteUrl: "https://www.bougieandcompany.com",
+    railwayUrl: "https://railway.com/project/3032a264-caf7-4d92-a0f8-406d00cd395c",
+    repo: "bougie_and_company",
+    githubUrl: "https://github.com/burchdad/bougie_and_company",
+    stage: "launch-handoff",
+    plan: "Launch + Care",
+    services: ["website-build", "web-helper-care", "ecommerce", "content-social"],
+    socialUrls: [
+      "https://www.facebook.com/people/Bougie-Company/61585356908803/",
+      "https://www.instagram.com/bougieandcompanytx/",
+      "https://www.tiktok.com/@bougieandcompany"
+    ],
+    notes: "Website finished, domain wrapped, final website payment accepted. Activate Web Helper memory for launch and care.",
     source: "client-deployment-map"
   },
   {
