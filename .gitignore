@@ -2,3 +2,5 @@ dist/
 .ghost-mission-control.log
 .ghost-web-helper-activations.json
 .ghost-web-helper-activations.json.tmp
+.ghost-runtime-clients.json
+.ghost-runtime-clients.json.tmp

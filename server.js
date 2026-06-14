@@ -33,9 +33,13 @@ const GITHUB_MAX_REPO_PAGES = Math.max(1, Number(process.env.GITHUB_MAX_REPO_PAG
 const WEB_HELPER_ACTIVATIONS_PATH = String(
   process.env.WEB_HELPER_ACTIVATIONS_PATH || path.join(ROOT, ".ghost-web-helper-activations.json")
 ).trim();
+const RUNTIME_CLIENTS_PATH = String(
+  process.env.RUNTIME_CLIENTS_PATH || path.join(ROOT, ".ghost-runtime-clients.json")
+).trim();
 const WEB_HELPER_AUTO_ACTIVATE = String(process.env.WEB_HELPER_AUTO_ACTIVATE || "true").toLowerCase() !== "false";
 const WEB_HELPER_HANDOFF_STAGE = "launch-handoff";
 const runtimeClients = [];
+let runtimeClientsHydrated = false;
 
 const CLIENT_PIPELINE_STAGES = [
   { id: "lead", label: "Lead / Prospect" },
@@ -981,6 +985,53 @@ function persistWebHelperActivations() {
     fs.renameSync(tempPath, WEB_HELPER_ACTIVATIONS_PATH);
   } catch (error) {
     console.warn(`Unable to persist Web Helper activations: ${String(error?.message || error)}`);
+  }
+}
+
+function hydrateRuntimeClients() {
+  if (runtimeClientsHydrated) {
+    return;
+  }
+
+  runtimeClientsHydrated = true;
+
+  try {
+    if (!RUNTIME_CLIENTS_PATH || !fs.existsSync(RUNTIME_CLIENTS_PATH)) {
+      return;
+    }
+
+    const raw = fs.readFileSync(RUNTIME_CLIENTS_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    const clients = Array.isArray(parsed?.clients) ? parsed.clients : Array.isArray(parsed) ? parsed : [];
+    clients.map(normalizeClient).filter(Boolean).forEach((client) => {
+      runtimeClients.push({
+        ...client,
+        source: "runtime"
+      });
+    });
+  } catch (error) {
+    console.warn(`Unable to hydrate runtime clients: ${String(error?.message || error)}`);
+  }
+}
+
+function persistRuntimeClients() {
+  if (!RUNTIME_CLIENTS_PATH) {
+    return;
+  }
+
+  try {
+    const dir = path.dirname(RUNTIME_CLIENTS_PATH);
+    fs.mkdirSync(dir, { recursive: true });
+    const payload = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      clients: runtimeClients
+    };
+    const tempPath = `${RUNTIME_CLIENTS_PATH}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2));
+    fs.renameSync(tempPath, RUNTIME_CLIENTS_PATH);
+  } catch (error) {
+    console.warn(`Unable to persist runtime clients: ${String(error?.message || error)}`);
   }
 }
 
@@ -2268,33 +2319,37 @@ function mergeClientRecords(existing, incoming) {
     return incoming;
   }
 
+  const isRuntimeOverride = incoming.source === "runtime";
+  const pick = (field) => (isRuntimeOverride ? incoming[field] : incoming[field] || existing[field]);
+  const pickBoolean = (field) => (isRuntimeOverride ? Boolean(incoming[field]) : Boolean(existing[field] || incoming[field]));
+
   return {
     ...existing,
     ...incoming,
     id: existing.id || incoming.id,
-    clientName: incoming.clientName || existing.clientName,
-    websiteUrl: incoming.websiteUrl || existing.websiteUrl,
-    repo: incoming.repo || existing.repo,
-    githubUrl: incoming.githubUrl || existing.githubUrl,
-    railwayUrl: incoming.railwayUrl || existing.railwayUrl,
-    vercelUrl: incoming.vercelUrl || existing.vercelUrl,
-    mobileAppUrl: incoming.mobileAppUrl || existing.mobileAppUrl,
-    googleBusinessUrl: incoming.googleBusinessUrl || existing.googleBusinessUrl,
-    analyticsUrl: incoming.analyticsUrl || existing.analyticsUrl,
-    adsStatus: incoming.adsStatus || existing.adsStatus,
-    socialUrls: uniq([...(existing.socialUrls || []), ...(incoming.socialUrls || [])]),
-    services: uniq([...(existing.services || []), ...(incoming.services || [])]),
+    clientName: pick("clientName"),
+    websiteUrl: pick("websiteUrl"),
+    repo: pick("repo"),
+    githubUrl: pick("githubUrl"),
+    railwayUrl: pick("railwayUrl"),
+    vercelUrl: pick("vercelUrl"),
+    mobileAppUrl: pick("mobileAppUrl"),
+    googleBusinessUrl: pick("googleBusinessUrl"),
+    analyticsUrl: pick("analyticsUrl"),
+    adsStatus: pick("adsStatus"),
+    socialUrls: isRuntimeOverride ? incoming.socialUrls || [] : uniq([...(existing.socialUrls || []), ...(incoming.socialUrls || [])]),
+    services: isRuntimeOverride ? incoming.services || [] : uniq([...(existing.services || []), ...(incoming.services || [])]),
     finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
-    clientDetailsPending: Boolean(existing.clientDetailsPending || incoming.clientDetailsPending),
-    proposalSigned: Boolean(existing.proposalSigned || incoming.proposalSigned),
-    partnershipSigned: Boolean(existing.partnershipSigned || incoming.partnershipSigned),
-    depositPaid: Boolean(existing.depositPaid || incoming.depositPaid),
-    finalPaymentPaid: Boolean(existing.finalPaymentPaid || incoming.finalPaymentPaid),
-    businessEmail: incoming.businessEmail || existing.businessEmail,
-    businessPhone: incoming.businessPhone || existing.businessPhone,
-    plan: incoming.plan || existing.plan,
-    contact: incoming.contact || existing.contact,
-    notes: incoming.notes || existing.notes,
+    clientDetailsPending: pickBoolean("clientDetailsPending"),
+    proposalSigned: pickBoolean("proposalSigned"),
+    partnershipSigned: pickBoolean("partnershipSigned"),
+    depositPaid: pickBoolean("depositPaid"),
+    finalPaymentPaid: pickBoolean("finalPaymentPaid"),
+    businessEmail: pick("businessEmail"),
+    businessPhone: pick("businessPhone"),
+    plan: pick("plan"),
+    contact: pick("contact"),
+    notes: pick("notes"),
     source: incoming.source || existing.source
   };
 }
@@ -2313,6 +2368,7 @@ function addClientToMergedRoster(merged, aliases, client) {
 }
 
 function getAllClients() {
+  hydrateRuntimeClients();
   const seeded = getSeededClientProfiles();
   const configured = parseConfiguredClients();
   const merged = new Map();
@@ -5350,6 +5406,7 @@ const server = http.createServer((request, response) => {
   if (request.method === "POST" && url.pathname === "/mission/clients") {
     readJsonBody(request)
       .then((payload) => {
+        hydrateRuntimeClients();
         const client = buildClientRecord(payload);
         if (!client) {
           sendJson(request, response, 400, { error: "Client name is required" });
@@ -5366,6 +5423,7 @@ const server = http.createServer((request, response) => {
         } else {
           runtimeClients.push(client);
         }
+        persistRuntimeClients();
 
         const clients = getAllClients();
         sendJson(request, response, 201, {

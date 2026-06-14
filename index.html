@@ -442,6 +442,7 @@
           <button id="closeClientModalButton" class="icon-button" type="button" aria-label="Close new client modal">X</button>
         </div>
         <form id="clientOnboardForm" class="client-onboard-form">
+          <input id="clientEditIdInput" name="id" type="hidden" />
           <label>
             <span>Client Name</span>
             <input id="clientNameInput" name="clientName" type="text" placeholder="Acme Dental" required />
@@ -494,8 +495,24 @@
               <span>Proposal signed</span>
             </label>
             <label>
+              <input id="clientDepositInput" name="depositPaid" type="checkbox" />
+              <span>Deposit paid</span>
+            </label>
+            <label>
+              <input id="clientFinalPaymentInput" name="finalPaymentPaid" type="checkbox" />
+              <span>Final payment paid</span>
+            </label>
+            <label>
               <input id="clientPartnershipInput" name="partnershipSigned" type="checkbox" />
-              <span>Partnership agreement signed</span>
+              <span>Recurring contract signed</span>
+            </label>
+            <label>
+              <input id="clientFinalDomainInput" name="finalDomainPurchased" type="checkbox" />
+              <span>Final domain purchased</span>
+            </label>
+            <label>
+              <input id="clientDetailsPendingInput" name="clientDetailsPending" type="checkbox" />
+              <span>Client details pending</span>
             </label>
           </div>
           <label>
@@ -521,8 +538,14 @@
               <option value="website-build">Website Build</option>
               <option value="web-helper-care">Web Helper Care</option>
               <option value="search-intelligence">SEO / AEO / GEO</option>
+              <option value="local-service">Local Service Growth</option>
               <option value="lead-funnel">Lead Funnel</option>
+              <option value="ecommerce">Ecommerce</option>
               <option value="content-social">Content + Social</option>
+              <option value="paid-ads">Paid Ads</option>
+              <option value="software-tool">Software Tool</option>
+              <option value="ai-automation">AI Automation</option>
+              <option value="mobile-app">Mobile App</option>
               <option value="reporting">Client Reporting</option>
             </select>
           </label>
@@ -534,7 +557,7 @@
             <span>Notes</span>
             <textarea id="clientNotesInput" name="notes" rows="3" placeholder="Anything the agent should know first..."></textarea>
           </label>
-          <button class="command-send" type="submit">Create Client</button>
+          <button id="clientSubmitButton" class="command-send" type="submit">Create Client</button>
           <p id="clientFormResponse" class="command-response" aria-live="polite"></p>
         </form>
       </div>

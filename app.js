@@ -107,6 +107,7 @@ const elements = {
   clientOnboardModal: document.getElementById("clientOnboardModal"),
   clientModalTitle: document.getElementById("clientModalTitle"),
   clientOnboardForm: document.getElementById("clientOnboardForm"),
+  clientEditIdInput: document.getElementById("clientEditIdInput"),
   clientNameInput: document.getElementById("clientNameInput"),
   clientStageInput: document.getElementById("clientStageInput"),
   clientWebsiteInput: document.getElementById("clientWebsiteInput"),
@@ -117,13 +118,18 @@ const elements = {
   clientGoogleBusinessInput: document.getElementById("clientGoogleBusinessInput"),
   clientSocialsInput: document.getElementById("clientSocialsInput"),
   clientProposalInput: document.getElementById("clientProposalInput"),
+  clientDepositInput: document.getElementById("clientDepositInput"),
+  clientFinalPaymentInput: document.getElementById("clientFinalPaymentInput"),
   clientPartnershipInput: document.getElementById("clientPartnershipInput"),
+  clientFinalDomainInput: document.getElementById("clientFinalDomainInput"),
+  clientDetailsPendingInput: document.getElementById("clientDetailsPendingInput"),
   clientBusinessEmailInput: document.getElementById("clientBusinessEmailInput"),
   clientBusinessPhoneInput: document.getElementById("clientBusinessPhoneInput"),
   clientPlanInput: document.getElementById("clientPlanInput"),
   clientServicesInput: document.getElementById("clientServicesInput"),
   clientContactInput: document.getElementById("clientContactInput"),
   clientNotesInput: document.getElementById("clientNotesInput"),
+  clientSubmitButton: document.getElementById("clientSubmitButton"),
   clientFormResponse: document.getElementById("clientFormResponse"),
   agentBuildModal: document.getElementById("agentBuildModal"),
   closeAgentBuildModalButton: document.getElementById("closeAgentBuildModalButton"),
@@ -225,6 +231,9 @@ let activeCommandPlan = {
 let commandMemory = [];
 let liveClients = null;
 let selectedClientId = "";
+let editingClientId = "";
+let draggingClientId = "";
+let lastClientDragAt = 0;
 let liveAgentIntelligence = [];
 let liveWebHelpers = [];
 let liveOnboarding = null;
@@ -1631,13 +1640,107 @@ function closeCommandPalette() {
   elements.commandPalette.classList.add("view-hidden");
 }
 
+function getClientById(clientId) {
+  const clients = liveClients?.clients?.length ? liveClients.clients : buildClientPayloadFallback().clients;
+  return clients.find((client) => client.id === clientId) || null;
+}
+
+function setFieldValue(field, value = "") {
+  if (field) {
+    field.value = value ?? "";
+  }
+}
+
+function setFieldChecked(field, value) {
+  if (field) {
+    field.checked = Boolean(value);
+  }
+}
+
+function ensureSelectOption(select, value) {
+  const optionValue = String(value || "").trim();
+  if (!select || !optionValue || [...select.options].some((option) => option.value === optionValue || option.textContent === optionValue)) {
+    return;
+  }
+
+  const option = document.createElement("option");
+  option.value = optionValue;
+  option.textContent = optionValue;
+  select.appendChild(option);
+}
+
+function setMultiSelectValues(select, values = []) {
+  if (!select) {
+    return;
+  }
+
+  values.forEach((value) => ensureSelectOption(select, value));
+  const selectedValues = new Set(values);
+  [...select.options].forEach((option) => {
+    option.selected = selectedValues.has(option.value);
+  });
+}
+
+function resetClientForm() {
+  elements.clientOnboardForm?.reset();
+  editingClientId = "";
+  setFieldValue(elements.clientEditIdInput, "");
+  setFieldChecked(elements.clientFinalDomainInput, true);
+  setFieldChecked(elements.clientDetailsPendingInput, false);
+  if (elements.clientStageInput) {
+    elements.clientStageInput.value = "website-build";
+  }
+  if (elements.clientSubmitButton) {
+    elements.clientSubmitButton.textContent = "Create Client";
+  }
+}
+
+function populateClientForm(client) {
+  if (!client) {
+    return;
+  }
+
+  editingClientId = client.id;
+  setFieldValue(elements.clientEditIdInput, client.id);
+  setFieldValue(elements.clientNameInput, client.clientName);
+  setFieldValue(elements.clientStageInput, getClientStage(client));
+  setFieldValue(elements.clientWebsiteInput, client.websiteUrl);
+  setFieldValue(elements.clientRepoInput, client.repo);
+  setFieldValue(elements.clientRailwayInput, client.railwayUrl);
+  setFieldValue(elements.clientVercelInput, client.vercelUrl);
+  setFieldValue(elements.clientMobileAppInput, client.mobileAppUrl);
+  setFieldValue(elements.clientGoogleBusinessInput, client.googleBusinessUrl);
+  setFieldValue(elements.clientSocialsInput, (client.socialUrls || []).join("\n"));
+  setFieldChecked(elements.clientProposalInput, client.proposalSigned);
+  setFieldChecked(elements.clientDepositInput, client.depositPaid);
+  setFieldChecked(elements.clientFinalPaymentInput, client.finalPaymentPaid);
+  setFieldChecked(elements.clientPartnershipInput, client.partnershipSigned);
+  setFieldChecked(elements.clientFinalDomainInput, client.finalDomainPurchased !== false);
+  setFieldChecked(elements.clientDetailsPendingInput, client.clientDetailsPending);
+  setFieldValue(elements.clientBusinessEmailInput, client.businessEmail);
+  setFieldValue(elements.clientBusinessPhoneInput, client.businessPhone);
+  ensureSelectOption(elements.clientPlanInput, client.plan);
+  setFieldValue(elements.clientPlanInput, client.plan || "Launch + Care");
+  setMultiSelectValues(elements.clientServicesInput, client.services || []);
+  setFieldValue(elements.clientContactInput, client.contact);
+  setFieldValue(elements.clientNotesInput, client.notes);
+  if (elements.clientSubmitButton) {
+    elements.clientSubmitButton.textContent = "Save Client";
+  }
+}
+
 function openClientModal(options = {}) {
   if (!elements.clientOnboardModal) {
     return;
   }
 
+  resetClientForm();
+  const client = options.client || (options.clientId ? getClientById(options.clientId) : null);
   if (elements.clientModalTitle) {
-    elements.clientModalTitle.textContent = options.title || "New Client";
+    elements.clientModalTitle.textContent = options.title || (client ? "Edit Client" : "New Client");
+  }
+  if (client) {
+    populateClientForm(client);
   }
   if (elements.clientStageInput && options.stage) {
     elements.clientStageInput.value = options.stage;
@@ -1656,6 +1759,7 @@ function closeClientModal() {
   }
 
   elements.clientOnboardModal.classList.add("view-hidden");
+  resetClientForm();
   if (elements.clientModalTitle) {
     elements.clientModalTitle.textContent = "New Client";
   }
@@ -3887,26 +3991,36 @@ function mergeClientRecordsForUi(existing, incoming) {
     return incoming;
   }
 
+  const isRuntimeOverride = incoming.source === "runtime";
+  const pick = (field) => (isRuntimeOverride ? incoming[field] : incoming[field] || existing[field]);
+  const pickBoolean = (field) => (isRuntimeOverride ? Boolean(incoming[field]) : Boolean(existing[field] || incoming[field]));
+
   return {
     ...existing,
     ...incoming,
     id: incoming.id || existing.id,
-    websiteUrl: incoming.websiteUrl || existing.websiteUrl,
-    repo: incoming.repo || existing.repo,
-    githubUrl: incoming.githubUrl || existing.githubUrl,
-    railwayUrl: incoming.railwayUrl || existing.railwayUrl,
-    vercelUrl: incoming.vercelUrl || existing.vercelUrl,
-    mobileAppUrl: incoming.mobileAppUrl || existing.mobileAppUrl,
-    googleBusinessUrl: incoming.googleBusinessUrl || existing.googleBusinessUrl,
-    analyticsUrl: incoming.analyticsUrl || existing.analyticsUrl,
-    socialUrls: [...new Set([...(existing.socialUrls || []), ...(incoming.socialUrls || [])])],
-    services: [...new Set([...(existing.services || []), ...(incoming.services || [])])],
+    clientName: pick("clientName"),
+    websiteUrl: pick("websiteUrl"),
+    repo: pick("repo"),
+    githubUrl: pick("githubUrl"),
+    railwayUrl: pick("railwayUrl"),
+    vercelUrl: pick("vercelUrl"),
+    mobileAppUrl: pick("mobileAppUrl"),
+    googleBusinessUrl: pick("googleBusinessUrl"),
+    analyticsUrl: pick("analyticsUrl"),
+    socialUrls: isRuntimeOverride ? incoming.socialUrls || [] : [...new Set([...(existing.socialUrls || []), ...(incoming.socialUrls || [])])],
+    services: isRuntimeOverride ? incoming.services || [] : [...new Set([...(existing.services || []), ...(incoming.services || [])])],
     finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
-    clientDetailsPending: Boolean(existing.clientDetailsPending || incoming.clientDetailsPending),
-    proposalSigned: Boolean(existing.proposalSigned || incoming.proposalSigned),
-    partnershipSigned: Boolean(existing.partnershipSigned || incoming.partnershipSigned),
-    depositPaid: Boolean(existing.depositPaid || incoming.depositPaid),
-    finalPaymentPaid: Boolean(existing.finalPaymentPaid || incoming.finalPaymentPaid),
+    clientDetailsPending: pickBoolean("clientDetailsPending"),
+    proposalSigned: pickBoolean("proposalSigned"),
+    partnershipSigned: pickBoolean("partnershipSigned"),
+    depositPaid: pickBoolean("depositPaid"),
+    finalPaymentPaid: pickBoolean("finalPaymentPaid"),
+    businessEmail: pick("businessEmail"),
+    businessPhone: pick("businessPhone"),
+    plan: pick("plan"),
+    contact: pick("contact"),
+    notes: pick("notes"),
     actions: incoming.actions?.length ? incoming.actions : existing.actions
   };
 }
@@ -4182,7 +4296,7 @@ function renderClientPipeline(clients) {
         ? stageClients.map((client) => {
           const issueCount = getClientIssueTags(client).length;
           const displayUrl = getClientDisplayUrl(client);
-          return `<article class="pipeline-card pipeline-card-compact" data-client-detail="${escapeHtml(client.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(client.clientName)} details">
+          return `<article class="pipeline-card pipeline-card-compact" draggable="true" data-client-drag="${escapeHtml(client.id)}" data-client-detail="${escapeHtml(client.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(client.clientName)} details">
             <div class="pipeline-card-head">
               <h3>${escapeHtml(client.clientName)}</h3>
               <span>${issueCount}</span>
@@ -4192,7 +4306,7 @@ function renderClientPipeline(clients) {
         }).join("")
         : `<div class="pipeline-empty">No clients</div>`;
 
-      return `<section class="pipeline-column">
+      return `<section class="pipeline-column" data-client-stage-drop="${escapeHtml(stage.id)}">
         <div class="pipeline-column-head">
           <h3>${escapeHtml(stage.label)}</h3>
           <span>${stageClients.length}</span>
@@ -4323,6 +4437,9 @@ function openClientDetail(clientId) {
     ${renderClientIssueBadges(client)}
     <div class="client-detail-section">
       <h3>Quick Actions</h3>
+      <div class="client-detail-actions">
+        <button class="client-edit-button" type="button" data-client-edit="${escapeHtml(client.id)}">Edit Client</button>
+      </div>
       ${renderClientQuickActions(client)}
     </div>
     <div class="client-detail-section">
@@ -4430,6 +4547,76 @@ function getSelectedClientServices() {
   return [...elements.clientServicesInput.selectedOptions].map((option) => option.value);
 }
 
+function buildClientSavePayloadFromRecord(client, overrides = {}) {
+  return {
+    id: client.id,
+    clientName: client.clientName,
+    stage: getClientStage(client),
+    websiteUrl: client.websiteUrl || "",
+    repo: client.repo || "",
+    railwayUrl: client.railwayUrl || "",
+    vercelUrl: client.vercelUrl || "",
+    mobileAppUrl: client.mobileAppUrl || "",
+    googleBusinessUrl: client.googleBusinessUrl || "",
+    socialUrls: client.socialUrls || [],
+    proposalSigned: Boolean(client.proposalSigned),
+    depositPaid: Boolean(client.depositPaid),
+    finalPaymentPaid: Boolean(client.finalPaymentPaid),
+    partnershipSigned: Boolean(client.partnershipSigned),
+    finalDomainPurchased: client.finalDomainPurchased,
+    clientDetailsPending: Boolean(client.clientDetailsPending),
+    businessEmail: client.businessEmail || "",
+    businessPhone: client.businessPhone || "",
+    plan: client.plan || "Launch + Care",
+    services: client.services || [],
+    contact: client.contact || "",
+    notes: client.notes || "",
+    ...overrides
+  };
+}
+
+async function saveClientRecord(payload) {
+  const response = await fetch(apiUrl("/mission/clients"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || `Client save failed with status ${response.status}`);
+  }
+
+  liveClients = mergeClientPayloadWithSeed(result);
+  renderClients(liveClients);
+  renderBuildQueue(getActiveSite() || getEmptySiteState());
+  if (activeView === "web-helpers") {
+    loadWebHelpers("");
+  }
+  return result;
+}
+
+async function updateClientStage(clientId, stageId) {
+  const client = getClientById(clientId);
+  if (!client || getClientStage(client) === stageId) {
+    return;
+  }
+
+  const targetStage = clientPipelineStages.find((stage) => stage.id === stageId);
+  if (!targetStage) {
+    return;
+  }
+
+  const payload = buildClientSavePayloadFromRecord(client, { stage: stageId });
+  try {
+    await saveClientRecord(payload);
+  } catch (error) {
+    renderOpsActions(elements.clientActions, [`${client.clientName}: ${String(error.message || error)}`], "Client actions will appear here.");
+  }
+}
+
 async function submitClientOnboarding(event) {
   event.preventDefault();
   if (!elements.clientOnboardForm) {
@@ -4437,6 +4624,7 @@ async function submitClientOnboarding(event) {
   }
 
   const payload = {
+    id: editingClientId || elements.clientEditIdInput?.value || undefined,
     clientName: elements.clientNameInput?.value || "",
     stage: elements.clientStageInput?.value || "website-build",
     websiteUrl: elements.clientWebsiteInput?.value || "",
@@ -4450,7 +4638,11 @@ async function submitClientOnboarding(event) {
       .map((url) => url.trim())
       .filter(Boolean),
     proposalSigned: Boolean(elements.clientProposalInput?.checked),
+    depositPaid: Boolean(elements.clientDepositInput?.checked),
+    finalPaymentPaid: Boolean(elements.clientFinalPaymentInput?.checked),
     partnershipSigned: Boolean(elements.clientPartnershipInput?.checked),
+    finalDomainPurchased: Boolean(elements.clientFinalDomainInput?.checked),
+    clientDetailsPending: Boolean(elements.clientDetailsPendingInput?.checked),
     businessEmail: elements.clientBusinessEmailInput?.value || "",
     businessPhone: elements.clientBusinessPhoneInput?.value || "",
     plan: elements.clientPlanInput?.value || "",
@@ -4464,29 +4656,12 @@ async function submitClientOnboarding(event) {
     return;
   }
 
-  elements.clientFormResponse.textContent = "Creating client record...";
+  const isEditing = Boolean(payload.id);
+  elements.clientFormResponse.textContent = isEditing ? "Saving client record..." : "Creating client record...";
 
   try {
-    const response = await fetch(apiUrl("/mission/clients"), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const result = await response.json();
-    if (!response.ok) {
-      throw new Error(result.error || `Client create failed with status ${response.status}`);
-    }
-
-    liveClients = mergeClientPayloadWithSeed(result);
-    renderClients(liveClients);
-    elements.clientOnboardForm.reset();
-    if (elements.clientStageInput) {
-      elements.clientStageInput.value = "website-build";
-    }
-    elements.clientFormResponse.textContent = `Created ${result.created.clientName}.`;
+    const result = await saveClientRecord(payload);
+    elements.clientFormResponse.textContent = `${isEditing ? "Saved" : "Created"} ${result.created.clientName}.`;
     closeClientModal();
   } catch (error) {
     elements.clientFormResponse.textContent = String(error.message || error);
@@ -6035,6 +6210,17 @@ async function init() {
   elements.onboardingBucketFilter?.addEventListener("change", () => renderOnboarding(liveOnboarding));
   elements.onboardingStatusFilter?.addEventListener("change", () => renderOnboarding(liveOnboarding));
   elements.clientsPanel?.addEventListener("click", (event) => {
+    if (Date.now() - lastClientDragAt < 350) {
+      return;
+    }
+
+    const editTarget = event.target.closest("[data-client-edit]");
+    if (editTarget) {
+      closeClientDetail();
+      openClientModal({ clientId: editTarget.dataset.clientEdit, title: "Edit Client" });
+      return;
+    }
+
     const detailTarget = event.target.closest("[data-client-detail]");
     if (!detailTarget) {
       return;
@@ -6045,6 +6231,64 @@ async function init() {
     }
 
     openClientDetail(detailTarget.dataset.clientDetail);
+  });
+  elements.clientsPanel?.addEventListener("dragstart", (event) => {
+    const dragTarget = event.target.closest("[data-client-drag]");
+    if (!dragTarget) {
+      return;
+    }
+
+    draggingClientId = dragTarget.dataset.clientDrag;
+    dragTarget.classList.add("is-dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggingClientId);
+  });
+  elements.clientsPanel?.addEventListener("dragend", () => {
+    lastClientDragAt = Date.now();
+    draggingClientId = "";
+    elements.clientPipeline?.querySelectorAll(".is-dragging, .is-drag-over").forEach((element) => {
+      element.classList.remove("is-dragging", "is-drag-over");
+    });
+  });
+  elements.clientPipeline?.addEventListener("dragover", (event) => {
+    const dropTarget = event.target.closest("[data-client-stage-drop]");
+    if (!dropTarget || !draggingClientId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    elements.clientPipeline.querySelectorAll(".is-drag-over").forEach((element) => element.classList.remove("is-drag-over"));
+    dropTarget.classList.add("is-drag-over");
+  });
+  elements.clientPipeline?.addEventListener("dragleave", (event) => {
+    const dropTarget = event.target.closest("[data-client-stage-drop]");
+    if (dropTarget && !dropTarget.contains(event.relatedTarget)) {
+      dropTarget.classList.remove("is-drag-over");
+    }
+  });
+  elements.clientPipeline?.addEventListener("drop", (event) => {
+    const dropTarget = event.target.closest("[data-client-stage-drop]");
+    if (!dropTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    const clientId = event.dataTransfer.getData("text/plain") || draggingClientId;
+    const stageId = dropTarget.dataset.clientStageDrop;
+    dropTarget.classList.remove("is-drag-over");
+    draggingClientId = "";
+    lastClientDragAt = Date.now();
+    updateClientStage(clientId, stageId);
+  });
+  elements.clientDetailDrawer?.addEventListener("click", (event) => {
+    const editTarget = event.target.closest("[data-client-edit]");
+    if (!editTarget) {
+      return;
+    }
+
+    closeClientDetail();
+    openClientModal({ clientId: editTarget.dataset.clientEdit, title: "Edit Client" });
   });
   elements.clientsPanel?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") {

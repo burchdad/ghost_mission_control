@@ -1539,6 +1539,13 @@ min-height: 360px;
   background: rgba(9, 18, 11, 0.78);
   padding: 0.55rem;
   min-width: 0;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.pipeline-column.is-drag-over {
+  border-color: rgba(124, 255, 155, 0.68);
+  background: rgba(14, 45, 24, 0.86);
+  box-shadow: inset 0 0 0 1px rgba(124, 255, 155, 0.18);
 }
 
 .pipeline-column-head {
@@ -1659,7 +1666,17 @@ margin: 0;
 }
 
 .pipeline-card {
-  cursor: pointer;
+  cursor: grab;
+  user-select: none;
+}
+
+.pipeline-card:active {
+  cursor: grabbing;
+}
+
+.pipeline-card.is-dragging {
+  opacity: 0.58;
+  transform: scale(0.98);
 }
 
 .pipeline-card-compact {
@@ -3016,6 +3033,32 @@ display: none !important;
   border-radius: 8px;
   background: rgba(7, 10, 7, 0.58);
   padding: 0.65rem;
+}
+
+.client-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+
+.client-edit-button {
+  border: 1px solid rgba(124, 255, 155, 0.38);
+  border-radius: 7px;
+  background: rgba(20, 70, 34, 0.56);
+  color: #d8ffdd;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 0.42rem 0.65rem;
+}
+
+.client-edit-button:hover,
+.client-edit-button:focus-visible {
+  border-color: rgba(124, 255, 155, 0.75);
+  background: rgba(35, 105, 52, 0.68);
+  outline: none;
 }
 
 .client-detail-section h3 {
