@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-14T01:19:49.345Z",
+  "savedAt": "2026-06-14T02:41:08.491Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -32,6 +32,7 @@
       "services": [
         "search-intelligence"
       ],
+      "plannedServices": [],
       "createdAt": "2026-06-14T01:17:36.485Z",
       "updatedAt": "2026-06-14T01:19:49.068Z",
       "source": "runtime"
@@ -67,8 +68,48 @@
         "web-helper-care",
         "search-intelligence"
       ],
+      "plannedServices": [],
       "createdAt": "2026-06-14T01:17:41.886Z",
       "updatedAt": "2026-06-14T01:17:41.886Z",
+      "source": "runtime"
+    },
+    {
+      "id": "tisha-shipley",
+      "clientName": "Tisha Shipley",
+      "websiteUrl": "https://ridersmagicmark.com",
+      "repo": "",
+      "githubUrl": "",
+      "railwayUrl": "",
+      "vercelUrl": "",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": false,
+      "clientDetailsPending": false,
+      "proposalSigned": true,
+      "partnershipSigned": false,
+      "depositPaid": true,
+      "finalPaymentPaid": false,
+      "businessEmail": "Latisha.Shipley@uagc.edu",
+      "businessPhone": "405-323-8759",
+      "plan": "Launch + Care",
+      "contact": "Tisha Shipley",
+      "notes": "Children's Book Author;\n\nWants a landing Page that introduces the book and then moves out to, meet the author, meet the illustrator, meet the characters\n\nRider's Magic Mark Companion\nGratitude and Unique Curriculum\nInvite Dr. Shipley to school\nExtras for teachers",
+      "stage": "deposit-paid",
+      "status": "deposit-paid",
+      "services": [
+        "website-build",
+        "web-helper-care"
+      ],
+      "plannedServices": [
+        "search-intelligence",
+        "local-service",
+        "content-social"
+      ],
+      "createdAt": "2026-06-14T02:41:08.312Z",
+      "updatedAt": "2026-06-14T02:41:08.312Z",
       "source": "runtime"
     }
   ]
