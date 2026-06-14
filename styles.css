@@ -3110,7 +3110,7 @@ display: none !important;
 
 .client-modal-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
   gap: 0.5rem;
 }
 
@@ -3144,6 +3144,14 @@ display: none !important;
   border-radius: 8px;
   background: rgba(7, 10, 7, 0.58);
   padding: 0.65rem;
+}
+
+.client-detail-section-wide {
+  grid-column: 1 / -1;
+}
+
+.client-detail-section-compact {
+  padding: 0.55rem 0.65rem;
 }
 
 .client-detail-actions {
@@ -3189,6 +3197,60 @@ display: none !important;
   color: var(--muted);
   font-size: 0.82rem;
   overflow-wrap: anywhere;
+}
+
+.client-next-actions {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.client-next-actions p {
+  border-left: 2px solid rgba(124, 255, 155, 0.58);
+  border-radius: 6px;
+  background: rgba(124, 255, 155, 0.055);
+  padding: 0.42rem 0.5rem;
+}
+
+.client-contact-grid,
+.client-history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.45rem;
+}
+
+.client-contact-grid div,
+.client-history-grid div {
+  min-width: 0;
+  border: 1px solid rgba(177, 194, 163, 0.13);
+  border-radius: 7px;
+  background: rgba(177, 194, 163, 0.045);
+  padding: 0.5rem;
+}
+
+.client-contact-grid span,
+.client-history-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.client-contact-grid strong,
+.client-history-grid strong {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.client-contact-note {
+  grid-column: 1 / -1;
+}
+
+.client-contact-note p {
+  margin-top: 0.24rem;
 }
 
 .handoff-list {

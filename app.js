@@ -4237,16 +4237,17 @@ function renderClientIssueBadges(client) {
   </div>`;
 }
 
-function renderClientQuickActions(client) {
+function renderClientQuickActions(client, options = {}) {
   const actions = getClientQuickActions(client);
   const links = actions
     .slice(0, 6)
     .map((action) => `<a href="${escapeHtml(action.url)}" target="_blank" rel="noreferrer">${escapeHtml(action.label)}</a>`)
     .join("");
+  const detailsButton = options.includeDetails === false ? "" : `<button type="button" data-client-detail="${escapeHtml(client.id)}">Details</button>`;
 
   return `<div class="client-quick-actions">
     ${links || `<span>No links yet</span>`}
-    <button type="button" data-client-detail="${escapeHtml(client.id)}">Details</button>
+    ${detailsButton}
   </div>`;
 }
 
@@ -4263,11 +4264,62 @@ function getClientDisplayUrl(client) {
   }
 }
 
+function formatClientDate(value) {
+  if (!value) {
+    return "Not recorded";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value);
+  }
+
+  return parsed.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function getClientServiceSummary(client) {
+  const active = [...new Set(client.services || [])];
+  const activeSet = new Set(active);
+  const planned = [...new Set(client.plannedServices || [])].filter((service) => !activeSet.has(service));
+  return {
+    active,
+    planned,
+    total: active.length + planned.length
+  };
+}
+
+function getClientReadinessSummary(client) {
+  const healthChecks = getClientHealthChecks(client);
+  const handoffItems = getClientHandoffItems(client);
+  const readyHealth = healthChecks.filter((item) => item.status === "ready").length;
+  const readyHandoff = handoffItems.filter((item) => item.status === "ready").length;
+  const blockers = [...healthChecks, ...handoffItems].filter((item) => ["missing", "blocked", "needs-action", "needs-input"].includes(item.status));
+  return {
+    readyHealth,
+    totalHealth: healthChecks.length,
+    readyHandoff,
+    totalHandoff: handoffItems.length,
+    blockers
+  };
+}
+
 function renderClientModalStats(client) {
   const issueCount = getClientIssueTags(client).length;
+  const serviceSummary = getClientServiceSummary(client);
+  const readiness = getClientReadinessSummary(client);
+  const readyChecks = readiness.readyHealth + readiness.readyHandoff;
+  const totalChecks = readiness.totalHealth + readiness.totalHandoff;
   return `<div class="client-modal-stats">
     <div><span>Stage</span><strong>${escapeHtml(getClientStageLabel(getClientStage(client)))}</strong></div>
     <div><span>Plan</span><strong>${escapeHtml(client.plan || "Launch + Care")}</strong></div>
+    <div><span>Services</span><strong>${escapeHtml(`${serviceSummary.active.length} active / ${serviceSummary.planned.length} planned`)}</strong></div>
+    <div><span>Readiness</span><strong>${escapeHtml(`${readyChecks}/${totalChecks} ops checks`)}</strong></div>
     <div><span>Connections</span><strong>${escapeHtml(issueCount ? `${issueCount} gaps` : "Ready")}</strong></div>
     <div><span>Source</span><strong>${escapeHtml(client.source || "deployment-map")}</strong></div>
   </div>`;
@@ -4351,6 +4403,50 @@ function renderClientBuildTasks(client) {
     ${activeTasks.length
       ? activeTasks.map((entry) => `<p><strong>${escapeHtml(entry.column)}:</strong> ${escapeHtml(entry.item)}</p>`).join("")
       : "<p>No build tasks generated for this client.</p>"}
+  </div>`;
+}
+
+function getClientNextActions(client) {
+  const actions = [
+    ...(Array.isArray(client.actions) ? client.actions : []),
+    ...getClientFallbackActions([client])
+  ];
+  return [...new Set(actions.filter(Boolean))].slice(0, 6);
+}
+
+function renderClientNextActions(client) {
+  const actions = getClientNextActions(client);
+  if (!actions.length) {
+    return `<div class="pipeline-empty">No immediate actions generated.</div>`;
+  }
+
+  return `<div class="client-next-actions">
+    ${actions.map((action) => `<p>${escapeHtml(action)}</p>`).join("")}
+  </div>`;
+}
+
+function renderClientContactNotes(client) {
+  const contactRows = [
+    { label: "Primary", value: client.contact || "Not set" },
+    { label: "Email", value: client.businessEmail || "Not set" },
+    { label: "Phone", value: client.businessPhone || "Not set" }
+  ];
+
+  return `<div class="client-contact-grid">
+    ${contactRows.map((row) => `<div><span>${escapeHtml(row.label)}</span><strong>${escapeHtml(row.value)}</strong></div>`).join("")}
+    <div class="client-contact-note"><span>Notes</span><p>${escapeHtml(client.notes || "No notes yet.")}</p></div>
+  </div>`;
+}
+
+function renderClientUpdateHistory(client) {
+  const rows = [
+    { label: "Created", value: formatClientDate(client.createdAt) },
+    { label: "Updated", value: formatClientDate(client.updatedAt) },
+    { label: "Record Source", value: client.source || "runtime" }
+  ];
+
+  return `<div class="client-history-grid">
+    ${rows.map((row) => `<div><span>${escapeHtml(row.label)}</span><strong>${escapeHtml(row.value)}</strong></div>`).join("")}
   </div>`;
 }
 
@@ -4536,12 +4632,9 @@ function openClientDetail(clientId) {
     </section>
     ${renderClientModalStats(client)}
     ${renderClientIssueBadges(client)}
-    <div class="client-detail-section">
+    <div class="client-detail-section client-detail-section-wide client-detail-section-compact">
       <h3>Quick Actions</h3>
-      <div class="client-detail-actions">
-        <button class="client-edit-button" type="button" data-client-edit="${escapeHtml(client.id)}">Edit Client</button>
-      </div>
-      ${renderClientQuickActions(client)}
+      ${renderClientQuickActions(client, { includeDetails: false })}
     </div>
     <div class="client-detail-section">
       <h3>Connections</h3>
@@ -4564,6 +4657,10 @@ function openClientDetail(clientId) {
       <h3>Operator Handoff</h3>
       ${renderHandoffList(getClientHandoffItems(client))}
     </div>
+    <div class="client-detail-section client-detail-section-wide">
+      <h3>Next Actions</h3>
+      ${renderClientNextActions(client)}
+    </div>
     <div class="client-detail-section">
       <h3>Health Checks</h3>
       ${renderHealthCheckList(getClientHealthChecks(client))}
@@ -4580,15 +4677,11 @@ function openClientDetail(clientId) {
     </div>
     <div class="client-detail-section">
       <h3>Contact</h3>
-      <p>${escapeHtml(client.contact || "Not set")}</p>
-    </div>
-    <div class="client-detail-section">
-      <h3>Notes</h3>
-      <p>${escapeHtml(client.notes || "No notes yet.")}</p>
+      ${renderClientContactNotes(client)}
     </div>
     <div class="client-detail-section">
       <h3>Update History</h3>
-      <p>Created ${escapeHtml(client.createdAt || "unknown")} · Updated ${escapeHtml(client.updatedAt || "unknown")}</p>
+      ${renderClientUpdateHistory(client)}
     </div>
   `;
   elements.clientDetailDrawer.classList.remove("view-hidden");
