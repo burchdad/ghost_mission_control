@@ -98,6 +98,7 @@ const elements = {
   clientActions: document.getElementById("clientActions"),
   clientDetailDrawer: document.getElementById("clientDetailDrawer"),
   closeClientDetailButton: document.getElementById("closeClientDetailButton"),
+  editClientDetailButton: document.getElementById("editClientDetailButton"),
   clientDetailTitle: document.getElementById("clientDetailTitle"),
   clientDetailSubtitle: document.getElementById("clientDetailSubtitle"),
   clientDetailContent: document.getElementById("clientDetailContent"),
@@ -6203,6 +6204,15 @@ async function init() {
     elements.agentBuildPromptInput.value = buildAgentDraftPrompt(agent, elements.agentBuildTargetInput.value);
   });
   elements.closeClientDetailButton?.addEventListener("click", closeClientDetail);
+  elements.editClientDetailButton?.addEventListener("click", () => {
+    if (!selectedClientId) {
+      return;
+    }
+
+    const clientId = selectedClientId;
+    closeClientDetail();
+    openClientModal({ clientId, title: "Edit Client" });
+  });
   elements.clientSearchInput?.addEventListener("input", () => renderClients(liveClients));
   elements.clientStageFilter?.addEventListener("change", () => renderClients(liveClients));
   elements.clientIssueFilter?.addEventListener("change", () => renderClients(liveClients));

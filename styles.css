@@ -3042,6 +3042,13 @@ display: none !important;
   margin-bottom: 0.55rem;
 }
 
+.client-detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+}
+
 .client-edit-button {
   border: 1px solid rgba(124, 255, 155, 0.38);
   border-radius: 7px;
