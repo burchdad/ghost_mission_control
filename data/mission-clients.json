@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-14T02:47:39.394Z",
+  "savedAt": "2026-06-14T02:52:12.252Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -198,6 +198,47 @@
       ],
       "createdAt": "2026-06-14T02:47:39.203Z",
       "updatedAt": "2026-06-14T02:47:39.203Z",
+      "source": "runtime"
+    },
+    {
+      "id": "bee-happy-building-systems-llc",
+      "clientName": "Bee Happy Building Systems, LLC",
+      "websiteUrl": "https://www.beehappybuildingsystemsllc.com",
+      "repo": "",
+      "githubUrl": "",
+      "railwayUrl": "",
+      "vercelUrl": "",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": false,
+      "clientDetailsPending": false,
+      "proposalSigned": true,
+      "partnershipSigned": false,
+      "depositPaid": false,
+      "finalPaymentPaid": false,
+      "businessEmail": "beehappybuildingsystemsllc@gmail.com",
+      "businessPhone": "903-331-8091",
+      "plan": "Launch + Care",
+      "contact": "John Lyle",
+      "notes": "",
+      "stage": "lead",
+      "status": "lead",
+      "services": [
+        "website-build",
+        "web-helper-care"
+      ],
+      "plannedServices": [
+        "search-intelligence",
+        "local-service",
+        "lead-funnel",
+        "content-social",
+        "paid-ads"
+      ],
+      "createdAt": "2026-06-14T02:52:12.065Z",
+      "updatedAt": "2026-06-14T02:52:12.065Z",
       "source": "runtime"
     }
   ]
