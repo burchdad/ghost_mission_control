@@ -1,6 +1,42 @@
 {
   "version": 1,
-  "savedAt": null,
+  "savedAt": "2026-06-14T01:17:36.694Z",
   "storage": "ghost-mission-control-repo",
-  "clients": []
+  "clients": [
+    {
+      "id": "keisha-law",
+      "clientName": "Keisha Law",
+      "websiteUrl": "https://keisha-law.vercel.app",
+      "repo": "burchdad/keisha-law",
+      "githubUrl": "https://github.com/burchdad/keisha-law",
+      "railwayUrl": "",
+      "vercelUrl": "https://keisha-law.vercel.app/",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": false,
+      "clientDetailsPending": false,
+      "proposalSigned": false,
+      "partnershipSigned": false,
+      "depositPaid": false,
+      "finalPaymentPaid": false,
+      "businessEmail": "",
+      "businessPhone": "",
+      "plan": "Launch + Care",
+      "contact": "",
+      "notes": "Website is launched and ready for SEO/monthly maintenance contract review.",
+      "stage": "client-review",
+      "status": "client-review",
+      "services": [
+        "website-build",
+        "web-helper-care",
+        "search-intelligence"
+      ],
+      "createdAt": "2026-06-14T01:17:36.485Z",
+      "updatedAt": "2026-06-14T01:17:36.485Z",
+      "source": "runtime"
+    }
+  ]
 }
