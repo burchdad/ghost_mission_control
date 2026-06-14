@@ -112,6 +112,8 @@ const elements = {
   clientEditIdInput: document.getElementById("clientEditIdInput"),
   clientNameInput: document.getElementById("clientNameInput"),
   clientStageInput: document.getElementById("clientStageInput"),
+  clientLeadSourceInput: document.getElementById("clientLeadSourceInput"),
+  clientLeadSourceDetailInput: document.getElementById("clientLeadSourceDetailInput"),
   clientWebsiteInput: document.getElementById("clientWebsiteInput"),
   clientRepoInput: document.getElementById("clientRepoInput"),
   clientRailwayInput: document.getElementById("clientRailwayInput"),
@@ -261,6 +263,73 @@ const clientPipelineStages = [
 ];
 
 const webClientPipelineStages = clientPipelineStages.filter((stage) => stage.id !== "lead");
+
+const leadSourceDefinitions = [
+  {
+    id: "social-media",
+    label: "Social Media",
+    detail: "Facebook, Instagram, TikTok, LinkedIn, or messenger conversations.",
+    status: "active"
+  },
+  {
+    id: "referral",
+    label: "Referral",
+    detail: "Client, partner, family, or local word-of-mouth referral.",
+    status: "active"
+  },
+  {
+    id: "lead-command-center",
+    label: "Ghost Lead Command",
+    detail: "burchdad/ghost-lead-command routed lead.",
+    status: "integration-ready"
+  },
+  {
+    id: "digital-business-card",
+    label: "Digital Business Card",
+    detail: "QR, card, profile link, or direct booking path.",
+    status: "integration-ready"
+  },
+  {
+    id: "email",
+    label: "Email",
+    detail: "Direct email, reply thread, or inbox lead.",
+    status: "active"
+  },
+  {
+    id: "ai-outreach",
+    label: "AI Outreach",
+    detail: "Future outbound AI outreach and follow-up campaigns.",
+    status: "planned"
+  },
+  {
+    id: "other",
+    label: "Other / Manual",
+    detail: "Manual entry or source not classified yet.",
+    status: "manual"
+  }
+];
+
+function getLeadSourceDefinition(sourceId) {
+  return leadSourceDefinitions.find((source) => source.id === sourceId) || null;
+}
+
+function getLeadSourceLabel(client) {
+  return getLeadSourceDefinition(client?.leadSource)?.label || "Source pending";
+}
+
+function getLeadSourceTone(sourceId) {
+  const status = getLeadSourceDefinition(sourceId)?.status || "missing";
+  if (status === "active") {
+    return "tone-green";
+  }
+  if (status === "planned") {
+    return "tone-blue";
+  }
+  if (status === "integration-ready") {
+    return "tone-yellow";
+  }
+  return "tone-gray";
+}
 
 const clientServiceDefinitions = {
   "website-build": {
@@ -632,6 +701,8 @@ function getSeededClientProfilesForUi() {
   return seededClientProfiles.map((client) => ({
     finalDomainPurchased: true,
     clientDetailsPending: false,
+    leadSource: "",
+    leadSourceDetail: "",
     proposalSent: false,
     depositInvoiceSent: false,
     proposalSigned: false,
@@ -1755,6 +1826,7 @@ const clientModalModeDefaults = {
     subtitle: "Add the client profile, services, and operating links.",
     submitLabel: "Create Client",
     stage: "website-build",
+    leadSource: "",
     services: ["website-build", "web-helper-care"],
     plannedServices: []
   },
@@ -1763,6 +1835,7 @@ const clientModalModeDefaults = {
     subtitle: "Capture the inquiry, proposal email, deposit invoice, agreement status, and first build notes.",
     submitLabel: "Save Lead",
     stage: "lead",
+    leadSource: "",
     services: ["website-build"],
     plannedServices: []
   }
@@ -1782,6 +1855,8 @@ function resetClientForm(mode = "client") {
   if (elements.clientStageInput) {
     elements.clientStageInput.value = defaults.stage;
   }
+  setFieldValue(elements.clientLeadSourceInput, defaults.leadSource);
+  setFieldValue(elements.clientLeadSourceDetailInput, "");
   setClientServicePickerValues(defaults.services, defaults.plannedServices);
   if (elements.clientSubmitButton) {
     elements.clientSubmitButton.textContent = defaults.submitLabel;
@@ -1797,6 +1872,9 @@ function populateClientForm(client) {
   setFieldValue(elements.clientEditIdInput, client.id);
   setFieldValue(elements.clientNameInput, client.clientName);
   setFieldValue(elements.clientStageInput, getClientStage(client));
+  ensureSelectOption(elements.clientLeadSourceInput, client.leadSource);
+  setFieldValue(elements.clientLeadSourceInput, client.leadSource);
+  setFieldValue(elements.clientLeadSourceDetailInput, client.leadSourceDetail);
   setFieldValue(elements.clientWebsiteInput, client.websiteUrl);
   setFieldValue(elements.clientRepoInput, client.repo);
   setFieldValue(elements.clientRailwayInput, client.railwayUrl);
@@ -4121,6 +4199,8 @@ function mergeClientRecordsForUi(existing, incoming) {
         })(),
     finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
     clientDetailsPending: pickBoolean("clientDetailsPending"),
+    leadSource: pick("leadSource"),
+    leadSourceDetail: pick("leadSourceDetail"),
     proposalSent: pickBoolean("proposalSent"),
     depositInvoiceSent: pickBoolean("depositInvoiceSent"),
     proposalSigned: pickBoolean("proposalSigned"),
@@ -4206,6 +4286,9 @@ function getFilteredClients(clients) {
       client.vercelUrl,
       client.mobileAppUrl,
       client.googleBusinessUrl,
+      client.leadSource,
+      getLeadSourceLabel(client),
+      client.leadSourceDetail,
       client.plan,
       client.contact,
       client.notes,
@@ -4364,7 +4447,8 @@ function renderClientModalStats(client) {
     <div><span>Services</span><strong>${escapeHtml(`${serviceSummary.active.length} active / ${serviceSummary.planned.length} planned`)}</strong></div>
     <div><span>Readiness</span><strong>${escapeHtml(`${readyChecks}/${totalChecks} ops checks`)}</strong></div>
     <div><span>Connections</span><strong>${escapeHtml(issueCount ? `${issueCount} gaps` : "Ready")}</strong></div>
-    <div><span>Source</span><strong>${escapeHtml(client.source || "deployment-map")}</strong></div>
+    <div><span>Lead Source</span><strong>${escapeHtml(getLeadSourceLabel(client))}</strong></div>
+    <div><span>Record</span><strong>${escapeHtml(client.source || "deployment-map")}</strong></div>
   </div>`;
 }
 
@@ -4472,7 +4556,9 @@ function renderClientContactNotes(client) {
   const contactRows = [
     { label: "Primary", value: client.contact || "Not set" },
     { label: "Email", value: client.businessEmail || "Not set" },
-    { label: "Phone", value: client.businessPhone || "Not set" }
+    { label: "Phone", value: client.businessPhone || "Not set" },
+    { label: "Lead Source", value: getLeadSourceLabel(client) },
+    { label: "Source Detail", value: client.leadSourceDetail || "Not set" }
   ];
 
   return `<div class="client-contact-grid">
@@ -4792,6 +4878,8 @@ function buildClientSavePayloadFromRecord(client, overrides = {}) {
     vercelUrl: client.vercelUrl || "",
     mobileAppUrl: client.mobileAppUrl || "",
     googleBusinessUrl: client.googleBusinessUrl || "",
+    leadSource: client.leadSource || "",
+    leadSourceDetail: client.leadSourceDetail || "",
     socialUrls: client.socialUrls || [],
     proposalSent: Boolean(client.proposalSent),
     depositInvoiceSent: Boolean(client.depositInvoiceSent),
@@ -4905,6 +4993,8 @@ async function submitClientOnboarding(event) {
     vercelUrl: elements.clientVercelInput?.value || "",
     mobileAppUrl: elements.clientMobileAppInput?.value || "",
     googleBusinessUrl: elements.clientGoogleBusinessInput?.value || "",
+    leadSource: elements.clientLeadSourceInput?.value || "",
+    leadSourceDetail: elements.clientLeadSourceDetailInput?.value || "",
     socialUrls: String(elements.clientSocialsInput?.value || "")
       .split(/\r?\n/)
       .map((url) => url.trim())
@@ -5240,6 +5330,27 @@ function getLeadDeskNextAction(client) {
   return "Move into website build queue.";
 }
 
+function renderLeadSourceStrip(queue) {
+  const counts = new Map();
+  queue.forEach((client) => {
+    const sourceId = client.leadSource || "source-pending";
+    counts.set(sourceId, (counts.get(sourceId) || 0) + 1);
+  });
+
+  const rows = [
+    ...leadSourceDefinitions,
+    { id: "source-pending", label: "Source Pending", detail: "Lead source still needs to be tagged.", status: "missing" }
+  ];
+
+  return `<div class="lead-source-strip">
+    ${rows.map((source) => `<article class="lead-source-chip ${counts.get(source.id) ? "has-count" : ""}">
+      <span>${escapeHtml(source.label)}</span>
+      <strong>${escapeHtml(String(counts.get(source.id) || 0))}</strong>
+      <p>${escapeHtml(source.detail)}</p>
+    </article>`).join("")}
+  </div>`;
+}
+
 function renderLeadDeskPipeline(queue) {
   return `<div class="lead-desk-flow">
     ${leadDeskColumns.map((column) => {
@@ -5256,6 +5367,7 @@ function renderLeadDeskPipeline(queue) {
           <div class="onboarding-client-head">
             <div>
               <h3>${escapeHtml(client.clientName)}</h3>
+              <p>${escapeHtml(`${getLeadSourceLabel(client)}${client.leadSourceDetail ? ` - ${client.leadSourceDetail}` : ""}`)}</p>
               <p>${escapeHtml(client.businessEmail || client.businessPhone || client.contact || "Contact pending")}</p>
             </div>
             <span class="pill ${client.depositPaid ? "tone-green" : client.proposalSigned ? "tone-blue" : "tone-yellow"}">${escapeHtml(getClientStageLabel(client.stage))}</span>
@@ -5278,6 +5390,7 @@ function buildOnboardingTasks(client) {
   const depositPaid = client.depositPaid || getClientStage(client) === "deposit-paid";
 
   return [
+    makeOnboardingTask(client, "intake", "Lead source", client.leadSource ? "complete" : "missing", client.leadSource ? `${getLeadSourceLabel(client)}${client.leadSourceDetail ? ` - ${client.leadSourceDetail}` : ""}` : "Tag the lead as social media, referral, Ghost Lead Command, digital business card, email, AI outreach, or manual.", { required: true }),
     makeOnboardingTask(client, "intake", "Discovery call / message thread", client.notes ? "complete" : "missing", client.notes || "Capture what they asked for over phone or Facebook Messenger.", { required: true }),
     makeOnboardingTask(client, "intake", "Primary contact", contact ? "complete" : "missing", contact || "Name, role, and best contact method.", { required: true }),
     makeOnboardingTask(client, "intake", "Email or phone", hasContactMethod ? "complete" : "missing", businessEmail || businessPhone || "At least one contact path is needed before sending proposal.", { required: true }),
@@ -5326,7 +5439,7 @@ function taskMatchesOnboardingFilters(task, filters) {
 }
 
 function clientMatchesOnboardingFilters(client, filters, clientTasks) {
-  const haystack = `${client.clientName} ${client.stageLabel} ${client.plan} ${client.nextAction} ${(client.blockers || []).map((blocker) => blocker.label || blocker.title).join(" ")}`.toLowerCase();
+  const haystack = `${client.clientName} ${client.stageLabel} ${client.plan} ${client.nextAction} ${getLeadSourceLabel(client)} ${client.leadSourceDetail || ""} ${(client.blockers || []).map((blocker) => blocker.label || blocker.title).join(" ")}`.toLowerCase();
   return !filters.query || haystack.includes(filters.query) || clientTasks.some((task) => taskMatchesOnboardingFilters(task, filters));
 }
 
@@ -5362,8 +5475,9 @@ function renderOnboarding(payload) {
     : "Add the next lead to track proposal, invoice, agreement, and deposit follow-up.";
   elements.onboardingQueue.innerHTML = `<div class="onboarding-section-title">
       <h3>Lead Flow</h3>
-      <p>Move prospects from first contact to proposal sent, agreement returned, and deposit paid before the website build starts.</p>
+      <p>Move prospects from social media, referrals, Lead Command, digital cards, email, and AI outreach into proposal follow-up and paid build work.</p>
     </div>
+    ${renderLeadSourceStrip(rawQueue)}
     ${renderLeadDeskPipeline(queue)}
     <div class="onboarding-section-title">
       <h3>Lead Requirements Board</h3>

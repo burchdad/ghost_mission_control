@@ -71,6 +71,16 @@ const CLIENT_PIPELINE_STAGES = [
   { id: "paused-archived", label: "Paused / Archived" }
 ];
 
+const LEAD_SOURCE_DEFINITIONS = [
+  { id: "social-media", label: "Social Media" },
+  { id: "referral", label: "Referral" },
+  { id: "lead-command-center", label: "Ghost Lead Command" },
+  { id: "digital-business-card", label: "Digital Business Card" },
+  { id: "email", label: "Email" },
+  { id: "ai-outreach", label: "AI Outreach" },
+  { id: "other", label: "Other / Manual" }
+];
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -1187,6 +1197,8 @@ async function ensureClientStoreTable() {
         planned_services jsonb NOT NULL DEFAULT '[]'::jsonb,
         final_domain_purchased boolean,
         client_details_pending boolean NOT NULL DEFAULT false,
+        lead_source text NOT NULL DEFAULT '',
+        lead_source_detail text NOT NULL DEFAULT '',
         proposal_sent boolean NOT NULL DEFAULT false,
         deposit_invoice_sent boolean NOT NULL DEFAULT false,
         proposal_signed boolean NOT NULL DEFAULT false,
@@ -1203,6 +1215,8 @@ async function ensureClientStoreTable() {
         updated_at timestamptz NOT NULL DEFAULT now()
       );
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS planned_services jsonb NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS lead_source text NOT NULL DEFAULT '';
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS lead_source_detail text NOT NULL DEFAULT '';
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS proposal_sent boolean NOT NULL DEFAULT false;
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS deposit_invoice_sent boolean NOT NULL DEFAULT false;
       CREATE INDEX IF NOT EXISTS mission_clients_updated_at_idx ON mission_clients (updated_at DESC);
@@ -1274,6 +1288,8 @@ function dbRowToClient(row) {
     plannedServices: parsePostgresJsonList(row.planned_services),
     finalDomainPurchased: row.final_domain_purchased,
     clientDetailsPending: row.client_details_pending,
+    leadSource: row.lead_source,
+    leadSourceDetail: row.lead_source_detail,
     proposalSent: row.proposal_sent,
     depositInvoiceSent: row.deposit_invoice_sent,
     proposalSigned: row.proposal_signed,
@@ -1319,6 +1335,8 @@ function clientToPostgresValues(client) {
     JSON.stringify(normalized.plannedServices || []),
     normalized.finalDomainPurchased,
     Boolean(normalized.clientDetailsPending),
+    normalized.leadSource,
+    normalized.leadSourceDetail,
     Boolean(normalized.proposalSent),
     Boolean(normalized.depositInvoiceSent),
     Boolean(normalized.proposalSigned),
@@ -1368,6 +1386,8 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         planned_services,
         final_domain_purchased,
         client_details_pending,
+        lead_source,
+        lead_source_detail,
         proposal_sent,
         deposit_invoice_sent,
         proposal_signed,
@@ -1385,7 +1405,7 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30::timestamptz, $31::timestamptz
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32::timestamptz, $33::timestamptz
       )
       ON CONFLICT (id) DO UPDATE SET
         client_name = EXCLUDED.client_name,
@@ -1404,6 +1424,8 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         planned_services = EXCLUDED.planned_services,
         final_domain_purchased = EXCLUDED.final_domain_purchased,
         client_details_pending = EXCLUDED.client_details_pending,
+        lead_source = EXCLUDED.lead_source,
+        lead_source_detail = EXCLUDED.lead_source_detail,
         proposal_sent = EXCLUDED.proposal_sent,
         deposit_invoice_sent = EXCLUDED.deposit_invoice_sent,
         proposal_signed = EXCLUDED.proposal_signed,
@@ -2895,6 +2917,41 @@ function normalizeBoolean(value) {
   return ["1", "true", "yes", "signed", "paid", "complete"].includes(normalized);
 }
 
+function normalizeLeadSource(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+  if (!normalized) {
+    return "";
+  }
+
+  const aliases = {
+    social: "social-media",
+    socials: "social-media",
+    facebook: "social-media",
+    instagram: "social-media",
+    tiktok: "social-media",
+    linkedin: "social-media",
+    messenger: "social-media",
+    referral: "referral",
+    referred: "referral",
+    "lead-command": "lead-command-center",
+    "ghost-lead-command": "lead-command-center",
+    "lead-command-center": "lead-command-center",
+    "digital-card": "digital-business-card",
+    "business-card": "digital-business-card",
+    "digital-business-card": "digital-business-card",
+    email: "email",
+    gmail: "email",
+    "ai-outreach": "ai-outreach",
+    ai: "ai-outreach",
+    outreach: "ai-outreach",
+    manual: "other",
+    other: "other"
+  };
+
+  const mapped = aliases[normalized] || normalized;
+  return LEAD_SOURCE_DEFINITIONS.some((source) => source.id === mapped) ? mapped : "other";
+}
+
 function normalizeClient(client) {
   if (!client || typeof client !== "object") {
     return null;
@@ -2934,6 +2991,8 @@ function normalizeClient(client) {
         ? null
         : normalizeBoolean(client.finalDomainPurchased),
     clientDetailsPending: normalizeBoolean(client.clientDetailsPending),
+    leadSource: normalizeLeadSource(client.leadSource || client.lead_source),
+    leadSourceDetail: String(client.leadSourceDetail || client.lead_source_detail || client.leadSourceNote || "").trim(),
     proposalSent: normalizeBoolean(client.proposalSent),
     depositInvoiceSent: normalizeBoolean(client.depositInvoiceSent),
     proposalSigned: normalizeBoolean(client.proposalSigned),
@@ -3034,6 +3093,8 @@ function mergeClientRecords(existing, incoming) {
         })(),
     finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
     clientDetailsPending: pickBoolean("clientDetailsPending"),
+    leadSource: pick("leadSource"),
+    leadSourceDetail: pick("leadSourceDetail"),
     proposalSent: pickBoolean("proposalSent"),
     depositInvoiceSent: pickBoolean("depositInvoiceSent"),
     proposalSigned: pickBoolean("proposalSigned"),
@@ -3359,6 +3420,7 @@ function getLeadDeskAction(client) {
 
 function getLeadDeskOpenTaskCount(client) {
   const required = [
+    Boolean(client.leadSource),
     Boolean(client.contact || client.businessEmail || client.businessPhone),
     Boolean(client.notes),
     Boolean(client.proposalSent || client.proposalSigned || client.depositPaid),
@@ -3372,6 +3434,7 @@ function getLeadDeskOpenTaskCount(client) {
 function buildOnboardingActivation(clients) {
   const onboardingStages = ["lead", "deposit-paid"];
   const activeClients = clients.filter((client) => onboardingStages.includes(client.stage));
+  const progressTotal = 7;
 
   const queue = activeClients.map((client) => {
     const connections = getClientActivationConnections(client);
@@ -3386,6 +3449,8 @@ function buildOnboardingActivation(clients) {
       plannedServices: client.plannedServices,
       contact: client.contact,
       notes: client.notes,
+      leadSource: client.leadSource,
+      leadSourceDetail: client.leadSourceDetail,
       proposalSent: client.proposalSent,
       depositInvoiceSent: client.depositInvoiceSent,
       proposalSigned: client.proposalSigned,
@@ -3394,7 +3459,7 @@ function buildOnboardingActivation(clients) {
       finalPaymentPaid: client.finalPaymentPaid,
       businessEmail: client.businessEmail,
       businessPhone: client.businessPhone,
-      progress: Math.max(0, Math.round(((6 - openTaskCount) / 6) * 100)),
+      progress: Math.max(0, Math.round(((progressTotal - openTaskCount) / progressTotal) * 100)),
       blockerCount: openTaskCount,
       nextAction: getLeadDeskAction(client),
       blockers: [],
@@ -3404,6 +3469,11 @@ function buildOnboardingActivation(clients) {
   });
 
   const openTasks = queue.reduce((total, client) => total + client.blockerCount, 0);
+  const sourceBreakdown = LEAD_SOURCE_DEFINITIONS.map((source) => ({
+    ...source,
+    count: queue.filter((client) => client.leadSource === source.id).length
+  }));
+  const sourcePending = queue.filter((client) => !client.leadSource).length;
 
   return {
     queue,
@@ -3413,7 +3483,9 @@ function buildOnboardingActivation(clients) {
       proposalsSent: queue.filter((client) => client.proposalSent || client.depositInvoiceSent || client.proposalSigned || client.depositPaid).length,
       agreementsReturned: queue.filter((client) => client.proposalSigned || client.depositPaid).length,
       depositPaid: queue.filter((client) => client.depositPaid || client.stage === "deposit-paid").length,
-      openTasks
+      openTasks,
+      sourcePending,
+      sourceBreakdown
     },
     actions: queue.length
       ? queue.slice(0, 6).map((client) => `${client.clientName}: ${client.nextAction}`)
@@ -6387,8 +6459,12 @@ const server = http.createServer((request, response) => {
         needsIntegration: blueprint.stages.filter((stage) => stage.status === "needs-integration").length,
         activeClients: activation.summary.activeClients,
         blockedClients: activation.summary.blockedClients,
-        readyForHandoff: activation.summary.readyForHandoff,
-        missingConnections: activation.summary.missingConnections
+        proposalsSent: activation.summary.proposalsSent,
+        agreementsReturned: activation.summary.agreementsReturned,
+        depositPaid: activation.summary.depositPaid,
+        openTasks: activation.summary.openTasks,
+        sourcePending: activation.summary.sourcePending,
+        sourceBreakdown: activation.summary.sourceBreakdown
       },
       activation,
       ...blueprint
