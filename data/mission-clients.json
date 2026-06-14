@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-14T01:17:42.103Z",
+  "savedAt": "2026-06-14T01:19:49.345Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -18,9 +18,9 @@
       "socialUrls": [],
       "finalDomainPurchased": false,
       "clientDetailsPending": false,
-      "proposalSigned": false,
+      "proposalSigned": true,
       "partnershipSigned": false,
-      "depositPaid": false,
+      "depositPaid": true,
       "finalPaymentPaid": false,
       "businessEmail": "",
       "businessPhone": "",
@@ -30,12 +30,10 @@
       "stage": "client-review",
       "status": "client-review",
       "services": [
-        "website-build",
-        "web-helper-care",
         "search-intelligence"
       ],
       "createdAt": "2026-06-14T01:17:36.485Z",
-      "updatedAt": "2026-06-14T01:17:36.485Z",
+      "updatedAt": "2026-06-14T01:19:49.068Z",
       "source": "runtime"
     },
     {
