@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-14T01:17:36.694Z",
+  "savedAt": "2026-06-14T01:17:42.103Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -36,6 +36,41 @@
       ],
       "createdAt": "2026-06-14T01:17:36.485Z",
       "updatedAt": "2026-06-14T01:17:36.485Z",
+      "source": "runtime"
+    },
+    {
+      "id": "price-consulting",
+      "clientName": "Price Consulting",
+      "websiteUrl": "https://price-consulting-site.vercel.app",
+      "repo": "burchdad/price-consulting-site",
+      "githubUrl": "https://github.com/burchdad/price-consulting-site",
+      "railwayUrl": "https://price-consulting-site-production.up.railway.app/",
+      "vercelUrl": "https://price-consulting-site.vercel.app/",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": false,
+      "clientDetailsPending": false,
+      "proposalSigned": false,
+      "partnershipSigned": false,
+      "depositPaid": false,
+      "finalPaymentPaid": false,
+      "businessEmail": "",
+      "businessPhone": "",
+      "plan": "Launch + Care",
+      "contact": "",
+      "notes": "Website is launched and ready for SEO/monthly maintenance contract review.",
+      "stage": "client-review",
+      "status": "client-review",
+      "services": [
+        "website-build",
+        "web-helper-care",
+        "search-intelligence"
+      ],
+      "createdAt": "2026-06-14T01:17:41.886Z",
+      "updatedAt": "2026-06-14T01:17:41.886Z",
       "source": "runtime"
     }
   ]
