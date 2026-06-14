@@ -4600,20 +4600,33 @@ async function saveClientRecord(payload) {
 }
 
 function getClientStorageMessage(result) {
-  const write = result?.storage?.repoStore?.lastWrite;
+  const write = result?.storage?.lastWrite || result?.storage?.database?.lastWrite || result?.storage?.repoStore?.lastWrite;
+  const databaseWrite = result?.storage?.database?.lastWrite;
+  const repoWrite = result?.storage?.repoStore?.lastWrite;
   if (!write) {
     return "";
   }
 
-  if (write.ok) {
+  if (write.ok && write.target === "postgres") {
+    return " Saved to Railway Postgres.";
+  }
+
+  if (write.ok && write.target === "github") {
+    if (databaseWrite && !databaseWrite.ok) {
+      return ` Saved to Mission Control repo store; Postgres needs attention: ${databaseWrite.error || databaseWrite.reason || "check DATABASE_URL"}.`;
+    }
     return " Saved to Mission Control repo store.";
   }
 
-  return ` Saved locally, but repo store did not update: ${write.error || write.reason || "check GITHUB_TOKEN permissions"}.`;
+  if (databaseWrite && !databaseWrite.ok && repoWrite && !repoWrite.ok) {
+    return ` Saved locally, but Postgres and repo store did not update: ${databaseWrite.error || databaseWrite.reason || repoWrite.error || "check DATABASE_URL"}.`;
+  }
+
+  return ` Saved locally, but persistent store did not update: ${write.error || write.reason || "check DATABASE_URL"}.`;
 }
 
 function didClientRepoStoreFail(result) {
-  const write = result?.storage?.repoStore?.lastWrite;
+  const write = result?.storage?.lastWrite || result?.storage?.database?.lastWrite || result?.storage?.repoStore?.lastWrite;
   return Boolean(write && !write.ok);
 }
 

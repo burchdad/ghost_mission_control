@@ -13,5 +13,8 @@
     "stop:bg": "bash scripts/server-control.sh stop",
     "status:bg": "bash scripts/server-control.sh status",
     "check": "node --check app.js && node --check server.js"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
   }
 }

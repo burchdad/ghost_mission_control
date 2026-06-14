@@ -40,7 +40,10 @@ const CLIENT_STORE_REPO = String(process.env.CLIENT_STORE_REPO || `${GITHUB_OWNE
 const CLIENT_STORE_FILE = String(process.env.CLIENT_STORE_FILE || "data/mission-clients.json").trim();
 const CLIENT_STORE_BRANCH = String(process.env.CLIENT_STORE_BRANCH || "main").trim();
 const CLIENT_STORE_GITHUB_SYNC = String(process.env.CLIENT_STORE_GITHUB_SYNC || "true").toLowerCase() !== "false";
+const CLIENT_STORE_POSTGRES_ENABLED = String(process.env.CLIENT_STORE_POSTGRES_ENABLED || "true").toLowerCase() !== "false";
 const CLIENT_STORE_CACHE_TTL_MS = Number(process.env.CLIENT_STORE_CACHE_TTL_MS || 30000);
+const DATABASE_URL = String(process.env.DATABASE_URL || process.env.POSTGRES_URL || "").trim();
+const DATABASE_SSL = String(process.env.DATABASE_SSL || "auto").toLowerCase();
 const WEB_HELPER_AUTO_ACTIVATE = String(process.env.WEB_HELPER_AUTO_ACTIVATE || "true").toLowerCase() !== "false";
 const WEB_HELPER_HANDOFF_STAGE = "launch-handoff";
 const runtimeClients = [];
@@ -49,6 +52,12 @@ let runtimeClientsRepoSyncedAt = 0;
 let runtimeClientsRepoSyncPending = null;
 let runtimeClientsRepoLastError = "";
 let runtimeClientsRepoLastPersistAt = 0;
+let runtimeClientsDbSyncedAt = 0;
+let runtimeClientsDbLastPersistAt = 0;
+let runtimeClientsDbLastError = "";
+let runtimeClientsDbAvailable = null;
+let clientStorePgPool = null;
+let clientStorePgInitPromise = null;
 
 const CLIENT_PIPELINE_STAGES = [
   { id: "lead", label: "Lead / Prospect" },
@@ -1090,6 +1099,412 @@ function getClientStorePayload() {
   };
 }
 
+function isClientStoreDatabaseEnabled() {
+  return CLIENT_STORE_POSTGRES_ENABLED && Boolean(DATABASE_URL);
+}
+
+function getClientStoreDatabaseSsl() {
+  if (DATABASE_SSL === "true") {
+    return { rejectUnauthorized: false };
+  }
+
+  if (DATABASE_SSL === "false") {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(DATABASE_URL);
+    const sslMode = String(parsed.searchParams.get("sslmode") || "").toLowerCase();
+    if (["require", "prefer", "no-verify"].includes(sslMode)) {
+      return { rejectUnauthorized: false };
+    }
+  } catch {
+    // Keep Railway/internal Postgres as the default no-SSL path.
+  }
+
+  return false;
+}
+
+function getClientStorePgPool() {
+  if (!isClientStoreDatabaseEnabled()) {
+    return null;
+  }
+
+  if (clientStorePgPool) {
+    return clientStorePgPool;
+  }
+
+  try {
+    const { Pool } = require("pg");
+    clientStorePgPool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: getClientStoreDatabaseSsl()
+    });
+    clientStorePgPool.on("error", (error) => {
+      runtimeClientsDbAvailable = false;
+      runtimeClientsDbLastError = String(error?.message || error);
+    });
+    return clientStorePgPool;
+  } catch (error) {
+    runtimeClientsDbAvailable = false;
+    runtimeClientsDbLastError = `Postgres client unavailable: ${String(error?.message || error)}`;
+    return null;
+  }
+}
+
+async function ensureClientStoreTable() {
+  const pool = getClientStorePgPool();
+  if (!pool) {
+    return {
+      ok: false,
+      target: "postgres",
+      skipped: true,
+      reason: isClientStoreDatabaseEnabled() ? runtimeClientsDbLastError : "DATABASE_URL is not configured."
+    };
+  }
+
+  if (clientStorePgInitPromise) {
+    return clientStorePgInitPromise;
+  }
+
+  clientStorePgInitPromise = pool
+    .query(`
+      CREATE TABLE IF NOT EXISTS mission_clients (
+        id text PRIMARY KEY,
+        client_name text NOT NULL,
+        stage text NOT NULL DEFAULT 'website-build',
+        website_url text NOT NULL DEFAULT '',
+        repo text NOT NULL DEFAULT '',
+        github_url text NOT NULL DEFAULT '',
+        railway_url text NOT NULL DEFAULT '',
+        vercel_url text NOT NULL DEFAULT '',
+        mobile_app_url text NOT NULL DEFAULT '',
+        google_business_url text NOT NULL DEFAULT '',
+        analytics_url text NOT NULL DEFAULT '',
+        ads_status text NOT NULL DEFAULT '',
+        social_urls jsonb NOT NULL DEFAULT '[]'::jsonb,
+        services jsonb NOT NULL DEFAULT '[]'::jsonb,
+        final_domain_purchased boolean,
+        client_details_pending boolean NOT NULL DEFAULT false,
+        proposal_signed boolean NOT NULL DEFAULT false,
+        partnership_signed boolean NOT NULL DEFAULT false,
+        deposit_paid boolean NOT NULL DEFAULT false,
+        final_payment_paid boolean NOT NULL DEFAULT false,
+        business_email text NOT NULL DEFAULT '',
+        business_phone text NOT NULL DEFAULT '',
+        plan text NOT NULL DEFAULT 'Launch + Care',
+        contact text NOT NULL DEFAULT '',
+        notes text NOT NULL DEFAULT '',
+        source text NOT NULL DEFAULT 'runtime',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS mission_clients_updated_at_idx ON mission_clients (updated_at DESC);
+    `)
+    .then(() => {
+      runtimeClientsDbAvailable = true;
+      runtimeClientsDbLastError = "";
+      return { ok: true, target: "postgres", table: "mission_clients" };
+    })
+    .catch((error) => {
+      runtimeClientsDbAvailable = false;
+      runtimeClientsDbLastError = String(error?.message || error);
+      clientStorePgInitPromise = null;
+      return { ok: false, target: "postgres", error: runtimeClientsDbLastError };
+    });
+
+  return clientStorePgInitPromise;
+}
+
+function parsePostgresJsonList(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function postgresTimestampToIso(value) {
+  if (!value) {
+    return new Date().toISOString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
+
+function dbRowToClient(row) {
+  if (!row) {
+    return null;
+  }
+
+  return normalizeClient({
+    id: row.id,
+    clientName: row.client_name,
+    stage: row.stage,
+    websiteUrl: row.website_url,
+    repo: row.repo,
+    railwayUrl: row.railway_url,
+    vercelUrl: row.vercel_url,
+    mobileAppUrl: row.mobile_app_url,
+    googleBusinessUrl: row.google_business_url,
+    analyticsUrl: row.analytics_url,
+    adsStatus: row.ads_status,
+    socialUrls: parsePostgresJsonList(row.social_urls),
+    services: parsePostgresJsonList(row.services),
+    finalDomainPurchased: row.final_domain_purchased,
+    clientDetailsPending: row.client_details_pending,
+    proposalSigned: row.proposal_signed,
+    partnershipSigned: row.partnership_signed,
+    depositPaid: row.deposit_paid,
+    finalPaymentPaid: row.final_payment_paid,
+    businessEmail: row.business_email,
+    businessPhone: row.business_phone,
+    plan: row.plan,
+    contact: row.contact,
+    notes: row.notes,
+    source: "runtime",
+    createdAt: postgresTimestampToIso(row.created_at),
+    updatedAt: postgresTimestampToIso(row.updated_at)
+  });
+}
+
+function clientToPostgresValues(client) {
+  const normalized = normalizeClient({
+    ...client,
+    source: "runtime"
+  });
+
+  if (!normalized) {
+    return null;
+  }
+
+  return [
+    normalized.id,
+    normalized.clientName,
+    normalized.stage,
+    normalized.websiteUrl,
+    normalized.repo,
+    normalized.githubUrl,
+    normalized.railwayUrl,
+    normalized.vercelUrl,
+    normalized.mobileAppUrl,
+    normalized.googleBusinessUrl,
+    normalized.analyticsUrl,
+    normalized.adsStatus,
+    JSON.stringify(normalized.socialUrls || []),
+    JSON.stringify(normalized.services || []),
+    normalized.finalDomainPurchased,
+    Boolean(normalized.clientDetailsPending),
+    Boolean(normalized.proposalSigned),
+    Boolean(normalized.partnershipSigned),
+    Boolean(normalized.depositPaid),
+    Boolean(normalized.finalPaymentPaid),
+    normalized.businessEmail,
+    normalized.businessPhone,
+    normalized.plan,
+    normalized.contact,
+    normalized.notes,
+    "runtime",
+    normalized.createdAt,
+    normalized.updatedAt
+  ];
+}
+
+async function persistRuntimeClientToPostgres(client, options = {}) {
+  const init = await ensureClientStoreTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  const values = clientToPostgresValues(client);
+  if (!values) {
+    return { ok: false, target: "postgres", error: "Client name is required." };
+  }
+
+  try {
+    const result = await getClientStorePgPool().query(
+      `
+      INSERT INTO mission_clients (
+        id,
+        client_name,
+        stage,
+        website_url,
+        repo,
+        github_url,
+        railway_url,
+        vercel_url,
+        mobile_app_url,
+        google_business_url,
+        analytics_url,
+        ads_status,
+        social_urls,
+        services,
+        final_domain_purchased,
+        client_details_pending,
+        proposal_signed,
+        partnership_signed,
+        deposit_paid,
+        final_payment_paid,
+        business_email,
+        business_phone,
+        plan,
+        contact,
+        notes,
+        source,
+        created_at,
+        updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, $20,
+        $21, $22, $23, $24, $25, $26, $27::timestamptz, $28::timestamptz
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        client_name = EXCLUDED.client_name,
+        stage = EXCLUDED.stage,
+        website_url = EXCLUDED.website_url,
+        repo = EXCLUDED.repo,
+        github_url = EXCLUDED.github_url,
+        railway_url = EXCLUDED.railway_url,
+        vercel_url = EXCLUDED.vercel_url,
+        mobile_app_url = EXCLUDED.mobile_app_url,
+        google_business_url = EXCLUDED.google_business_url,
+        analytics_url = EXCLUDED.analytics_url,
+        ads_status = EXCLUDED.ads_status,
+        social_urls = EXCLUDED.social_urls,
+        services = EXCLUDED.services,
+        final_domain_purchased = EXCLUDED.final_domain_purchased,
+        client_details_pending = EXCLUDED.client_details_pending,
+        proposal_signed = EXCLUDED.proposal_signed,
+        partnership_signed = EXCLUDED.partnership_signed,
+        deposit_paid = EXCLUDED.deposit_paid,
+        final_payment_paid = EXCLUDED.final_payment_paid,
+        business_email = EXCLUDED.business_email,
+        business_phone = EXCLUDED.business_phone,
+        plan = EXCLUDED.plan,
+        contact = EXCLUDED.contact,
+        notes = EXCLUDED.notes,
+        source = EXCLUDED.source,
+        created_at = COALESCE(mission_clients.created_at, EXCLUDED.created_at),
+        updated_at = EXCLUDED.updated_at
+      RETURNING *;
+      `,
+      values
+    );
+    runtimeClientsDbAvailable = true;
+    runtimeClientsDbLastError = "";
+    runtimeClientsDbLastPersistAt = Date.now();
+    const savedClient = dbRowToClient(result.rows[0]);
+    if (savedClient && options.updateMemory !== false) {
+      upsertRuntimeClient(savedClient);
+    }
+    if (options.persistLocal !== false) {
+      persistRuntimeClients();
+    }
+    return { ok: true, target: "postgres", table: "mission_clients", clientId: savedClient?.id || values[0] };
+  } catch (error) {
+    runtimeClientsDbAvailable = false;
+    runtimeClientsDbLastError = String(error?.message || error);
+    return { ok: false, target: "postgres", error: runtimeClientsDbLastError };
+  }
+}
+
+async function persistRuntimeClientsToPostgres() {
+  const init = await ensureClientStoreTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  let count = 0;
+  for (const client of [...runtimeClients]) {
+    const result = await persistRuntimeClientToPostgres(client, {
+      updateMemory: false,
+      persistLocal: false
+    });
+    if (!result.ok) {
+      return result;
+    }
+    count += 1;
+  }
+
+  runtimeClientsDbAvailable = true;
+  runtimeClientsDbLastError = "";
+  runtimeClientsDbLastPersistAt = Date.now();
+  return { ok: true, target: "postgres", table: "mission_clients", count };
+}
+
+async function loadRuntimeClientsFromPostgres() {
+  hydrateRuntimeClients();
+
+  const init = await ensureClientStoreTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  try {
+    const result = await getClientStorePgPool().query("SELECT * FROM mission_clients ORDER BY updated_at DESC, client_name ASC");
+    const clients = result.rows.map(dbRowToClient).filter(Boolean);
+    clients.forEach(upsertRuntimeClient);
+    runtimeClientsDbSyncedAt = Date.now();
+    runtimeClientsDbAvailable = true;
+    runtimeClientsDbLastError = "";
+    persistRuntimeClients();
+
+    if (!clients.length && runtimeClients.length) {
+      const seedWrite = await persistRuntimeClientsToPostgres();
+      return {
+        ok: true,
+        target: "postgres",
+        table: "mission_clients",
+        clients: runtimeClients,
+        count: runtimeClients.length,
+        seeded: seedWrite.ok ? seedWrite.count || runtimeClients.length : 0
+      };
+    }
+
+    return { ok: true, target: "postgres", table: "mission_clients", clients, count: clients.length };
+  } catch (error) {
+    runtimeClientsDbAvailable = false;
+    runtimeClientsDbLastError = String(error?.message || error);
+    return { ok: false, target: "postgres", error: runtimeClientsDbLastError };
+  }
+}
+
+async function syncClientStore(forceRefresh = false) {
+  hydrateRuntimeClients();
+  const databaseRead = await loadRuntimeClientsFromPostgres();
+  if (databaseRead.ok) {
+    return {
+      ok: true,
+      target: "client-store",
+      database: databaseRead,
+      repo: { ok: false, skipped: true, reason: "Postgres client store is active." }
+    };
+  }
+
+  const repoRead = await syncRuntimeClientsFromGitHubStore(forceRefresh);
+  return {
+    ok: Boolean(repoRead?.ok),
+    target: "client-store",
+    database: databaseRead,
+    repo: repoRead,
+    fallback: true
+  };
+}
+
 function encodeGitHubPath(filePath) {
   return String(filePath || "")
     .split("/")
@@ -1104,12 +1519,12 @@ function decodeGitHubContent(content) {
 
 async function fetchClientStoreFromGitHub() {
   if (!CLIENT_STORE_GITHUB_SYNC || !CLIENT_STORE_REPO || !CLIENT_STORE_FILE) {
-    return { ok: false, skipped: true, reason: "GitHub client store is disabled." };
+    return { ok: false, target: "github", skipped: true, reason: "GitHub client store is disabled." };
   }
 
   const [owner, repo] = CLIENT_STORE_REPO.split("/");
   if (!owner || !repo) {
-    return { ok: false, skipped: true, reason: "CLIENT_STORE_REPO must be owner/repo." };
+    return { ok: false, target: "github", skipped: true, reason: "CLIENT_STORE_REPO must be owner/repo." };
   }
 
   const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeGitHubPath(CLIENT_STORE_FILE)}?ref=${encodeURIComponent(CLIENT_STORE_BRANCH)}`;
@@ -1119,7 +1534,7 @@ async function fetchClientStoreFromGitHub() {
   });
 
   if (response.status === 404) {
-    return { ok: true, clients: [], missing: true };
+    return { ok: true, target: "github", clients: [], missing: true };
   }
 
   if (!response.ok) {
@@ -1131,6 +1546,7 @@ async function fetchClientStoreFromGitHub() {
   clients.forEach(upsertRuntimeClient);
   return {
     ok: true,
+    target: "github",
     clients,
     sha: payload.sha || "",
     path: payload.path || CLIENT_STORE_FILE
@@ -1141,12 +1557,12 @@ async function syncRuntimeClientsFromGitHubStore(forceRefresh = false) {
   hydrateRuntimeClients();
 
   if (!CLIENT_STORE_GITHUB_SYNC) {
-    return { ok: false, skipped: true, reason: "GitHub client store is disabled." };
+    return { ok: false, target: "github", skipped: true, reason: "GitHub client store is disabled." };
   }
 
   const now = Date.now();
   if (!forceRefresh && runtimeClientsRepoSyncedAt && now - runtimeClientsRepoSyncedAt < CLIENT_STORE_CACHE_TTL_MS) {
-    return { ok: true, cached: true };
+    return { ok: true, target: "github", cached: true };
   }
 
   if (runtimeClientsRepoSyncPending) {
@@ -1162,7 +1578,7 @@ async function syncRuntimeClientsFromGitHubStore(forceRefresh = false) {
     })
     .catch((error) => {
       runtimeClientsRepoLastError = String(error?.message || error);
-      return { ok: false, error: runtimeClientsRepoLastError };
+      return { ok: false, target: "github", error: runtimeClientsRepoLastError };
     })
     .finally(() => {
       runtimeClientsRepoSyncPending = null;
@@ -1173,16 +1589,16 @@ async function syncRuntimeClientsFromGitHubStore(forceRefresh = false) {
 
 async function persistRuntimeClientsToGitHubStore() {
   if (!CLIENT_STORE_GITHUB_SYNC) {
-    return { ok: false, skipped: true, reason: "GitHub client store is disabled." };
+    return { ok: false, target: "github", skipped: true, reason: "GitHub client store is disabled." };
   }
 
   if (!GITHUB_TOKEN) {
-    return { ok: false, skipped: true, reason: "GITHUB_TOKEN is required to write the Mission Control client store." };
+    return { ok: false, target: "github", skipped: true, reason: "GITHUB_TOKEN is required to write the Mission Control client store." };
   }
 
   const [owner, repo] = CLIENT_STORE_REPO.split("/");
   if (!owner || !repo) {
-    return { ok: false, skipped: true, reason: "CLIENT_STORE_REPO must be owner/repo." };
+    return { ok: false, target: "github", skipped: true, reason: "CLIENT_STORE_REPO must be owner/repo." };
   }
 
   const encodedPath = encodeGitHubPath(CLIENT_STORE_FILE);
@@ -1223,12 +1639,37 @@ async function persistRuntimeClientsToGitHubStore() {
   runtimeClientsRepoLastPersistAt = Date.now();
   runtimeClientsRepoSyncedAt = Date.now();
   runtimeClientsRepoLastError = "";
-  return { ok: true, path: CLIENT_STORE_FILE, repo: CLIENT_STORE_REPO };
+  return { ok: true, target: "github", path: CLIENT_STORE_FILE, repo: CLIENT_STORE_REPO };
 }
 
 function getClientStorageStatus(lastWrite = null) {
+  const databaseWrite =
+    lastWrite?.target === "postgres"
+      ? lastWrite
+      : lastWrite?.fallbackFrom?.target === "postgres"
+        ? lastWrite.fallbackFrom
+        : null;
+  const repoWrite =
+    lastWrite?.target === "github"
+      ? lastWrite
+      : lastWrite?.fallbackWrite?.target === "github"
+        ? lastWrite.fallbackWrite
+        : null;
+
   return {
+    lastWrite,
     runtimeCachePath: RUNTIME_CLIENTS_PATH,
+    database: {
+      enabled: CLIENT_STORE_POSTGRES_ENABLED,
+      urlConfigured: Boolean(DATABASE_URL),
+      active: isClientStoreDatabaseEnabled(),
+      available: runtimeClientsDbAvailable,
+      table: "mission_clients",
+      lastSyncedAt: toIsoOrNull(runtimeClientsDbSyncedAt),
+      lastPersistedAt: toIsoOrNull(runtimeClientsDbLastPersistAt),
+      lastError: runtimeClientsDbLastError || null,
+      lastWrite: databaseWrite
+    },
     repoStore: {
       enabled: CLIENT_STORE_GITHUB_SYNC,
       repo: CLIENT_STORE_REPO,
@@ -1238,7 +1679,7 @@ function getClientStorageStatus(lastWrite = null) {
       lastSyncedAt: toIsoOrNull(runtimeClientsRepoSyncedAt),
       lastPersistedAt: toIsoOrNull(runtimeClientsRepoLastPersistAt),
       lastError: runtimeClientsRepoLastError || null,
-      lastWrite
+      lastWrite: repoWrite
     }
   };
 }
@@ -5592,7 +6033,7 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/clients") {
-    syncRuntimeClientsFromGitHubStore(url.searchParams.get("refresh") === "true")
+    syncClientStore(url.searchParams.get("refresh") === "true")
       .then((storageRead) => {
         const clients = getAllClients();
         sendJson(request, response, 200, {
@@ -5624,35 +6065,43 @@ const server = http.createServer((request, response) => {
   if (request.method === "POST" && url.pathname === "/mission/clients") {
     readJsonBody(request)
       .then(async (payload) => {
-        await syncRuntimeClientsFromGitHubStore(true);
+        await syncClientStore(true);
         const client = buildClientRecord(payload);
         if (!client) {
           sendJson(request, response, 400, { error: "Client name is required" });
           return;
         }
 
-        const existingIndex = runtimeClients.findIndex((entry) => entry.id === client.id);
-        if (existingIndex >= 0) {
-          runtimeClients[existingIndex] = {
-            ...runtimeClients[existingIndex],
-            ...client,
-            updatedAt: new Date().toISOString()
-          };
-        } else {
-          runtimeClients.push(client);
-        }
+        const existing = runtimeClients.find((entry) => entry.id === client.id);
+        const savedClient = upsertRuntimeClient({
+          ...(existing || {}),
+          ...client,
+          createdAt: existing?.createdAt || client.createdAt,
+          updatedAt: new Date().toISOString()
+        });
         persistRuntimeClients();
         let storageWrite = null;
-        try {
-          storageWrite = await persistRuntimeClientsToGitHubStore();
-        } catch (error) {
-          runtimeClientsRepoLastError = String(error?.message || error);
-          storageWrite = { ok: false, error: runtimeClientsRepoLastError };
+        const databaseWrite = await persistRuntimeClientToPostgres(savedClient || client);
+        storageWrite = databaseWrite;
+        if (!databaseWrite.ok) {
+          try {
+            const repoWrite = await persistRuntimeClientsToGitHubStore();
+            storageWrite = { ...repoWrite, fallbackFrom: databaseWrite };
+          } catch (error) {
+            runtimeClientsRepoLastError = String(error?.message || error);
+            storageWrite = {
+              ok: false,
+              target: "client-store",
+              error: runtimeClientsRepoLastError,
+              fallbackFrom: databaseWrite,
+              fallbackWrite: { ok: false, target: "github", error: runtimeClientsRepoLastError }
+            };
+          }
         }
 
         const clients = getAllClients();
         sendJson(request, response, 201, {
-          created: client,
+          created: savedClient || client,
           summary: summarizeClients(clients),
           pipelineStages: CLIENT_PIPELINE_STAGES,
           storage: getClientStorageStatus(storageWrite),

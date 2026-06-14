@@ -81,6 +81,20 @@ ALLOWED_ORIGINS=https://<your-frontend-domain>
 
 Then point frontend API calls to your Railway backend domain.
 
+### Railway Postgres Client Store
+
+Mission Control persists editable client cards to Postgres when `DATABASE_URL` is available. On the first `/mission/clients` read or write, the backend creates the `mission_clients` table automatically and seeds it from the current repo/local client store if the table is empty.
+
+Recommended backend variables:
+
+```bash
+DATABASE_URL=<railway-postgres-url>
+CLIENT_STORE_POSTGRES_ENABLED=true
+DATABASE_SSL=auto
+```
+
+If your Postgres provider requires SSL, set `DATABASE_SSL=true`. If Postgres is unavailable, Mission Control keeps the local runtime cache and falls back to the GitHub client store when configured.
+
 ## Deploy Frontend On Vercel (Static)
 
 This repo now includes a static Vercel build path so Vercel does not try to run the Node backend.
