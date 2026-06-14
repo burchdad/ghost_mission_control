@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-14T02:52:12.252Z",
+  "savedAt": "2026-06-14T03:00:46.794Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -22,19 +22,23 @@
       "partnershipSigned": false,
       "depositPaid": true,
       "finalPaymentPaid": false,
-      "businessEmail": "",
-      "businessPhone": "",
+      "businessEmail": "ker@krachallaw.com",
+      "businessPhone": "562-746-8274",
       "plan": "Launch + Care",
-      "contact": "",
-      "notes": "Website is launched and ready for SEO/monthly maintenance contract review.",
+      "contact": "Keisha",
+      "notes": "Website is pending review and revisions",
       "stage": "client-review",
       "status": "client-review",
       "services": [
-        "search-intelligence"
+        "website-build"
       ],
-      "plannedServices": [],
+      "plannedServices": [
+        "web-helper-care",
+        "search-intelligence",
+        "local-service"
+      ],
       "createdAt": "2026-06-14T01:17:36.485Z",
-      "updatedAt": "2026-06-14T01:19:49.068Z",
+      "updatedAt": "2026-06-14T03:00:46.393Z",
       "source": "runtime"
     },
     {
