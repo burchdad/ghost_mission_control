@@ -1187,6 +1187,8 @@ async function ensureClientStoreTable() {
         planned_services jsonb NOT NULL DEFAULT '[]'::jsonb,
         final_domain_purchased boolean,
         client_details_pending boolean NOT NULL DEFAULT false,
+        proposal_sent boolean NOT NULL DEFAULT false,
+        deposit_invoice_sent boolean NOT NULL DEFAULT false,
         proposal_signed boolean NOT NULL DEFAULT false,
         partnership_signed boolean NOT NULL DEFAULT false,
         deposit_paid boolean NOT NULL DEFAULT false,
@@ -1201,6 +1203,8 @@ async function ensureClientStoreTable() {
         updated_at timestamptz NOT NULL DEFAULT now()
       );
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS planned_services jsonb NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS proposal_sent boolean NOT NULL DEFAULT false;
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS deposit_invoice_sent boolean NOT NULL DEFAULT false;
       CREATE INDEX IF NOT EXISTS mission_clients_updated_at_idx ON mission_clients (updated_at DESC);
     `)
     .then(() => {
@@ -1270,6 +1274,8 @@ function dbRowToClient(row) {
     plannedServices: parsePostgresJsonList(row.planned_services),
     finalDomainPurchased: row.final_domain_purchased,
     clientDetailsPending: row.client_details_pending,
+    proposalSent: row.proposal_sent,
+    depositInvoiceSent: row.deposit_invoice_sent,
     proposalSigned: row.proposal_signed,
     partnershipSigned: row.partnership_signed,
     depositPaid: row.deposit_paid,
@@ -1313,6 +1319,8 @@ function clientToPostgresValues(client) {
     JSON.stringify(normalized.plannedServices || []),
     normalized.finalDomainPurchased,
     Boolean(normalized.clientDetailsPending),
+    Boolean(normalized.proposalSent),
+    Boolean(normalized.depositInvoiceSent),
     Boolean(normalized.proposalSigned),
     Boolean(normalized.partnershipSigned),
     Boolean(normalized.depositPaid),
@@ -1360,6 +1368,8 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         planned_services,
         final_domain_purchased,
         client_details_pending,
+        proposal_sent,
+        deposit_invoice_sent,
         proposal_signed,
         partnership_signed,
         deposit_paid,
@@ -1375,7 +1385,7 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28::timestamptz, $29::timestamptz
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30::timestamptz, $31::timestamptz
       )
       ON CONFLICT (id) DO UPDATE SET
         client_name = EXCLUDED.client_name,
@@ -1394,6 +1404,8 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         planned_services = EXCLUDED.planned_services,
         final_domain_purchased = EXCLUDED.final_domain_purchased,
         client_details_pending = EXCLUDED.client_details_pending,
+        proposal_sent = EXCLUDED.proposal_sent,
+        deposit_invoice_sent = EXCLUDED.deposit_invoice_sent,
         proposal_signed = EXCLUDED.proposal_signed,
         partnership_signed = EXCLUDED.partnership_signed,
         deposit_paid = EXCLUDED.deposit_paid,
@@ -2725,43 +2737,42 @@ function getOnboardingBlueprint() {
     stages: [
       {
         id: "intake",
-        name: "Client Intake",
+        name: "Lead Intake",
         status: "template-ready",
-        description: "Capture business facts, approved contacts, offer, website goals, and communication preferences.",
-        requiredArtifacts: ["client-profile.md", "contacts.md", "brand-voice.md"],
-        automations: ["create client record", "assign default services", "open onboarding mission"]
+        description: "Capture the phone or Facebook Messenger inquiry, contact path, business basics, and first website goal.",
+        requiredArtifacts: ["Lead record", "Primary contact", "Discovery notes"],
+        automations: ["create lead record", "queue proposal follow-up"]
       },
       {
-        id: "service-map",
-        name: "Service Map",
+        id: "proposal-invoice",
+        name: "Proposal + Deposit Invoice",
         status: "template-ready",
-        description: "Select website build, Web Helper care, SEO/AEO/GEO, lead funnel, content, and reporting services.",
-        requiredArtifacts: ["service-plan.md", "scope-rules.md", "billing-plan.md"],
-        automations: ["create service missions", "set approval thresholds", "flag upsell paths"]
+        description: "Send the project proposal and deposit invoice after the discovery discussion.",
+        requiredArtifacts: ["Proposal sent", "Deposit invoice sent", "Build scope"],
+        automations: ["flag unsent proposal", "remind on stale invoice"]
       },
       {
-        id: "tool-linking",
-        name: "Tool Linking",
-        status: "needs-integration",
-        description: "Attach GitHub repos, deployments, APIs, analytics, GEO profile, and agent permissions.",
-        requiredArtifacts: ["repo-access.md", "website-stack.md", "api-connections.md"],
-        automations: ["link repo", "link Vercel project", "map GEO profile"]
+        id: "agreement-returned",
+        name: "Agreement Returned",
+        status: "template-ready",
+        description: "Track the signed project agreement before paid production work starts.",
+        requiredArtifacts: ["Signed agreement", "Approval contact", "Payment expectation"],
+        automations: ["escalate unsigned agreement", "prepare deposit follow-up"]
       },
       {
-        id: "launch-handoff",
-        name: "Web Helper Handoff",
+        id: "deposit-build-queue",
+        name: "Deposit Paid / Build Queue",
         status: "template-ready",
-        description: "After completion payment, activate the client Web Helper and move the site into maintenance.",
-        requiredArtifacts: ["launch-checklist.md", "update-history.md", "handoff-summary.md"],
-        automations: ["activate Web Helper", "create maintenance queue", "start monthly reporting"]
+        description: "Once the deposit is paid, move the client into the website build queue for initial draft production.",
+        requiredArtifacts: ["Deposit paid", "Initial draft notes", "Build queue status"],
+        automations: ["move to deposit paid", "queue initial draft"]
       }
     ],
     actions: [
-      "Build client profile form and save output to client memory.",
-      "Create a service selection checklist tied to active packages.",
-      "Connect GitHub repo and deployment per client site.",
-      "Map each onboarded client to geo.ghostai.solutions when available.",
-      "Create approval rules before any agent can deploy changes."
+      "Add new leads from phone or Facebook Messenger.",
+      "Send project proposal and deposit invoice.",
+      "Track agreement returned and deposit paid.",
+      "Move deposit-paid clients into the website build queue."
     ]
   };
 }
@@ -2923,6 +2934,8 @@ function normalizeClient(client) {
         ? null
         : normalizeBoolean(client.finalDomainPurchased),
     clientDetailsPending: normalizeBoolean(client.clientDetailsPending),
+    proposalSent: normalizeBoolean(client.proposalSent),
+    depositInvoiceSent: normalizeBoolean(client.depositInvoiceSent),
     proposalSigned: normalizeBoolean(client.proposalSigned),
     partnershipSigned: normalizeBoolean(client.partnershipSigned),
     depositPaid: normalizeBoolean(client.depositPaid),
@@ -2954,7 +2967,19 @@ function buildClientRecord(input) {
   }
 
   if (!normalized.services.length) {
-    normalized.services = ["website-build", "web-helper-care"];
+    normalized.services = normalized.stage === "lead" ? ["website-build"] : ["website-build", "web-helper-care"];
+  }
+
+  if (normalized.depositPaid) {
+    normalized.proposalSent = true;
+    normalized.depositInvoiceSent = true;
+    normalized.proposalSigned = true;
+    if (normalized.stage === "lead") {
+      normalized.stage = "deposit-paid";
+      normalized.status = "deposit-paid";
+    }
+  } else if (normalized.proposalSigned || normalized.depositInvoiceSent) {
+    normalized.proposalSent = true;
   }
 
   return normalized;
@@ -3009,6 +3034,8 @@ function mergeClientRecords(existing, incoming) {
         })(),
     finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
     clientDetailsPending: pickBoolean("clientDetailsPending"),
+    proposalSent: pickBoolean("proposalSent"),
+    depositInvoiceSent: pickBoolean("depositInvoiceSent"),
     proposalSigned: pickBoolean("proposalSigned"),
     partnershipSigned: pickBoolean("partnershipSigned"),
     depositPaid: pickBoolean("depositPaid"),
@@ -3092,11 +3119,11 @@ function getClientDerivedActions(client) {
 }
 
 function summarizeClients(clients) {
-  const activeBuildStages = ["lead", "deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"];
+  const intakeStages = ["lead", "deposit-paid"];
   const careStages = ["web-helper-care", "growth-services"];
   return {
     clientCount: clients.length,
-    onboardingCount: clients.filter((client) => activeBuildStages.includes(client.stage)).length,
+    onboardingCount: clients.filter((client) => intakeStages.includes(client.stage)).length,
     liveCount: clients.filter((client) => careStages.includes(client.stage)).length,
     websiteBuildCount: clients.filter((client) => client.stage === "website-build").length,
     searchClients: clients.filter((client) =>
@@ -3314,13 +3341,41 @@ function getClientActivationChecklist(client, connections) {
   };
 }
 
+function getLeadDeskAction(client) {
+  if (client.depositPaid || client.stage === "deposit-paid") {
+    return "Move into website build queue for the initial draft.";
+  }
+
+  if (client.proposalSigned) {
+    return "Follow up on deposit payment.";
+  }
+
+  if (client.proposalSent || client.depositInvoiceSent) {
+    return "Follow up for signed project agreement.";
+  }
+
+  return "Send project proposal and deposit invoice.";
+}
+
+function getLeadDeskOpenTaskCount(client) {
+  const required = [
+    Boolean(client.contact || client.businessEmail || client.businessPhone),
+    Boolean(client.notes),
+    Boolean(client.proposalSent || client.proposalSigned || client.depositPaid),
+    Boolean(client.depositInvoiceSent || client.depositPaid),
+    Boolean(client.proposalSigned || client.depositPaid),
+    Boolean(client.depositPaid || client.stage === "deposit-paid")
+  ];
+  return required.filter((complete) => !complete).length;
+}
+
 function buildOnboardingActivation(clients) {
-  const onboardingStages = ["lead", "deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"];
+  const onboardingStages = ["lead", "deposit-paid"];
   const activeClients = clients.filter((client) => onboardingStages.includes(client.stage));
 
   const queue = activeClients.map((client) => {
     const connections = getClientActivationConnections(client);
-    const activation = getClientActivationChecklist(client, connections);
+    const openTaskCount = getLeadDeskOpenTaskCount(client);
     return {
       id: client.id,
       clientName: client.clientName,
@@ -3331,37 +3386,38 @@ function buildOnboardingActivation(clients) {
       plannedServices: client.plannedServices,
       contact: client.contact,
       notes: client.notes,
+      proposalSent: client.proposalSent,
+      depositInvoiceSent: client.depositInvoiceSent,
       proposalSigned: client.proposalSigned,
       partnershipSigned: client.partnershipSigned,
       depositPaid: client.depositPaid,
       finalPaymentPaid: client.finalPaymentPaid,
       businessEmail: client.businessEmail,
       businessPhone: client.businessPhone,
-      progress: activation.percent,
-      blockerCount: activation.blockers.length,
-      nextAction: activation.nextAction,
-      blockers: activation.blockers,
-      checklist: activation.checklist,
+      progress: Math.max(0, Math.round(((6 - openTaskCount) / 6) * 100)),
+      blockerCount: openTaskCount,
+      nextAction: getLeadDeskAction(client),
+      blockers: [],
+      checklist: [],
       connections
     };
   });
 
-  const allConnections = queue.flatMap((client) => client.connections);
-  const missingConnections = allConnections.filter((connection) =>
-    connection.required && ["missing", "access-needed"].includes(connection.status)
-  ).length;
+  const openTasks = queue.reduce((total, client) => total + client.blockerCount, 0);
 
   return {
     queue,
     summary: {
       activeClients: queue.length,
       blockedClients: queue.filter((client) => client.blockerCount > 0).length,
-      readyForHandoff: queue.filter((client) => client.stage === "launch-handoff" && client.blockerCount === 0).length,
-      missingConnections
+      proposalsSent: queue.filter((client) => client.proposalSent || client.depositInvoiceSent || client.proposalSigned || client.depositPaid).length,
+      agreementsReturned: queue.filter((client) => client.proposalSigned || client.depositPaid).length,
+      depositPaid: queue.filter((client) => client.depositPaid || client.stage === "deposit-paid").length,
+      openTasks
     },
     actions: queue.length
       ? queue.slice(0, 6).map((client) => `${client.clientName}: ${client.nextAction}`)
-      : ["Create or move a client into onboarding to begin activation tracking."]
+      : ["Add a lead, send the project proposal and deposit invoice, then move paid clients into website build."]
   };
 }
 

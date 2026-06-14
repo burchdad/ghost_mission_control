@@ -107,6 +107,7 @@ const elements = {
   closeClientModalButton: document.getElementById("closeClientModalButton"),
   clientOnboardModal: document.getElementById("clientOnboardModal"),
   clientModalTitle: document.getElementById("clientModalTitle"),
+  clientModalSubtitle: document.getElementById("clientModalSubtitle"),
   clientOnboardForm: document.getElementById("clientOnboardForm"),
   clientEditIdInput: document.getElementById("clientEditIdInput"),
   clientNameInput: document.getElementById("clientNameInput"),
@@ -118,6 +119,8 @@ const elements = {
   clientMobileAppInput: document.getElementById("clientMobileAppInput"),
   clientGoogleBusinessInput: document.getElementById("clientGoogleBusinessInput"),
   clientSocialsInput: document.getElementById("clientSocialsInput"),
+  clientProposalSentInput: document.getElementById("clientProposalSentInput"),
+  clientDepositInvoiceSentInput: document.getElementById("clientDepositInvoiceSentInput"),
   clientProposalInput: document.getElementById("clientProposalInput"),
   clientDepositInput: document.getElementById("clientDepositInput"),
   clientFinalPaymentInput: document.getElementById("clientFinalPaymentInput"),
@@ -256,6 +259,8 @@ const clientPipelineStages = [
   { id: "growth-services", label: "Growth Services" },
   { id: "paused-archived", label: "Paused / Archived" }
 ];
+
+const webClientPipelineStages = clientPipelineStages.filter((stage) => stage.id !== "lead");
 
 const clientServiceDefinitions = {
   "website-build": {
@@ -627,6 +632,8 @@ function getSeededClientProfilesForUi() {
   return seededClientProfiles.map((client) => ({
     finalDomainPurchased: true,
     clientDetailsPending: false,
+    proposalSent: false,
+    depositInvoiceSent: false,
     proposalSigned: false,
     partnershipSigned: false,
     plannedServices: [],
@@ -1502,7 +1509,7 @@ function getViewLabel(view) {
   const labels = {
     "mission-control": "Overview",
     clients: "Web Clients",
-    onboarding: "Onboarding",
+    onboarding: "Leads / Proposals",
     services: "Service Pipelines",
     "web-helpers": "Web Helpers",
     tools: "Tool Registry",
@@ -1540,7 +1547,7 @@ function getPaletteActions() {
   const viewLabels = {
     "mission-control": "Overview",
     clients: "Web Clients",
-    onboarding: "Onboarding",
+    onboarding: "Leads / Proposals",
     services: "Service Pipelines",
     "web-helpers": "Web Helpers",
     tools: "Tool Registry",
@@ -1742,18 +1749,42 @@ function getSelectedClientServiceState() {
   };
 }
 
-function resetClientForm() {
+const clientModalModeDefaults = {
+  client: {
+    title: "New Client",
+    subtitle: "Add the client profile, services, and operating links.",
+    submitLabel: "Create Client",
+    stage: "website-build",
+    services: ["website-build", "web-helper-care"],
+    plannedServices: []
+  },
+  lead: {
+    title: "New Lead / Proposal",
+    subtitle: "Capture the inquiry, proposal email, deposit invoice, agreement status, and first build notes.",
+    submitLabel: "Save Lead",
+    stage: "lead",
+    services: ["website-build"],
+    plannedServices: []
+  }
+};
+
+function getClientModalModeDefaults(mode) {
+  return clientModalModeDefaults[mode] || clientModalModeDefaults.client;
+}
+
+function resetClientForm(mode = "client") {
+  const defaults = getClientModalModeDefaults(mode);
   elements.clientOnboardForm?.reset();
   editingClientId = "";
   setFieldValue(elements.clientEditIdInput, "");
   setFieldChecked(elements.clientFinalDomainInput, true);
   setFieldChecked(elements.clientDetailsPendingInput, false);
   if (elements.clientStageInput) {
-    elements.clientStageInput.value = "website-build";
+    elements.clientStageInput.value = defaults.stage;
   }
-  setClientServicePickerValues(["website-build", "web-helper-care"], []);
+  setClientServicePickerValues(defaults.services, defaults.plannedServices);
   if (elements.clientSubmitButton) {
-    elements.clientSubmitButton.textContent = "Create Client";
+    elements.clientSubmitButton.textContent = defaults.submitLabel;
   }
 }
 
@@ -1773,6 +1804,8 @@ function populateClientForm(client) {
   setFieldValue(elements.clientMobileAppInput, client.mobileAppUrl);
   setFieldValue(elements.clientGoogleBusinessInput, client.googleBusinessUrl);
   setFieldValue(elements.clientSocialsInput, (client.socialUrls || []).join("\n"));
+  setFieldChecked(elements.clientProposalSentInput, client.proposalSent || client.proposalSigned || client.depositPaid);
+  setFieldChecked(elements.clientDepositInvoiceSentInput, client.depositInvoiceSent || client.depositPaid);
   setFieldChecked(elements.clientProposalInput, client.proposalSigned);
   setFieldChecked(elements.clientDepositInput, client.depositPaid);
   setFieldChecked(elements.clientFinalPaymentInput, client.finalPaymentPaid);
@@ -1796,10 +1829,15 @@ function openClientModal(options = {}) {
     return;
   }
 
-  resetClientForm();
+  const mode = options.mode || "client";
+  const defaults = getClientModalModeDefaults(mode);
+  resetClientForm(mode);
   const client = options.client || (options.clientId ? getClientById(options.clientId) : null);
   if (elements.clientModalTitle) {
-    elements.clientModalTitle.textContent = options.title || (client ? "Edit Client" : "New Client");
+    elements.clientModalTitle.textContent = options.title || (client ? "Edit Client" : defaults.title);
+  }
+  if (elements.clientModalSubtitle) {
+    elements.clientModalSubtitle.textContent = options.subtitle || (client ? "Update profile, pipeline stage, service scope, links, and payment checkpoints." : defaults.subtitle);
   }
   if (client) {
     populateClientForm(client);
@@ -1824,6 +1862,9 @@ function closeClientModal() {
   resetClientForm();
   if (elements.clientModalTitle) {
     elements.clientModalTitle.textContent = "New Client";
+  }
+  if (elements.clientModalSubtitle) {
+    elements.clientModalSubtitle.textContent = clientModalModeDefaults.client.subtitle;
   }
 }
 
@@ -2185,30 +2226,30 @@ function getWebHelpersBadgeMeta(helpers) {
 }
 
 function getClientsBadgeMeta(clientsPayload) {
-  const onboardingCount = clientsPayload?.summary?.onboardingCount || 0;
-  if (!onboardingCount) {
-    return { count: 0, text: "", severity: "none", tooltip: "No clients are waiting in onboarding." };
+  const websiteBuildCount = clientsPayload?.summary?.websiteBuildCount || 0;
+  if (!websiteBuildCount) {
+    return { count: 0, text: "", severity: "none", tooltip: "No paid websites are currently in active build." };
   }
 
   return {
-    count: onboardingCount,
-    text: String(onboardingCount),
+    count: websiteBuildCount,
+    text: String(websiteBuildCount),
     severity: "active",
-    tooltip: `${onboardingCount} clients are in onboarding.`
+    tooltip: `${websiteBuildCount} paid website build${websiteBuildCount === 1 ? " is" : "s are"} active.`
   };
 }
 
 function getOnboardingBadgeMeta(onboarding) {
-  const needsIntegration = onboarding?.summary?.needsIntegration || 0;
-  if (!needsIntegration) {
-    return { count: 0, text: "", severity: "none", tooltip: "Client onboarding blueprint is ready." };
+  const activeLeads = onboarding?.summary?.activeClients || 0;
+  if (!activeLeads) {
+    return { count: 0, text: "", severity: "none", tooltip: "No active leads or proposal follow-ups." };
   }
 
   return {
-    count: needsIntegration,
-    text: `${needsIntegration} !`,
-    severity: "warning",
-    tooltip: `${needsIntegration} onboarding stages need integration.`
+    count: activeLeads,
+    text: String(activeLeads),
+    severity: onboarding?.summary?.blockedClients ? "warning" : "active",
+    tooltip: `${activeLeads} lead${activeLeads === 1 ? "" : "s"} in proposal/deposit follow-up.`
   };
 }
 
@@ -4080,6 +4121,8 @@ function mergeClientRecordsForUi(existing, incoming) {
         })(),
     finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
     clientDetailsPending: pickBoolean("clientDetailsPending"),
+    proposalSent: pickBoolean("proposalSent"),
+    depositInvoiceSent: pickBoolean("depositInvoiceSent"),
     proposalSigned: pickBoolean("proposalSigned"),
     partnershipSigned: pickBoolean("partnershipSigned"),
     depositPaid: pickBoolean("depositPaid"),
@@ -4455,7 +4498,7 @@ function renderClientPipeline(clients) {
     return;
   }
 
-  elements.clientPipeline.innerHTML = clientPipelineStages
+  elements.clientPipeline.innerHTML = webClientPipelineStages
     .map((stage) => {
       const stageClients = clients.filter((client) => getClientStage(client) === stage.id);
       const cards = stageClients.length
@@ -4694,7 +4737,9 @@ function closeClientDetail() {
 
 function renderClients(payload) {
   const activePayload = payload?.clients?.length ? mergeClientPayloadWithSeed(payload) : buildClientPayloadFallback();
-  const summary = activePayload.summary;
+  const clients = activePayload.clients || [];
+  const webClients = clients.filter((client) => getClientStage(client) !== "lead");
+  const summary = summarizeClientsForUi(webClients);
 
   renderOpsSummary(elements.clientSummary, [
     { label: "Clients", value: summary.clientCount },
@@ -4704,11 +4749,10 @@ function renderClients(payload) {
     { label: "Connection Gaps", value: summary.connectionGaps }
   ]);
 
-  const clients = activePayload.clients || [];
-  const filteredClients = getFilteredClients(clients);
+  const filteredClients = getFilteredClients(webClients);
   renderClientPipeline(filteredClients);
 
-  elements.clientCards.innerHTML = clients.length
+  elements.clientCards.innerHTML = webClients.length
     ? filteredClients.length
       ? `<div class="client-board-note">
           <div>
@@ -4722,11 +4766,11 @@ function renderClients(payload) {
         <p>Adjust search, stage, or issue filters to bring clients back into view.</p>
       </article>`
     : `<article class="ops-card">
-        <h3>No clients onboarded yet</h3>
-        <p>Create the first client record to connect services, tools, agents, approvals, and maintenance scope.</p>
+        <h3>No paid web clients yet</h3>
+        <p>Move a lead to deposit paid once the agreement is back and the deposit is paid.</p>
       </article>`;
 
-  const clientActions = clients.flatMap((client) =>
+  const clientActions = webClients.flatMap((client) =>
     (client.actions || []).slice(0, 3).map((action) => `${client.clientName}: ${action}`)
   );
   renderOpsActions(elements.clientActions, clientActions.length ? clientActions : activePayload.actions || [], "Client actions will appear here.");
@@ -4749,6 +4793,8 @@ function buildClientSavePayloadFromRecord(client, overrides = {}) {
     mobileAppUrl: client.mobileAppUrl || "",
     googleBusinessUrl: client.googleBusinessUrl || "",
     socialUrls: client.socialUrls || [],
+    proposalSent: Boolean(client.proposalSent),
+    depositInvoiceSent: Boolean(client.depositInvoiceSent),
     proposalSigned: Boolean(client.proposalSigned),
     depositPaid: Boolean(client.depositPaid),
     finalPaymentPaid: Boolean(client.finalPaymentPaid),
@@ -4782,6 +4828,7 @@ async function saveClientRecord(payload) {
 
   liveClients = mergeClientPayloadWithSeed(result);
   renderClients(liveClients);
+  loadOnboarding();
   renderBuildQueue(getActiveSite() || getEmptySiteState());
   if (activeView === "web-helpers") {
     loadWebHelpers("");
@@ -4862,6 +4909,8 @@ async function submitClientOnboarding(event) {
       .split(/\r?\n/)
       .map((url) => url.trim())
       .filter(Boolean),
+    proposalSent: Boolean(elements.clientProposalSentInput?.checked),
+    depositInvoiceSent: Boolean(elements.clientDepositInvoiceSentInput?.checked),
     proposalSigned: Boolean(elements.clientProposalInput?.checked),
     depositPaid: Boolean(elements.clientDepositInput?.checked),
     finalPaymentPaid: Boolean(elements.clientFinalPaymentInput?.checked),
@@ -4879,6 +4928,19 @@ async function submitClientOnboarding(event) {
   if (!payload.clientName.trim()) {
     elements.clientFormResponse.textContent = "Client name is required.";
     return;
+  }
+
+  if (payload.depositPaid) {
+    payload.proposalSent = true;
+    payload.depositInvoiceSent = true;
+    payload.proposalSigned = true;
+    if (payload.stage === "lead") {
+      payload.stage = "deposit-paid";
+    }
+  } else if (payload.proposalSigned) {
+    payload.proposalSent = true;
+  } else if (payload.depositInvoiceSent) {
+    payload.proposalSent = true;
   }
 
   const isEditing = Boolean(payload.id);
@@ -4932,21 +4994,22 @@ function applyOnboardingSkips(client) {
     const skipped = isOnboardingSkipped(client.id, connection.id);
     return skipped ? { ...connection, status: "skipped", skipped: true, required: false } : connection;
   });
-  const blockers = connections.filter((connection) =>
-    connection.required && ["missing", "access-needed"].includes(connection.status)
+  const tasks = buildOnboardingTasks({ ...client, connections });
+  const requiredTasks = tasks.filter((task) => task.required && task.status !== "skipped");
+  const readyRequired = requiredTasks.filter((task) =>
+    ["complete", "ready", "active"].includes(task.status)
   );
-  const requiredConnections = connections.filter((connection) => connection.required);
-  const readyRequired = requiredConnections.filter((connection) =>
-    ["connected", "active", "planned"].includes(connection.status)
+  const blockers = requiredTasks.filter((task) =>
+    ["missing", "access-needed", "blocked"].includes(task.status)
   );
-  const progress = requiredConnections.length ? Math.round((readyRequired.length / requiredConnections.length) * 100) : 100;
+  const progress = requiredTasks.length ? Math.round((readyRequired.length / requiredTasks.length) * 100) : 100;
 
   return {
     ...client,
     progress,
     blockerCount: blockers.length,
     blockers,
-    nextAction: blockers[0] ? `Connect ${blockers[0].label}.` : "No required blockers.",
+    nextAction: blockers[0] ? blockers[0].title : getLeadDeskNextAction(client),
     connections
   };
 }
@@ -4962,43 +5025,40 @@ function renderConnectionStatus(connection, clientId) {
 }
 
 const onboardingBuckets = [
-  { id: "agreements", label: "Agreements" },
-  { id: "contacts", label: "Contacts" },
-  { id: "business", label: "Business Info" },
-  { id: "access", label: "Access" },
-  { id: "channels", label: "Socials" },
-  { id: "ads", label: "Ads" },
-  { id: "kickoff", label: "Kickoff" }
+  { id: "intake", label: "Lead Intake" },
+  { id: "proposal", label: "Proposal + Invoice" },
+  { id: "agreement", label: "Agreement" },
+  { id: "deposit", label: "Deposit / Build Queue" }
 ];
 
 const fallbackOnboardingStages = [
   {
-    name: "Client Intake",
+    name: "Lead Intake",
     status: "ready",
-    description: "Create the client record, choose services, and capture the first contact path.",
-    requiredArtifacts: ["Client record", "Primary contact", "Service selection"],
-    automations: ["Create onboarding board", "Prepare access checklist"]
+    description: "Capture the inquiry source, phone or messenger notes, contact method, and basic business fit.",
+    requiredArtifacts: ["Lead record", "Primary contact", "Discovery notes"],
+    automations: ["Create lead record", "Queue proposal follow-up"]
   },
   {
-    name: "Agreement + Payment",
+    name: "Proposal + Deposit Invoice",
     status: "ready",
-    description: "Confirm proposal, partnership agreement, deposit, final payment rules, and billing notes.",
-    requiredArtifacts: ["Proposal agreement", "Partnership agreement", "Payment status"],
-    automations: ["Flag unsigned docs", "Escalate payment blockers"]
+    description: "Email the website project proposal and deposit invoice after the call or messenger conversation.",
+    requiredArtifacts: ["Proposal sent", "Deposit invoice sent", "Build scope"],
+    automations: ["Flag unsent proposal", "Remind on stale invoice"]
   },
   {
-    name: "Access + Channels",
+    name: "Agreement Returned",
     status: "ready",
-    description: "Collect website, repo, deployment, Google Business, social, ads, analytics, and reporting access.",
-    requiredArtifacts: ["Website admin", "GitHub", "Vercel", "Google Business", "Socials"],
-    automations: ["Detect missing links", "Queue secure access requests"]
+    description: "Track signed proposal agreement before the website build enters paid production work.",
+    requiredArtifacts: ["Signed agreement", "Approval contact", "Payment expectation"],
+    automations: ["Escalate unsigned agreement", "Prepare deposit follow-up"]
   },
   {
-    name: "Kickoff + Handoff",
+    name: "Deposit Paid / Build Queue",
     status: "ready",
-    description: "Lock launch notes, approval rules, client preferences, and Web Helper handoff details.",
-    requiredArtifacts: ["Kickoff notes", "Approval rules", "Internal handoff"],
-    automations: ["Generate launch checklist", "Prepare Web Helper scope"]
+    description: "Once deposit is paid, move the client into the web build queue for initial draft production.",
+    requiredArtifacts: ["Deposit paid", "Initial draft notes", "Build queue status"],
+    automations: ["Move to deposit paid", "Queue initial draft"]
   }
 ];
 
@@ -5010,7 +5070,7 @@ const fallbackServiceCatalog = [
     category: "Launch",
     owner: "Build Operator",
     description: "Discovery, design, build, review, final payment, launch, and handoff into maintenance.",
-    connectedSystems: ["Clients", "Onboarding", "Build Queue", "GitHub", "Vercel"],
+    connectedSystems: ["Clients", "Lead Desk", "Build Queue", "GitHub", "Vercel"],
     triggers: ["Initial deposit paid", "New build approved", "Client revision received"],
     nextActions: ["Create client profile", "Link repo and deployment", "Define launch checklist"]
   },
@@ -5143,46 +5203,89 @@ function makeOnboardingTask(client, bucket, title, status, detail, options = {})
   };
 }
 
+const leadDeskColumns = [
+  { id: "new-lead", label: "New Lead", helper: "Inquiry captured, proposal not sent." },
+  { id: "proposal-sent", label: "Proposal / Invoice Sent", helper: "Waiting on agreement response." },
+  { id: "agreement-returned", label: "Agreement Returned", helper: "Waiting on deposit payment." },
+  { id: "deposit-paid", label: "Deposit Paid / Build Queue", helper: "Ready for the initial website draft." }
+];
+
+function getLeadDeskColumnId(client) {
+  if (client.depositPaid || getClientStage(client) === "deposit-paid") {
+    return "deposit-paid";
+  }
+
+  if (client.proposalSigned) {
+    return "agreement-returned";
+  }
+
+  if (client.proposalSent || client.depositInvoiceSent) {
+    return "proposal-sent";
+  }
+
+  return "new-lead";
+}
+
+function getLeadDeskNextAction(client) {
+  const column = getLeadDeskColumnId(client);
+  if (column === "new-lead") {
+    return "Send project proposal and deposit invoice.";
+  }
+  if (column === "proposal-sent") {
+    return "Follow up for signed agreement.";
+  }
+  if (column === "agreement-returned") {
+    return "Follow up on deposit payment.";
+  }
+  return "Move into website build queue.";
+}
+
+function renderLeadDeskPipeline(queue) {
+  return `<div class="lead-desk-flow">
+    ${leadDeskColumns.map((column) => {
+      const clients = queue.filter((client) => getLeadDeskColumnId(client) === column.id);
+      return `<section class="onboarding-column">
+        <div class="onboarding-column-head">
+          <div>
+            <h3>${escapeHtml(column.label)}</h3>
+            <p>${escapeHtml(column.helper)}</p>
+          </div>
+          <span>${clients.length}</span>
+        </div>
+        ${clients.length ? clients.map((client) => `<article class="onboarding-client-card lead-card" data-client-detail="${escapeHtml(client.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(client.clientName)} details">
+          <div class="onboarding-client-head">
+            <div>
+              <h3>${escapeHtml(client.clientName)}</h3>
+              <p>${escapeHtml(client.businessEmail || client.businessPhone || client.contact || "Contact pending")}</p>
+            </div>
+            <span class="pill ${client.depositPaid ? "tone-green" : client.proposalSigned ? "tone-blue" : "tone-yellow"}">${escapeHtml(getClientStageLabel(client.stage))}</span>
+          </div>
+          <p>${escapeHtml(client.nextAction || getLeadDeskNextAction(client))}</p>
+        </article>`).join("") : `<div class="pipeline-empty">No leads</div>`}
+      </section>`;
+    }).join("")}
+  </div>`;
+}
+
 function buildOnboardingTasks(client) {
   const contact = client.contact || "";
   const businessEmail = client.businessEmail || "";
   const businessPhone = client.businessPhone || "";
-  const website = getConnectionByLabel(client, "Website");
-  const github = getConnectionByLabel(client, "GitHub");
-  const vercel = getConnectionByLabel(client, "Vercel");
-  const railway = getConnectionByLabel(client, "Railway");
-  const googleBusiness = getConnectionByLabel(client, "Google Business");
-  const facebook = getConnectionByLabel(client, "Facebook");
-  const instagram = getConnectionByLabel(client, "Instagram");
-  const linkedin = getConnectionByLabel(client, "LinkedIn");
-  const tiktok = getConnectionByLabel(client, "TikTok");
-  const youtube = getConnectionByLabel(client, "YouTube");
-  const ads = getConnectionByLabel(client, "Ads");
-  const analytics = getConnectionByLabel(client, "Analytics");
+  const hasContactMethod = hasEmail(contact) || hasPhone(contact) || hasEmail(businessEmail) || hasPhone(businessPhone);
+  const proposalSent = client.proposalSent || client.proposalSigned || client.depositPaid;
+  const depositInvoiceSent = client.depositInvoiceSent || client.depositPaid;
+  const proposalSigned = client.proposalSigned || client.depositPaid;
+  const depositPaid = client.depositPaid || getClientStage(client) === "deposit-paid";
 
   return [
-    makeOnboardingTask(client, "agreements", "Proposal agreement", client.proposalSigned ? "complete" : "missing", "Signed proposal or scope agreement.", { required: true }),
-    makeOnboardingTask(client, "agreements", "Partnership agreement", client.partnershipSigned ? "complete" : "missing", "Signed care, posting, ads, or services agreement.", { required: true }),
-    makeOnboardingTask(client, "agreements", "Payment status", client.depositPaid || client.finalPaymentPaid || ["deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"].includes(client.stage) ? "complete" : "missing", "Deposit, final payment, or billing terms."),
-    makeOnboardingTask(client, "contacts", "Primary contact", contact ? "complete" : "missing", contact || "Name, role, and best contact method.", { required: true }),
-    makeOnboardingTask(client, "contacts", "Email address", hasEmail(contact) || hasEmail(businessEmail) ? "complete" : "missing", businessEmail || "Client email for approvals and notices.", { required: true }),
-    makeOnboardingTask(client, "contacts", "Phone number", hasPhone(contact) || hasPhone(businessPhone) ? "complete" : "missing", businessPhone || "Client phone for urgent launch or account access issues."),
-    makeOnboardingTask(client, "business", "Business profile", client.notes ? "in-progress" : "missing", "Business facts, service area, offer, audience, and brand voice.", { required: true }),
-    makeOnboardingTask(client, "business", "Google Business", googleBusiness?.status || "missing", googleBusiness?.url || "Google Business Profile access or URL."),
-    makeOnboardingTask(client, "access", "Website admin", website?.status || "missing", website?.url || "Website/admin access.", { required: true }),
-    makeOnboardingTask(client, "access", "GitHub repo", github?.status || "missing", github?.url || "Repo access for build and care.", { required: true }),
-    makeOnboardingTask(client, "access", "Vercel project", vercel?.status || "missing", vercel?.url || "Deployment/project access.", { required: true }),
-    makeOnboardingTask(client, "access", "Railway backend", railway?.status || "not-needed", railway?.url || "Backend access if part of this client scope."),
-    makeOnboardingTask(client, "channels", "Facebook page", facebook?.status || "not-included", facebook?.url || "Facebook page access for posting."),
-    makeOnboardingTask(client, "channels", "Instagram profile", instagram?.status || "not-included", instagram?.url || "Instagram access for posting."),
-    makeOnboardingTask(client, "channels", "LinkedIn page", linkedin?.status || "not-included", linkedin?.url || "LinkedIn access if included."),
-    makeOnboardingTask(client, "channels", "TikTok account", tiktok?.status || "not-included", tiktok?.url || "TikTok access if included."),
-    makeOnboardingTask(client, "channels", "YouTube channel", youtube?.status || "not-included", youtube?.url || "YouTube access if included."),
-    makeOnboardingTask(client, "ads", "Ad account", ads?.status || "not-included", ads?.note || "Ad account access, billing, and permissions."),
-    makeOnboardingTask(client, "ads", "Tracking / pixel", analytics?.status || "missing", analytics?.url || "Analytics, conversion tracking, or pixel setup."),
-    makeOnboardingTask(client, "kickoff", "Kickoff notes", client.notes ? "complete" : "missing", client.notes || "Kickoff summary, priorities, deadlines, and approvals.", { required: true }),
-    makeOnboardingTask(client, "kickoff", "Approval rules", "missing", "Who approves posts, site changes, ads, and launch handoff.", { required: true }),
-    makeOnboardingTask(client, "kickoff", "Internal handoff", client.stage === "launch-handoff" ? "ready" : "planned", "Move into Web Helper care and monthly operating rhythm.")
+    makeOnboardingTask(client, "intake", "Discovery call / message thread", client.notes ? "complete" : "missing", client.notes || "Capture what they asked for over phone or Facebook Messenger.", { required: true }),
+    makeOnboardingTask(client, "intake", "Primary contact", contact ? "complete" : "missing", contact || "Name, role, and best contact method.", { required: true }),
+    makeOnboardingTask(client, "intake", "Email or phone", hasContactMethod ? "complete" : "missing", businessEmail || businessPhone || "At least one contact path is needed before sending proposal.", { required: true }),
+    makeOnboardingTask(client, "proposal", "Project proposal sent", proposalSent ? "complete" : "missing", "Email the website project proposal after the discussion.", { required: true }),
+    makeOnboardingTask(client, "proposal", "Deposit invoice sent", depositInvoiceSent ? "complete" : "missing", "Send the deposit invoice with the proposal email.", { required: true }),
+    makeOnboardingTask(client, "agreement", "Signed project agreement", proposalSigned ? "complete" : "missing", "Client replied with agreement to the proposal terms.", { required: true }),
+    makeOnboardingTask(client, "deposit", "Deposit paid", depositPaid ? "complete" : "missing", "Deposit must be paid before initial draft work begins.", { required: true }),
+    makeOnboardingTask(client, "deposit", "Initial draft queue", depositPaid ? "ready" : "planned", depositPaid ? "Move this client into the website build queue." : "Waiting for deposit before build queue.", { required: true })
   ];
 }
 
@@ -5223,7 +5326,7 @@ function taskMatchesOnboardingFilters(task, filters) {
 }
 
 function clientMatchesOnboardingFilters(client, filters, clientTasks) {
-  const haystack = `${client.clientName} ${client.stageLabel} ${client.plan} ${client.nextAction} ${(client.blockers || []).map((blocker) => blocker.label).join(" ")}`.toLowerCase();
+  const haystack = `${client.clientName} ${client.stageLabel} ${client.plan} ${client.nextAction} ${(client.blockers || []).map((blocker) => blocker.label || blocker.title).join(" ")}`.toLowerCase();
   return !filters.query || haystack.includes(filters.query) || clientTasks.some((task) => taskMatchesOnboardingFilters(task, filters));
 }
 
@@ -5241,23 +5344,30 @@ function renderOnboarding(payload) {
   const summary = payload?.summary || {
     activeClients: 0,
     blockedClients: 0,
-    readyForHandoff: 0,
-    missingConnections: 0
+    proposalsSent: 0,
+    agreementsReturned: 0,
+    depositPaid: 0,
+    openTasks: 0
   };
   renderOpsSummary(elements.onboardingSummary, [
-    { label: "Active Onboarding", value: summary.activeClients || 0 },
-    { label: "Blocked Clients", value: summary.blockedClients || 0 },
-    { label: "Ready Handoff", value: summary.readyForHandoff || 0 },
-    { label: "Missing Connections", value: summary.missingConnections || 0 },
+    { label: "Active Leads", value: summary.activeClients || 0 },
+    { label: "Proposals Sent", value: summary.proposalsSent || 0 },
+    { label: "Agreements Back", value: summary.agreementsReturned || 0 },
+    { label: "Deposits Paid", value: summary.depositPaid || 0 },
     { label: "Skipped Items", value: getSkippedOnboardingCount(onboardingTasks) }
   ]);
 
   const boardEmptyCopy = rawQueue.length
     ? "No matching items for the current filters."
-    : "Start onboarding to generate agreement, contact, access, social, ads, and kickoff cards.";
+    : "Add the next lead to track proposal, invoice, agreement, and deposit follow-up.";
   elements.onboardingQueue.innerHTML = `<div class="onboarding-section-title">
-      <h3>Onboarding Requirements Board</h3>
-      <p>Track agreements, contacts, access, socials, ads, kickoff details, and skippable client-specific services.</p>
+      <h3>Lead Flow</h3>
+      <p>Move prospects from first contact to proposal sent, agreement returned, and deposit paid before the website build starts.</p>
+    </div>
+    ${renderLeadDeskPipeline(queue)}
+    <div class="onboarding-section-title">
+      <h3>Lead Requirements Board</h3>
+      <p>Track contact info, proposal email, deposit invoice, signed agreement, and build-queue readiness.</p>
     </div>
     ${visibleTasks.length ? "" : `<article class="onboarding-empty-state">
       <h3>No active requirement cards</h3>
@@ -5279,16 +5389,7 @@ function renderOnboarding(payload) {
       }).join("")}
     </div>`;
 
-  const connectionClients = queue.slice(0, 8);
-  elements.onboardingConnections.innerHTML = connectionClients.length
-    ? `<div class="onboarding-section-title"><h3>Connection Status</h3><p>Website, dev, search, socials, ads, analytics, reporting, and Web Helper readiness.</p></div>
-      <div class="connection-matrix">
-        ${connectionClients.map((client) => `<article class="connection-client">
-          <h3>${escapeHtml(client.clientName)}</h3>
-          <div>${(client.connections || []).map((connection) => renderConnectionStatus(connection, client.id)).join("")}</div>
-        </article>`).join("")}
-      </div>`
-    : "";
+  elements.onboardingConnections.innerHTML = "";
 
   const stages = payload?.stages?.length ? payload.stages : fallbackOnboardingStages;
   elements.onboardingStages.innerHTML = stages.length
@@ -5297,7 +5398,7 @@ function renderOnboarding(payload) {
           <span>Standard Blueprint</span>
           <strong>${stages.length} phases</strong>
         </summary>
-        <p>The reusable onboarding path every client passes before ongoing operations.</p>
+        <p>The reusable lead-to-build path before the paid website project enters production.</p>
         <div class="onboarding-blueprint-grid">
           ${stages.map((stage) => `<article class="ops-card">
             <div class="ops-card-head">
@@ -5310,20 +5411,20 @@ function renderOnboarding(payload) {
           </article>`).join("")}
         </div>
       </details>`
-    : `<article class="ops-card"><h3>No onboarding blueprint</h3><p>Onboarding stages will appear when the backend is available.</p></article>`;
+    : `<article class="ops-card"><h3>No lead blueprint</h3><p>Lead stages will appear when the backend is available.</p></article>`;
 
   const fallbackActions = rawQueue.length
     ? [
-        `${summary.missingConnections || 0} required onboarding connections need attention.`,
-        "Work missing agreement, contact, access, and kickoff cards before launch handoff.",
-        "Skip any optional service card the client did not purchase."
+        `${summary.openTasks || visibleTasks.filter((task) => ["missing", "blocked", "access-needed"].includes(task.status)).length} lead/proposal tasks need attention.`,
+        "Follow up on proposal, deposit invoice, agreement, or deposit blockers before moving into build.",
+        "Move deposit-paid clients into Website Build when initial draft work begins."
       ]
     : [
-        "Start onboarding for the next client.",
-        "Collect agreement, contact, access, socials, ads, and kickoff details.",
-        "Skip optional service cards that are outside the client scope."
+        "Add the next lead from phone or Facebook Messenger.",
+        "Send the project proposal and deposit invoice.",
+        "Move the client to Deposit Paid once agreement and deposit are complete."
       ];
-  renderOpsActions(elements.onboardingActions, payload?.activation?.actions || payload?.actions || fallbackActions, "Onboarding actions will appear here.");
+  renderOpsActions(elements.onboardingActions, payload?.activation?.actions || payload?.actions || fallbackActions, "Lead actions will appear here.");
   updateNavBadges();
 }
 
@@ -6448,7 +6549,7 @@ async function init() {
   }
 
   elements.openClientModalButton?.addEventListener("click", () => openClientModal());
-  elements.startOnboardingButton?.addEventListener("click", () => openClientModal({ title: "Start Onboarding", stage: "lead" }));
+  elements.startOnboardingButton?.addEventListener("click", () => openClientModal({ mode: "lead", stage: "lead" }));
   elements.closeClientModalButton?.addEventListener("click", closeClientModal);
   elements.closeAgentBuildModalButton?.addEventListener("click", closeAgentBuildModal);
   elements.copyAgentBuildPromptButton?.addEventListener("click", copyAgentBuildPrompt);
@@ -6630,11 +6731,28 @@ async function init() {
   });
   elements.onboardingPanel?.addEventListener("click", (event) => {
     const skipButton = event.target.closest("[data-onboarding-skip-client][data-onboarding-skip-item]");
-    if (!skipButton) {
+    if (skipButton) {
+      toggleOnboardingSkip(skipButton.dataset.onboardingSkipClient, skipButton.dataset.onboardingSkipItem);
       return;
     }
 
-    toggleOnboardingSkip(skipButton.dataset.onboardingSkipClient, skipButton.dataset.onboardingSkipItem);
+    const detailTarget = event.target.closest("[data-client-detail]");
+    if (detailTarget) {
+      openClientDetail(detailTarget.dataset.clientDetail);
+    }
+  });
+  elements.onboardingPanel?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const detailTarget = event.target.closest("[data-client-detail]");
+    if (!detailTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    openClientDetail(detailTarget.dataset.clientDetail);
   });
 
   setInterval(async () => {

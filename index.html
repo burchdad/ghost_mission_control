@@ -22,11 +22,11 @@
           <p class="nav-title">Ghost Ops</p>
           <button class="nav-item active" type="button" data-view="mission-control">Overview</button>
           <p class="nav-group-label">Client Ops</p>
+          <button class="nav-item" type="button" data-view="onboarding">
+            <span>Leads / Proposals</span><span id="navBadgeOnboarding" class="nav-badge"></span>
+          </button>
           <button class="nav-item" type="button" data-view="clients">
             <span>Web Clients</span><span id="navBadgeClients" class="nav-badge"></span>
-          </button>
-          <button class="nav-item" type="button" data-view="onboarding">
-            <span>Onboarding</span><span id="navBadgeOnboarding" class="nav-badge"></span>
           </button>
           <button class="nav-item" type="button" data-view="services">
             <span>Service Pipelines</span><span id="navBadgeServices" class="nav-badge"></span>
@@ -109,7 +109,7 @@
             <div class="panel-header client-pipeline-header">
               <div>
                 <h2>Web Client Pipeline</h2>
-                <p>Move website clients from deposit and build through launch, Web Helper care, GEO growth, and long-term operations.</p>
+                <p>Move paid website projects from build queue through draft review, final payment, launch handoff, Web Helper care, and growth services.</p>
               </div>
               <button id="openClientModalButton" class="new-client-button" type="button">New Client</button>
             </div>
@@ -118,7 +118,6 @@
               <input id="clientSearchInput" class="client-search-input" type="search" placeholder="Search web clients, services, links..." aria-label="Search web clients" />
               <select id="clientStageFilter" class="client-filter-select" aria-label="Filter clients by stage">
                 <option value="all">All stages</option>
-                <option value="lead">Lead / Prospect</option>
                 <option value="deposit-paid">Deposit Paid</option>
                 <option value="website-build">Website Build</option>
                 <option value="client-review">Client Review</option>
@@ -144,32 +143,31 @@
             <div id="clientCards" class="ops-card-grid"></div>
           </section>
 
-          <section class="module-panel view-panel" id="onboardingPanel" aria-label="Client onboarding">
+          <section class="module-panel view-panel" id="onboardingPanel" aria-label="Leads and proposals">
             <div class="panel-header client-pipeline-header">
               <div>
-                <h2>Client Onboarding</h2>
-                <p>Collect agreements, contacts, access, socials, business info, approvals, and launch handoff details.</p>
+                <h2>Leads / Proposal Desk</h2>
+                <p>Track new inquiries, proposal emails, deposit invoices, signed agreements, and paid deposits before a website enters the build pipeline.</p>
               </div>
-              <button id="startOnboardingButton" class="new-client-button" type="button">Start Onboarding</button>
+              <button id="startOnboardingButton" class="new-client-button" type="button">New Lead</button>
             </div>
             <div id="onboardingSummary" class="ops-summary"></div>
             <div class="filter-row onboarding-filter-row">
-              <input id="onboardingSearchInput" type="search" placeholder="Search onboarding clients, tasks, blockers..." aria-label="Search onboarding" />
+              <input id="onboardingSearchInput" type="search" placeholder="Search leads, proposal tasks, deposit blockers..." aria-label="Search leads and proposals" />
               <select id="onboardingBucketFilter" aria-label="Filter onboarding bucket">
-                <option value="all">All requirements</option>
-                <option value="agreements">Agreements</option>
-                <option value="contacts">Contacts</option>
-                <option value="business">Business info</option>
-                <option value="access">Access</option>
-                <option value="channels">Socials</option>
-                <option value="ads">Ads</option>
-                <option value="kickoff">Kickoff</option>
+                <option value="all">All lead tasks</option>
+                <option value="intake">Lead intake</option>
+                <option value="proposal">Proposal + invoice</option>
+                <option value="agreement">Agreement</option>
+                <option value="deposit">Deposit / build queue</option>
               </select>
               <select id="onboardingStatusFilter" aria-label="Filter onboarding status">
                 <option value="all">All statuses</option>
                 <option value="missing">Missing</option>
                 <option value="blocked">Blocked</option>
                 <option value="access-needed">Access needed</option>
+                <option value="planned">Planned</option>
+                <option value="ready">Ready</option>
                 <option value="in-progress">In progress</option>
                 <option value="complete">Complete</option>
                 <option value="skipped">Skipped</option>
@@ -284,9 +282,9 @@
             <div id="clientActions" class="ops-side-list"></div>
           </section>
 
-          <section class="module-panel view-panel" id="onboardingActionsPanel" aria-label="Onboarding actions">
+          <section class="module-panel view-panel" id="onboardingActionsPanel" aria-label="Lead actions">
             <div class="panel-header compact">
-              <h2>Onboarding Actions</h2>
+              <h2>Lead Actions</h2>
             </div>
             <div id="onboardingActions" class="ops-side-list"></div>
           </section>
@@ -437,7 +435,7 @@
         <div class="panel-header compact client-modal-header">
           <div>
             <h2 id="clientModalTitle">New Client</h2>
-            <p>Add the client profile, services, and operating links.</p>
+            <p id="clientModalSubtitle">Add the client profile, services, and operating links.</p>
           </div>
           <button id="closeClientModalButton" class="icon-button" type="button" aria-label="Close new client modal">X</button>
         </div>
@@ -490,6 +488,14 @@
             <textarea id="clientSocialsInput" name="socialUrls" rows="3" placeholder="One Facebook, Instagram, LinkedIn, TikTok, or YouTube URL per line"></textarea>
           </label>
           <div class="client-form-checks">
+            <label>
+              <input id="clientProposalSentInput" name="proposalSent" type="checkbox" />
+              <span>Proposal sent</span>
+            </label>
+            <label>
+              <input id="clientDepositInvoiceSentInput" name="depositInvoiceSent" type="checkbox" />
+              <span>Deposit invoice sent</span>
+            </label>
             <label>
               <input id="clientProposalInput" name="proposalSigned" type="checkbox" />
               <span>Proposal signed</span>
