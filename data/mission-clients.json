@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-14T02:47:27.081Z",
+  "savedAt": "2026-06-14T02:47:39.394Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -154,6 +154,50 @@
       ],
       "createdAt": "2026-06-14T02:47:26.895Z",
       "updatedAt": "2026-06-14T02:47:26.895Z",
+      "source": "runtime"
+    },
+    {
+      "id": "bougie-and-company",
+      "clientName": "ProCoat Concrete Coatings",
+      "websiteUrl": "https://etxprocoat.com",
+      "repo": "https://github.com/burchdad/procrete_coatings",
+      "githubUrl": "https://github.com/burchdad/procrete_coatings",
+      "railwayUrl": "",
+      "vercelUrl": "https://vercel.com/burchdads-projects/procrete-coatings",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [
+        "https://www.facebook.com/profile.php?id=100091145066104"
+      ],
+      "finalDomainPurchased": false,
+      "clientDetailsPending": true,
+      "proposalSigned": true,
+      "partnershipSigned": false,
+      "depositPaid": true,
+      "finalPaymentPaid": false,
+      "businessEmail": "steven.procoat@gmail.com",
+      "businessPhone": "903-480-8443",
+      "plan": "Launch + Care",
+      "contact": "Steven Bell",
+      "notes": "",
+      "stage": "website-build",
+      "status": "website-build",
+      "services": [
+        "website-build",
+        "web-helper-care"
+      ],
+      "plannedServices": [
+        "search-intelligence",
+        "local-service",
+        "content-social",
+        "paid-ads",
+        "ai-automation",
+        "reporting"
+      ],
+      "createdAt": "2026-06-14T02:47:39.203Z",
+      "updatedAt": "2026-06-14T02:47:39.203Z",
       "source": "runtime"
     }
   ]
