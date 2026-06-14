@@ -36,10 +36,19 @@ const WEB_HELPER_ACTIVATIONS_PATH = String(
 const RUNTIME_CLIENTS_PATH = String(
   process.env.RUNTIME_CLIENTS_PATH || path.join(ROOT, ".ghost-runtime-clients.json")
 ).trim();
+const CLIENT_STORE_REPO = String(process.env.CLIENT_STORE_REPO || `${GITHUB_OWNER}/ghost_mission_control`).trim();
+const CLIENT_STORE_FILE = String(process.env.CLIENT_STORE_FILE || "data/mission-clients.json").trim();
+const CLIENT_STORE_BRANCH = String(process.env.CLIENT_STORE_BRANCH || "main").trim();
+const CLIENT_STORE_GITHUB_SYNC = String(process.env.CLIENT_STORE_GITHUB_SYNC || "true").toLowerCase() !== "false";
+const CLIENT_STORE_CACHE_TTL_MS = Number(process.env.CLIENT_STORE_CACHE_TTL_MS || 30000);
 const WEB_HELPER_AUTO_ACTIVATE = String(process.env.WEB_HELPER_AUTO_ACTIVATE || "true").toLowerCase() !== "false";
 const WEB_HELPER_HANDOFF_STAGE = "launch-handoff";
 const runtimeClients = [];
 let runtimeClientsHydrated = false;
+let runtimeClientsRepoSyncedAt = 0;
+let runtimeClientsRepoSyncPending = null;
+let runtimeClientsRepoLastError = "";
+let runtimeClientsRepoLastPersistAt = 0;
 
 const CLIENT_PIPELINE_STAGES = [
   { id: "lead", label: "Lead / Prospect" },
@@ -988,30 +997,67 @@ function persistWebHelperActivations() {
   }
 }
 
+function getClientStoreLocalPath() {
+  const candidate = path.resolve(ROOT, CLIENT_STORE_FILE || "data/mission-clients.json");
+  return candidate.startsWith(ROOT) ? candidate : path.join(ROOT, "data", "mission-clients.json");
+}
+
+function parseClientStorePayload(raw) {
+  if (!raw) {
+    return [];
+  }
+
+  const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return Array.isArray(parsed?.clients) ? parsed.clients : Array.isArray(parsed) ? parsed : [];
+}
+
+function upsertRuntimeClient(client) {
+  const normalized = normalizeClient({
+    ...client,
+    source: "runtime"
+  });
+  if (!normalized) {
+    return null;
+  }
+
+  const existingIndex = runtimeClients.findIndex((entry) => entry.id === normalized.id);
+  if (existingIndex >= 0) {
+    runtimeClients[existingIndex] = {
+      ...runtimeClients[existingIndex],
+      ...normalized,
+      source: "runtime"
+    };
+    return runtimeClients[existingIndex];
+  }
+
+  runtimeClients.push({
+    ...normalized,
+    source: "runtime"
+  });
+  return runtimeClients[runtimeClients.length - 1];
+}
+
+function hydrateRuntimeClientsFromFile(filePath, label) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return;
+    }
+
+    const raw = fs.readFileSync(filePath, "utf8");
+    parseClientStorePayload(raw).forEach(upsertRuntimeClient);
+  } catch (error) {
+    console.warn(`Unable to hydrate ${label} clients: ${String(error?.message || error)}`);
+  }
+}
+
 function hydrateRuntimeClients() {
   if (runtimeClientsHydrated) {
     return;
   }
 
   runtimeClientsHydrated = true;
-
-  try {
-    if (!RUNTIME_CLIENTS_PATH || !fs.existsSync(RUNTIME_CLIENTS_PATH)) {
-      return;
-    }
-
-    const raw = fs.readFileSync(RUNTIME_CLIENTS_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    const clients = Array.isArray(parsed?.clients) ? parsed.clients : Array.isArray(parsed) ? parsed : [];
-    clients.map(normalizeClient).filter(Boolean).forEach((client) => {
-      runtimeClients.push({
-        ...client,
-        source: "runtime"
-      });
-    });
-  } catch (error) {
-    console.warn(`Unable to hydrate runtime clients: ${String(error?.message || error)}`);
-  }
+  hydrateRuntimeClientsFromFile(getClientStoreLocalPath(), "repo store");
+  hydrateRuntimeClientsFromFile(RUNTIME_CLIENTS_PATH, "runtime cache");
 }
 
 function persistRuntimeClients() {
@@ -1033,6 +1079,168 @@ function persistRuntimeClients() {
   } catch (error) {
     console.warn(`Unable to persist runtime clients: ${String(error?.message || error)}`);
   }
+}
+
+function getClientStorePayload() {
+  return {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    storage: "ghost-mission-control-repo",
+    clients: runtimeClients
+  };
+}
+
+function encodeGitHubPath(filePath) {
+  return String(filePath || "")
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+function decodeGitHubContent(content) {
+  return Buffer.from(String(content || "").replace(/\n/g, ""), "base64").toString("utf8");
+}
+
+async function fetchClientStoreFromGitHub() {
+  if (!CLIENT_STORE_GITHUB_SYNC || !CLIENT_STORE_REPO || !CLIENT_STORE_FILE) {
+    return { ok: false, skipped: true, reason: "GitHub client store is disabled." };
+  }
+
+  const [owner, repo] = CLIENT_STORE_REPO.split("/");
+  if (!owner || !repo) {
+    return { ok: false, skipped: true, reason: "CLIENT_STORE_REPO must be owner/repo." };
+  }
+
+  const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodeGitHubPath(CLIENT_STORE_FILE)}?ref=${encodeURIComponent(CLIENT_STORE_BRANCH)}`;
+  const response = await fetch(url, {
+    method: "GET",
+    headers: getGitHubApiHeaders("client-store")
+  });
+
+  if (response.status === 404) {
+    return { ok: true, clients: [], missing: true };
+  }
+
+  if (!response.ok) {
+    throw new Error(`GitHub client store read failed (${response.status})`);
+  }
+
+  const payload = await response.json();
+  const clients = parseClientStorePayload(decodeGitHubContent(payload.content));
+  clients.forEach(upsertRuntimeClient);
+  return {
+    ok: true,
+    clients,
+    sha: payload.sha || "",
+    path: payload.path || CLIENT_STORE_FILE
+  };
+}
+
+async function syncRuntimeClientsFromGitHubStore(forceRefresh = false) {
+  hydrateRuntimeClients();
+
+  if (!CLIENT_STORE_GITHUB_SYNC) {
+    return { ok: false, skipped: true, reason: "GitHub client store is disabled." };
+  }
+
+  const now = Date.now();
+  if (!forceRefresh && runtimeClientsRepoSyncedAt && now - runtimeClientsRepoSyncedAt < CLIENT_STORE_CACHE_TTL_MS) {
+    return { ok: true, cached: true };
+  }
+
+  if (runtimeClientsRepoSyncPending) {
+    return runtimeClientsRepoSyncPending;
+  }
+
+  runtimeClientsRepoSyncPending = fetchClientStoreFromGitHub()
+    .then((result) => {
+      runtimeClientsRepoSyncedAt = Date.now();
+      runtimeClientsRepoLastError = "";
+      persistRuntimeClients();
+      return result;
+    })
+    .catch((error) => {
+      runtimeClientsRepoLastError = String(error?.message || error);
+      return { ok: false, error: runtimeClientsRepoLastError };
+    })
+    .finally(() => {
+      runtimeClientsRepoSyncPending = null;
+    });
+
+  return runtimeClientsRepoSyncPending;
+}
+
+async function persistRuntimeClientsToGitHubStore() {
+  if (!CLIENT_STORE_GITHUB_SYNC) {
+    return { ok: false, skipped: true, reason: "GitHub client store is disabled." };
+  }
+
+  if (!GITHUB_TOKEN) {
+    return { ok: false, skipped: true, reason: "GITHUB_TOKEN is required to write the Mission Control client store." };
+  }
+
+  const [owner, repo] = CLIENT_STORE_REPO.split("/");
+  if (!owner || !repo) {
+    return { ok: false, skipped: true, reason: "CLIENT_STORE_REPO must be owner/repo." };
+  }
+
+  const encodedPath = encodeGitHubPath(CLIENT_STORE_FILE);
+  const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}`;
+  let sha = "";
+
+  const existingResponse = await fetch(`${url}?ref=${encodeURIComponent(CLIENT_STORE_BRANCH)}`, {
+    method: "GET",
+    headers: getGitHubApiHeaders("client-store")
+  });
+
+  if (existingResponse.ok) {
+    const existingPayload = await existingResponse.json();
+    sha = existingPayload.sha || "";
+  } else if (existingResponse.status !== 404) {
+    throw new Error(`GitHub client store lookup failed (${existingResponse.status})`);
+  }
+
+  const content = JSON.stringify(getClientStorePayload(), null, 2);
+  const writeResponse = await fetch(url, {
+    method: "PUT",
+    headers: {
+      ...getGitHubApiHeaders("client-store"),
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      message: "Update Mission Control client store",
+      content: Buffer.from(content, "utf8").toString("base64"),
+      branch: CLIENT_STORE_BRANCH,
+      ...(sha ? { sha } : {})
+    })
+  });
+
+  if (!writeResponse.ok) {
+    throw new Error(`GitHub client store write failed (${writeResponse.status})`);
+  }
+
+  runtimeClientsRepoLastPersistAt = Date.now();
+  runtimeClientsRepoSyncedAt = Date.now();
+  runtimeClientsRepoLastError = "";
+  return { ok: true, path: CLIENT_STORE_FILE, repo: CLIENT_STORE_REPO };
+}
+
+function getClientStorageStatus(lastWrite = null) {
+  return {
+    runtimeCachePath: RUNTIME_CLIENTS_PATH,
+    repoStore: {
+      enabled: CLIENT_STORE_GITHUB_SYNC,
+      repo: CLIENT_STORE_REPO,
+      file: CLIENT_STORE_FILE,
+      branch: CLIENT_STORE_BRANCH,
+      tokenConfigured: Boolean(GITHUB_TOKEN),
+      lastSyncedAt: toIsoOrNull(runtimeClientsRepoSyncedAt),
+      lastPersistedAt: toIsoOrNull(runtimeClientsRepoLastPersistAt),
+      lastError: runtimeClientsRepoLastError || null,
+      lastWrite
+    }
+  };
 }
 
 function normalizeGithubRepoFullName(value) {
@@ -2275,7 +2483,7 @@ function normalizeClient(client) {
     status: stage,
     services,
     createdAt: client.createdAt || now,
-    updatedAt: now,
+    updatedAt: client.updatedAt || now,
     source: client.source || "configured"
   };
 }
@@ -5384,29 +5592,39 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/clients") {
-    const clients = getAllClients();
-    sendJson(request, response, 200, {
-      generatedAt: new Date().toISOString(),
-      summary: summarizeClients(clients),
-      pipelineStages: CLIENT_PIPELINE_STAGES,
-      clients: clients.map((client) => ({
-        ...client,
-        actions: getClientDerivedActions(client)
-      })),
-      actions: [
-        "Onboard one real client and connect website, repo, plan, and services.",
-        "Attach Web Helper care after completion payment.",
-        "Map SEO/AEO/GEO clients to geo.ghostai.solutions.",
-        "Define approval and monthly scope rules per client."
-      ]
-    });
+    syncRuntimeClientsFromGitHubStore(url.searchParams.get("refresh") === "true")
+      .then((storageRead) => {
+        const clients = getAllClients();
+        sendJson(request, response, 200, {
+          generatedAt: new Date().toISOString(),
+          summary: summarizeClients(clients),
+          pipelineStages: CLIENT_PIPELINE_STAGES,
+          clients: clients.map((client) => ({
+            ...client,
+            actions: getClientDerivedActions(client)
+          })),
+          storage: getClientStorageStatus(storageRead),
+          actions: [
+            "Onboard one real client and connect website, repo, plan, and services.",
+            "Attach Web Helper care after completion payment.",
+            "Map SEO/AEO/GEO clients to geo.ghostai.solutions.",
+            "Define approval and monthly scope rules per client."
+          ]
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to load clients",
+          detail: String(error?.message || error)
+        });
+      });
     return;
   }
 
   if (request.method === "POST" && url.pathname === "/mission/clients") {
     readJsonBody(request)
-      .then((payload) => {
-        hydrateRuntimeClients();
+      .then(async (payload) => {
+        await syncRuntimeClientsFromGitHubStore(true);
         const client = buildClientRecord(payload);
         if (!client) {
           sendJson(request, response, 400, { error: "Client name is required" });
@@ -5424,12 +5642,20 @@ const server = http.createServer((request, response) => {
           runtimeClients.push(client);
         }
         persistRuntimeClients();
+        let storageWrite = null;
+        try {
+          storageWrite = await persistRuntimeClientsToGitHubStore();
+        } catch (error) {
+          runtimeClientsRepoLastError = String(error?.message || error);
+          storageWrite = { ok: false, error: runtimeClientsRepoLastError };
+        }
 
         const clients = getAllClients();
         sendJson(request, response, 201, {
           created: client,
           summary: summarizeClients(clients),
           pipelineStages: CLIENT_PIPELINE_STAGES,
+          storage: getClientStorageStatus(storageWrite),
           clients: clients.map((entry) => ({
             ...entry,
             actions: getClientDerivedActions(entry)

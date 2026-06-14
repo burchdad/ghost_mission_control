@@ -4599,6 +4599,24 @@ async function saveClientRecord(payload) {
   return result;
 }
 
+function getClientStorageMessage(result) {
+  const write = result?.storage?.repoStore?.lastWrite;
+  if (!write) {
+    return "";
+  }
+
+  if (write.ok) {
+    return " Saved to Mission Control repo store.";
+  }
+
+  return ` Saved locally, but repo store did not update: ${write.error || write.reason || "check GITHUB_TOKEN permissions"}.`;
+}
+
+function didClientRepoStoreFail(result) {
+  const write = result?.storage?.repoStore?.lastWrite;
+  return Boolean(write && !write.ok);
+}
+
 async function updateClientStage(clientId, stageId) {
   const client = getClientById(clientId);
   if (!client || getClientStage(client) === stageId) {
@@ -4612,7 +4630,10 @@ async function updateClientStage(clientId, stageId) {
 
   const payload = buildClientSavePayloadFromRecord(client, { stage: stageId });
   try {
-    await saveClientRecord(payload);
+    const result = await saveClientRecord(payload);
+    if (didClientRepoStoreFail(result)) {
+      renderOpsActions(elements.clientActions, [`${client.clientName}:${getClientStorageMessage(result)}`], "Client actions will appear here.");
+    }
   } catch (error) {
     renderOpsActions(elements.clientActions, [`${client.clientName}: ${String(error.message || error)}`], "Client actions will appear here.");
   }
@@ -4662,8 +4683,10 @@ async function submitClientOnboarding(event) {
 
   try {
     const result = await saveClientRecord(payload);
-    elements.clientFormResponse.textContent = `${isEditing ? "Saved" : "Created"} ${result.created.clientName}.`;
-    closeClientModal();
+    elements.clientFormResponse.textContent = `${isEditing ? "Saved" : "Created"} ${result.created.clientName}.${getClientStorageMessage(result)}`;
+    if (!didClientRepoStoreFail(result)) {
+      closeClientModal();
+    }
   } catch (error) {
     elements.clientFormResponse.textContent = String(error.message || error);
   }
