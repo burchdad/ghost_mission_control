@@ -1184,6 +1184,7 @@ async function ensureClientStoreTable() {
         ads_status text NOT NULL DEFAULT '',
         social_urls jsonb NOT NULL DEFAULT '[]'::jsonb,
         services jsonb NOT NULL DEFAULT '[]'::jsonb,
+        planned_services jsonb NOT NULL DEFAULT '[]'::jsonb,
         final_domain_purchased boolean,
         client_details_pending boolean NOT NULL DEFAULT false,
         proposal_signed boolean NOT NULL DEFAULT false,
@@ -1199,6 +1200,7 @@ async function ensureClientStoreTable() {
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
       );
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS planned_services jsonb NOT NULL DEFAULT '[]'::jsonb;
       CREATE INDEX IF NOT EXISTS mission_clients_updated_at_idx ON mission_clients (updated_at DESC);
     `)
     .then(() => {
@@ -1265,6 +1267,7 @@ function dbRowToClient(row) {
     adsStatus: row.ads_status,
     socialUrls: parsePostgresJsonList(row.social_urls),
     services: parsePostgresJsonList(row.services),
+    plannedServices: parsePostgresJsonList(row.planned_services),
     finalDomainPurchased: row.final_domain_purchased,
     clientDetailsPending: row.client_details_pending,
     proposalSigned: row.proposal_signed,
@@ -1307,6 +1310,7 @@ function clientToPostgresValues(client) {
     normalized.adsStatus,
     JSON.stringify(normalized.socialUrls || []),
     JSON.stringify(normalized.services || []),
+    JSON.stringify(normalized.plannedServices || []),
     normalized.finalDomainPurchased,
     Boolean(normalized.clientDetailsPending),
     Boolean(normalized.proposalSigned),
@@ -1353,6 +1357,7 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         ads_status,
         social_urls,
         services,
+        planned_services,
         final_domain_purchased,
         client_details_pending,
         proposal_signed,
@@ -1369,8 +1374,8 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         updated_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13::jsonb, $14::jsonb, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27::timestamptz, $28::timestamptz
+        $11, $12, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20,
+        $21, $22, $23, $24, $25, $26, $27, $28::timestamptz, $29::timestamptz
       )
       ON CONFLICT (id) DO UPDATE SET
         client_name = EXCLUDED.client_name,
@@ -1386,6 +1391,7 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         ads_status = EXCLUDED.ads_status,
         social_urls = EXCLUDED.social_urls,
         services = EXCLUDED.services,
+        planned_services = EXCLUDED.planned_services,
         final_domain_purchased = EXCLUDED.final_domain_purchased,
         client_details_pending = EXCLUDED.client_details_pending,
         proposal_signed = EXCLUDED.proposal_signed,
@@ -1997,7 +2003,7 @@ function inferBuildKnowledge(client, blueprint) {
 
 function getClientProfileGaps(client) {
   const gaps = [];
-  const services = client.services || [];
+  const services = uniq([...(client.services || []), ...(client.plannedServices || [])]);
   const needsSearch = services.includes("search-intelligence") || services.includes("local-service");
   const needsSocial = services.includes("content-social");
   if (!client.websiteUrl) {
@@ -2055,6 +2061,7 @@ function buildWebHelperMemoryDocuments(client, knowledge, activationMeta) {
       `Stage: ${client.stage || "unknown"}`,
       `Plan: ${client.plan || "Launch + Care"}`,
       `Services: ${(client.services || []).join(", ") || "not mapped"}`,
+      `Planned services: ${(client.plannedServices || []).join(", ") || "none"}`,
       "",
       "## Connections",
       ...connectionLines,
@@ -2297,6 +2304,7 @@ async function buildWebHelperKnowledgePack(client, options = {}) {
       stage: client.stage,
       plan: client.plan,
       services: client.services || [],
+      plannedServices: client.plannedServices || [],
       websiteUrl: client.websiteUrl,
       repo: repoFullName || client.repo || "",
       githubUrl: client.githubUrl || (repoFullName ? `https://github.com/${repoFullName}` : ""),
@@ -2887,7 +2895,11 @@ function normalizeClient(client) {
   }
 
   const id = client.id || slugify(clientName);
-  const services = normalizeServiceList(client.services || client.activeServices);
+  const services = uniq(normalizeServiceList(client.services || client.activeServices));
+  const activeServiceSet = new Set(services);
+  const plannedServices = uniq(
+    normalizeServiceList(client.plannedServices || client.planned_services || client.queuedServices || client.nextServices)
+  ).filter((service) => !activeServiceSet.has(service));
   const websiteUrl = getClientWebsiteUrl(client.websiteUrl || client.website || client.rootUrl);
   const repo = String(client.repo || client.githubRepo || "").trim();
   const stage = normalizeClientStage(client.stage || client.pipelineStage || client.status);
@@ -2923,6 +2935,7 @@ function normalizeClient(client) {
     stage,
     status: stage,
     services,
+    plannedServices,
     createdAt: client.createdAt || now,
     updatedAt: client.updatedAt || now,
     source: client.source || "configured"
@@ -2988,6 +3001,12 @@ function mergeClientRecords(existing, incoming) {
     adsStatus: pick("adsStatus"),
     socialUrls: isRuntimeOverride ? incoming.socialUrls || [] : uniq([...(existing.socialUrls || []), ...(incoming.socialUrls || [])]),
     services: isRuntimeOverride ? incoming.services || [] : uniq([...(existing.services || []), ...(incoming.services || [])]),
+    plannedServices: isRuntimeOverride
+      ? incoming.plannedServices || []
+      : (() => {
+          const activeServices = new Set([...(existing.services || []), ...(incoming.services || [])]);
+          return uniq([...(existing.plannedServices || []), ...(incoming.plannedServices || [])]).filter((service) => !activeServices.has(service));
+        })(),
     finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
     clientDetailsPending: pickBoolean("clientDetailsPending"),
     proposalSigned: pickBoolean("proposalSigned"),
@@ -3032,7 +3051,7 @@ function getAllClients() {
 
 function getClientDerivedActions(client) {
   const actions = [];
-  const services = client.services || [];
+  const services = uniq([...(client.services || []), ...(client.plannedServices || [])]);
   const needsSearch = services.includes("search-intelligence") || services.includes("local-service");
   const needsSocial = services.includes("content-social");
   if (!client.websiteUrl) {
@@ -3081,7 +3100,8 @@ function summarizeClients(clients) {
     liveCount: clients.filter((client) => careStages.includes(client.stage)).length,
     websiteBuildCount: clients.filter((client) => client.stage === "website-build").length,
     searchClients: clients.filter((client) =>
-      client.services.includes("search-intelligence") || client.services.includes("local-service")
+      uniq([...(client.services || []), ...(client.plannedServices || [])]).includes("search-intelligence") ||
+      uniq([...(client.services || []), ...(client.plannedServices || [])]).includes("local-service")
     ).length,
     repoLinked: clients.filter((client) => Boolean(client.repo)).length,
     connectedCount: clients.filter((client) => client.websiteUrl && client.repo && client.vercelUrl).length,
@@ -3128,7 +3148,8 @@ function connectionStatus(label, status, options = {}) {
 }
 
 function getClientActivationConnections(client) {
-  const services = client.services || [];
+  const activeServices = client.services || [];
+  const services = uniq([...activeServices, ...(client.plannedServices || [])]);
   const socials = socialPlatformMap(client.socialUrls);
   const needsSearch = services.includes("search-intelligence");
   const needsSocial = services.includes("content-social");
@@ -3197,7 +3218,7 @@ function getClientActivationConnections(client) {
     }),
     connectionStatus(
       "Web Helper",
-      services.includes("web-helper-care") && ["web-helper-care", "growth-services"].includes(client.stage)
+      activeServices.includes("web-helper-care") && ["web-helper-care", "growth-services"].includes(client.stage)
         ? "active"
         : services.includes("web-helper-care")
           ? "planned"
@@ -3210,6 +3231,10 @@ function getClientActivationConnections(client) {
 }
 
 function getClientActivationChecklist(client, connections) {
+  const activeServices = client.services || [];
+  const plannedServices = client.plannedServices || [];
+  const serviceIntent = uniq([...activeServices, ...plannedServices]);
+  const plannedOnly = (serviceKey) => plannedServices.includes(serviceKey) && !activeServices.includes(serviceKey);
   const requiredConnections = connections.filter((connection) => connection.required);
   const connectedRequired = requiredConnections.filter((connection) =>
     ["connected", "active", "planned"].includes(connection.status)
@@ -3223,18 +3248,58 @@ function getClientActivationChecklist(client, connections) {
 
   const checklist = [
     { label: "Client profile", status: client.contact ? "complete" : "missing" },
-    { label: "Service map", status: client.services?.length ? "complete" : "missing" },
+    { label: "Service map", status: serviceIntent.length ? "complete" : "missing" },
     { label: "Website build setup", status: client.websiteUrl && client.repo && client.vercelUrl ? "complete" : "blocked" },
     {
       label: "Search/GEO setup",
-      status: client.services?.some((service) => ["search-intelligence", "local-service"].includes(service))
-        ? (client.googleBusinessUrl ? "in-progress" : "blocked")
+      status: serviceIntent.some((service) => ["search-intelligence", "local-service"].includes(service))
+        ? plannedOnly("search-intelligence") || plannedOnly("local-service")
+          ? "planned"
+          : client.googleBusinessUrl
+            ? "in-progress"
+            : "blocked"
         : "not-included"
     },
-    { label: "Social posting setup", status: client.services?.includes("content-social") ? (client.socialUrls?.length ? "in-progress" : "blocked") : "not-included" },
-    { label: "Ads setup", status: client.services?.includes("lead-funnel") ? (client.adsStatus ? "in-progress" : "blocked") : "not-included" },
-    { label: "Reporting setup", status: client.services?.includes("reporting") ? (client.analyticsUrl ? "in-progress" : "blocked") : "not-included" },
-    { label: "Web Helper activation", status: client.services?.includes("web-helper-care") ? (["web-helper-care", "growth-services"].includes(client.stage) ? "active" : "ready") : "not-included" }
+    {
+      label: "Social posting setup",
+      status: serviceIntent.includes("content-social")
+        ? plannedOnly("content-social")
+          ? "planned"
+          : client.socialUrls?.length
+            ? "in-progress"
+            : "blocked"
+        : "not-included"
+    },
+    {
+      label: "Ads setup",
+      status: serviceIntent.includes("lead-funnel") || serviceIntent.includes("paid-ads")
+        ? plannedOnly("lead-funnel") || plannedOnly("paid-ads")
+          ? "planned"
+          : client.adsStatus
+            ? "in-progress"
+            : "blocked"
+        : "not-included"
+    },
+    {
+      label: "Reporting setup",
+      status: serviceIntent.includes("reporting")
+        ? plannedOnly("reporting")
+          ? "planned"
+          : client.analyticsUrl
+            ? "in-progress"
+            : "blocked"
+        : "not-included"
+    },
+    {
+      label: "Web Helper activation",
+      status: activeServices.includes("web-helper-care")
+        ? ["web-helper-care", "growth-services"].includes(client.stage)
+          ? "active"
+          : "ready"
+        : plannedServices.includes("web-helper-care")
+          ? "planned"
+          : "not-included"
+    }
   ];
 
   return {
@@ -3263,6 +3328,7 @@ function buildOnboardingActivation(clients) {
       stageLabel: CLIENT_PIPELINE_STAGES.find((stage) => stage.id === client.stage)?.label || client.stage,
       plan: client.plan,
       services: client.services,
+      plannedServices: client.plannedServices,
       contact: client.contact,
       notes: client.notes,
       proposalSigned: client.proposalSigned,
@@ -3394,7 +3460,8 @@ const liveDeploymentMap = {
     canonicalRepo: "anna_air",
     repoAliases: ["anna-air"],
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care", "local-service"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["local-service"],
     finalDomainPurchased: true
   },
   "barbara-consulting": {
@@ -3407,7 +3474,8 @@ const liveDeploymentMap = {
     canonicalRepo: "barbara_consulting",
     repoAliases: ["barbara-consulting", "barbara_consulting_2"],
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
     finalDomainPurchased: true
   },
   "design-and-renovation": {
@@ -3418,7 +3486,8 @@ const liveDeploymentMap = {
     canonicalRepo: "design-and-renovation",
     repoAliases: ["design_and_renovation"],
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
     finalDomainPurchased: true
   },
   "ghost-alpha-terminal": {
@@ -3429,7 +3498,8 @@ const liveDeploymentMap = {
     clientName: "Alpha Ghost",
     canonicalRepo: "ghost-alpha-terminal",
     stage: "growth-services",
-    services: ["website-build", "web-helper-care", "software-tool", "search-intelligence"],
+    services: ["website-build", "web-helper-care", "software-tool"],
+    plannedServices: ["search-intelligence"],
     finalDomainPurchased: true,
     notes: "Stock market intelligence and trading bot property."
   },
@@ -3466,7 +3536,8 @@ const liveDeploymentMap = {
     clientName: "Stephen Burch",
     canonicalRepo: "i-need-to-make-a-quick",
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
     finalDomainPurchased: true,
     notes: "Personal digital business card."
   },
@@ -3477,7 +3548,8 @@ const liveDeploymentMap = {
     clientName: "Keisha Law",
     canonicalRepo: "keisha-law",
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
     finalDomainPurchased: false,
     notes: "Website is launched and ready for SEO/monthly maintenance contract review."
   },
@@ -3502,7 +3574,8 @@ const liveDeploymentMap = {
     clientName: "Bougie and Company",
     canonicalRepo: "bougie_and_company",
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care", "ecommerce", "search-intelligence"],
+    services: ["website-build", "web-helper-care", "ecommerce"],
+    plannedServices: ["search-intelligence"],
     finalDomainPurchased: true,
     socialUrls: [
       "https://www.facebook.com/people/Bougie-Company/61585356908803/",
@@ -3521,7 +3594,8 @@ const liveDeploymentMap = {
     canonicalRepo: "e-commerce_peptides",
     repoAliases: ["peptides-ecommerce"],
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care", "ecommerce", "search-intelligence"],
+    services: ["website-build", "web-helper-care", "ecommerce"],
+    plannedServices: ["search-intelligence"],
     finalDomainPurchased: true
   },
   "price-consulting-site": {
@@ -3534,7 +3608,8 @@ const liveDeploymentMap = {
     canonicalRepo: "price-consulting-site",
     repoAliases: ["price-consulting"],
     stage: "web-helper-care",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
     finalDomainPurchased: false,
     notes: "Website is launched and ready for SEO/monthly maintenance contract review."
   },
@@ -3675,6 +3750,7 @@ function getSeededClientProfiles() {
         repo: `${GITHUB_OWNER}/${deployment.canonicalRepo}`,
         stage: deployment.stage || "web-helper-care",
         services: deployment.services || ["website-build", "web-helper-care"],
+        plannedServices: deployment.plannedServices || [],
         finalDomainPurchased: deployment.finalDomainPurchased,
         clientDetailsPending: deployment.clientDetailsPending,
         partnershipSigned: deployment.partnershipSigned,
@@ -5299,7 +5375,7 @@ function buildWebHelperHandoffDispatchTemplates() {
   const missingDomains = clients.filter((client) => client.finalDomainPurchased === false);
   const missingAuthority = clients.filter((client) =>
     !client.googleBusinessUrl &&
-    (client.services || []).some((service) => ["search-intelligence", "local-service"].includes(service))
+    uniq([...(client.services || []), ...(client.plannedServices || [])]).some((service) => ["search-intelligence", "local-service"].includes(service))
   );
 
   return [

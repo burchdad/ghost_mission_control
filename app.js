@@ -334,6 +334,13 @@ const clientServiceDefinitions = {
     agreement: "Mobile app build contract",
     system: "App build queue + stores",
     pipeline: "mobile-apps"
+  },
+  reporting: {
+    label: "Client Reporting",
+    category: "Reporting",
+    agreement: "Reporting / analytics scope",
+    system: "Mission Control + client reports",
+    pipeline: "web-care"
   }
 };
 
@@ -343,7 +350,7 @@ const servicePipelineDefinitions = [
     label: "Web Helper Care",
     description: "Live site maintenance, approved changes, health checks, and client request handling.",
     system: "Web Helper Agents",
-    serviceKeys: ["web-helper-care"],
+    serviceKeys: ["web-helper-care", "reporting"],
     stages: [
       { id: "handoff", label: "Handoff" },
       { id: "memory", label: "Memory" },
@@ -454,7 +461,8 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/barbara_consulting",
     stage: "web-helper-care",
     plan: "Client website care",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
     contact: "Barbara Consulting",
     source: "client-deployment-map"
   },
@@ -467,7 +475,8 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/e-commerce_peptides",
     stage: "web-helper-care",
     plan: "Client commerce website care",
-    services: ["website-build", "web-helper-care", "ecommerce", "search-intelligence"],
+    services: ["website-build", "web-helper-care", "ecommerce"],
+    plannedServices: ["search-intelligence"],
     source: "client-deployment-map"
   },
   {
@@ -478,7 +487,8 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/Design-and-Renovation",
     stage: "web-helper-care",
     plan: "Client website care",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
     source: "client-deployment-map"
   },
   {
@@ -502,7 +512,8 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/price-consulting-site",
     stage: "web-helper-care",
     plan: "Client website care",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
     finalDomainPurchased: false,
     notes: "Website is launched and ready for SEO/monthly maintenance contract review.",
     source: "client-deployment-map"
@@ -515,7 +526,8 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/i-need-to-make-a-quick",
     stage: "web-helper-care",
     plan: "Personal digital business card",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
     source: "client-deployment-map"
   },
   {
@@ -527,7 +539,8 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/ghost-alpha-terminal",
     stage: "growth-services",
     plan: "Trading intelligence product",
-    services: ["website-build", "web-helper-care", "software-tool", "search-intelligence"],
+    services: ["website-build", "web-helper-care", "software-tool"],
+    plannedServices: ["search-intelligence"],
     source: "client-deployment-map"
   },
   {
@@ -550,7 +563,8 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/keisha-law",
     stage: "web-helper-care",
     plan: "Client website care",
-    services: ["website-build", "web-helper-care", "search-intelligence"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
     notes: "Website is launched and ready for SEO/monthly maintenance contract review.",
     source: "client-deployment-map"
   },
@@ -577,7 +591,8 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/bougie_and_company",
     stage: "web-helper-care",
     plan: "Launch + Care",
-    services: ["website-build", "web-helper-care", "ecommerce", "search-intelligence"],
+    services: ["website-build", "web-helper-care", "ecommerce"],
+    plannedServices: ["search-intelligence"],
     socialUrls: [
       "https://www.facebook.com/people/Bougie-Company/61585356908803/",
       "https://www.instagram.com/bougieandcompanytx/",
@@ -594,7 +609,8 @@ const seededClientProfiles = [
     githubUrl: "https://github.com/burchdad/anna_air",
     stage: "web-helper-care",
     plan: "Client website care",
-    services: ["website-build", "web-helper-care", "local-service"],
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["local-service"],
     source: "client-deployment-map"
   }
 ];
@@ -613,6 +629,7 @@ function getSeededClientProfilesForUi() {
     clientDetailsPending: false,
     proposalSigned: false,
     partnershipSigned: false,
+    plannedServices: [],
     businessEmail: "",
     businessPhone: "",
     socialUrls: [],
@@ -633,7 +650,8 @@ function summarizeClientsForUi(clients) {
     if (["web-helper-care", "growth-services", "paused-archived"].includes(stage)) {
       summary.liveCount += 1;
     }
-    if (client.services?.includes("search-intelligence") || client.services?.includes("local-service")) {
+    const searchServices = [...new Set([...(client.services || []), ...(client.plannedServices || [])])];
+    if (searchServices.includes("search-intelligence") || searchServices.includes("local-service")) {
       summary.searchClients += 1;
     }
     if (client.repo) {
@@ -665,10 +683,8 @@ function getClientFallbackActions(clients) {
       if (client.clientDetailsPending) {
         actions.push(`${client.clientName}: collect final business details and approval notes.`);
       }
-      if (
-        (client.services?.includes("search-intelligence") || client.services?.includes("local-service")) &&
-        !client.googleBusinessUrl
-      ) {
+      const serviceIntent = [...new Set([...(client.services || []), ...(client.plannedServices || [])])];
+      if ((serviceIntent.includes("search-intelligence") || serviceIntent.includes("local-service")) && !client.googleBusinessUrl) {
         actions.push(`${client.clientName}: connect Google Business / GEO authority source.`);
       }
       if (["web-helper-care", "growth-services"].includes(getClientStage(client))) {
@@ -732,7 +748,8 @@ function buildClientOverviewModules(client) {
   const needsDomain = client.finalDomainPurchased === false;
   const needsDetails = Boolean(client.clientDetailsPending);
   const hasWebHelper = client.services?.includes("web-helper-care");
-  const needsGbp = (client.services || []).some((service) => ["search-intelligence", "local-service"].includes(service)) && !client.googleBusinessUrl;
+  const serviceIntent = [...new Set([...(client.services || []), ...(client.plannedServices || [])])];
+  const needsGbp = serviceIntent.some((service) => ["search-intelligence", "local-service"].includes(service)) && !client.googleBusinessUrl;
   const modules = [];
 
   modules.push({
@@ -811,7 +828,7 @@ function buildClientOverviewModules(client) {
         "Google Business": "missing",
         "GEO Eligible": "yes",
         "Search Layer": "planned",
-        "Client Type": client.services?.includes("local-service") ? "local service" : "growth"
+        "Client Type": serviceIntent.includes("local-service") ? "local service" : "growth"
       },
       revenue: {
         influenced: "growth services",
@@ -1675,11 +1692,54 @@ function setMultiSelectValues(select, values = []) {
     return;
   }
 
+  if (!select.options) {
+    return;
+  }
+
   values.forEach((value) => ensureSelectOption(select, value));
   const selectedValues = new Set(values);
   [...select.options].forEach((option) => {
     option.selected = selectedValues.has(option.value);
   });
+}
+
+function getClientServiceChecks(state) {
+  if (!elements.clientServicesInput) {
+    return [];
+  }
+
+  return [...elements.clientServicesInput.querySelectorAll(`input[data-client-service-state="${state}"]`)];
+}
+
+function setClientServicePickerValues(activeServices = [], plannedServices = []) {
+  if (!elements.clientServicesInput) {
+    return;
+  }
+
+  const activeSet = new Set(activeServices);
+  const plannedSet = new Set(plannedServices.filter((service) => !activeSet.has(service)));
+  [...elements.clientServicesInput.querySelectorAll("input[data-client-service]")].forEach((input) => {
+    const service = input.dataset.clientService;
+    input.checked =
+      input.dataset.clientServiceState === "active"
+        ? activeSet.has(service)
+        : plannedSet.has(service);
+  });
+}
+
+function getSelectedClientServiceState() {
+  const active = getClientServiceChecks("active")
+    .filter((input) => input.checked)
+    .map((input) => input.value);
+  const activeSet = new Set(active);
+  const planned = getClientServiceChecks("planned")
+    .filter((input) => input.checked && !activeSet.has(input.value))
+    .map((input) => input.value);
+
+  return {
+    services: [...new Set(active)],
+    plannedServices: [...new Set(planned)]
+  };
 }
 
 function resetClientForm() {
@@ -1691,6 +1751,7 @@ function resetClientForm() {
   if (elements.clientStageInput) {
     elements.clientStageInput.value = "website-build";
   }
+  setClientServicePickerValues(["website-build", "web-helper-care"], []);
   if (elements.clientSubmitButton) {
     elements.clientSubmitButton.textContent = "Create Client";
   }
@@ -1722,7 +1783,7 @@ function populateClientForm(client) {
   setFieldValue(elements.clientBusinessPhoneInput, client.businessPhone);
   ensureSelectOption(elements.clientPlanInput, client.plan);
   setFieldValue(elements.clientPlanInput, client.plan || "Launch + Care");
-  setMultiSelectValues(elements.clientServicesInput, client.services || []);
+  setClientServicePickerValues(client.services || [], client.plannedServices || []);
   setFieldValue(elements.clientContactInput, client.contact);
   setFieldValue(elements.clientNotesInput, client.notes);
   if (elements.clientSubmitButton) {
@@ -4011,6 +4072,12 @@ function mergeClientRecordsForUi(existing, incoming) {
     analyticsUrl: pick("analyticsUrl"),
     socialUrls: isRuntimeOverride ? incoming.socialUrls || [] : [...new Set([...(existing.socialUrls || []), ...(incoming.socialUrls || [])])],
     services: isRuntimeOverride ? incoming.services || [] : [...new Set([...(existing.services || []), ...(incoming.services || [])])],
+    plannedServices: isRuntimeOverride
+      ? incoming.plannedServices || []
+      : (() => {
+          const activeServices = new Set([...(existing.services || []), ...(incoming.services || [])]);
+          return [...new Set([...(existing.plannedServices || []), ...(incoming.plannedServices || [])])].filter((service) => !activeServices.has(service));
+        })(),
     finalDomainPurchased: incoming.finalDomainPurchased ?? existing.finalDomainPurchased,
     clientDetailsPending: pickBoolean("clientDetailsPending"),
     proposalSigned: pickBoolean("proposalSigned"),
@@ -4045,7 +4112,7 @@ function getClientStageLabel(stageId) {
 
 function getClientIssueTags(client) {
   const issues = [];
-  const services = client.services || [];
+  const services = [...new Set([...(client.services || []), ...(client.plannedServices || [])])];
   const needsSearch = services.includes("search-intelligence") || services.includes("local-service");
   const needsSocial = services.includes("content-social");
   if (!client.websiteUrl) {
@@ -4101,6 +4168,7 @@ function getFilteredClients(clients) {
       client.notes,
       ...(client.socialUrls || []),
       ...(client.services || []),
+      ...(client.plannedServices || []),
       ...issueTags.map((issue) => issue.label)
     ]
       .join(" ")
@@ -4206,6 +4274,7 @@ function renderClientModalStats(client) {
 }
 
 function getClientHandoffItems(client) {
+  const serviceIntent = [...new Set([...(client.services || []), ...(client.plannedServices || [])])];
   const items = [
     {
       label: "Client profile",
@@ -4229,8 +4298,8 @@ function getClientHandoffItems(client) {
     },
     {
       label: "Growth layer",
-      status: client.services?.includes("search-intelligence") ? "queued" : "optional",
-      detail: client.services?.includes("search-intelligence")
+      status: serviceIntent.includes("search-intelligence") || serviceIntent.includes("local-service") ? "queued" : "optional",
+      detail: serviceIntent.includes("search-intelligence") || serviceIntent.includes("local-service")
         ? "Map to GEO/search intelligence and authority monitoring."
         : "Not currently included in package."
     }
@@ -4337,6 +4406,11 @@ function getClientServiceAgreementStatus(client, serviceKey) {
   const stage = getClientStage(client);
   const hasBaseAgreement = Boolean(client.proposalSigned || client.depositPaid || !["lead", "deposit-paid"].includes(stage));
   const hasGrowthAgreement = Boolean(client.partnershipSigned || stage === "growth-services");
+  const isPlannedOnly = client.plannedServices?.includes(serviceKey) && !client.services?.includes(serviceKey);
+
+  if (isPlannedOnly) {
+    return "planned setup pending";
+  }
 
   if (serviceKey === "website-build") {
     return hasBaseAgreement ? "build agreement complete" : "proposal agreement needed";
@@ -4380,12 +4454,28 @@ function getAgreementTone(status) {
 }
 
 function getClientServiceBreakdown(client) {
-  return (client.services || []).map((serviceKey) => {
+  const activeServices = [...new Set(client.services || [])].map((serviceKey) => ({
+    serviceKey,
+    serviceState: "active",
+    serviceStateLabel: "Active service"
+  }));
+  const activeSet = new Set(activeServices.map((entry) => entry.serviceKey));
+  const plannedServices = [...new Set(client.plannedServices || [])]
+    .filter((serviceKey) => !activeSet.has(serviceKey))
+    .map((serviceKey) => ({
+      serviceKey,
+      serviceState: "planned",
+      serviceStateLabel: "Planned next"
+    }));
+
+  return [...activeServices, ...plannedServices].map(({ serviceKey, serviceState, serviceStateLabel }) => {
     const definition = getClientServiceDefinition(serviceKey);
     const pipeline = servicePipelineDefinitions.find((entry) => entry.id === definition.pipeline);
     const agreementStatus = getClientServiceAgreementStatus(client, serviceKey);
     return {
       key: serviceKey,
+      serviceState,
+      serviceStateLabel,
       ...definition,
       pipelineLabel: pipeline?.label || titleFromSlug(definition.pipeline || "custom"),
       agreementStatus
@@ -4399,19 +4489,29 @@ function renderClientServiceBreakdown(client) {
     return `<div class="pipeline-empty">No services mapped yet.</div>`;
   }
 
+  const renderGroup = (label, groupServices) =>
+    groupServices.length
+      ? `<div class="client-service-group">
+          <h4>${escapeHtml(label)}</h4>
+          ${groupServices.map((service) => `<article class="client-service-row${service.serviceState === "planned" ? " is-planned" : ""}">
+            <div>
+              <span class="eyebrow">${escapeHtml(service.category)}</span>
+              <h4>${escapeHtml(service.label)}</h4>
+              <p>${escapeHtml(service.agreement)}</p>
+            </div>
+            <div class="client-service-meta">
+              <span class="pill ${service.serviceState === "active" ? "tone-green" : "tone-blue"}">${escapeHtml(service.serviceStateLabel)}</span>
+              <span class="pill ${getAgreementTone(service.agreementStatus)}">${escapeHtml(service.agreementStatus)}</span>
+              <span>${escapeHtml(service.pipelineLabel)}</span>
+              <span>${escapeHtml(service.system)}</span>
+            </div>
+          </article>`).join("")}
+        </div>`
+      : "";
+
   return `<div class="client-service-breakdown">
-    ${services.map((service) => `<article class="client-service-row">
-      <div>
-        <span class="eyebrow">${escapeHtml(service.category)}</span>
-        <h4>${escapeHtml(service.label)}</h4>
-        <p>${escapeHtml(service.agreement)}</p>
-      </div>
-      <div class="client-service-meta">
-        <span class="pill ${getAgreementTone(service.agreementStatus)}">${escapeHtml(service.agreementStatus)}</span>
-        <span>${escapeHtml(service.pipelineLabel)}</span>
-        <span>${escapeHtml(service.system)}</span>
-      </div>
-    </article>`).join("")}
+    ${renderGroup("Active Now", services.filter((service) => service.serviceState === "active"))}
+    ${renderGroup("Planned / Not Implemented", services.filter((service) => service.serviceState === "planned"))}
   </div>`;
 }
 
@@ -4541,11 +4641,7 @@ function renderClients(payload) {
 }
 
 function getSelectedClientServices() {
-  if (!elements.clientServicesInput) {
-    return [];
-  }
-
-  return [...elements.clientServicesInput.selectedOptions].map((option) => option.value);
+  return getSelectedClientServiceState().services;
 }
 
 function buildClientSavePayloadFromRecord(client, overrides = {}) {
@@ -4570,6 +4666,7 @@ function buildClientSavePayloadFromRecord(client, overrides = {}) {
     businessPhone: client.businessPhone || "",
     plan: client.plan || "Launch + Care",
     services: client.services || [],
+    plannedServices: client.plannedServices || [],
     contact: client.contact || "",
     notes: client.notes || "",
     ...overrides
@@ -4681,7 +4778,7 @@ async function submitClientOnboarding(event) {
     businessEmail: elements.clientBusinessEmailInput?.value || "",
     businessPhone: elements.clientBusinessPhoneInput?.value || "",
     plan: elements.clientPlanInput?.value || "",
-    services: getSelectedClientServices(),
+    ...getSelectedClientServiceState(),
     contact: elements.clientContactInput?.value || "",
     notes: elements.clientNotesInput?.value || ""
   };
@@ -5164,7 +5261,7 @@ function renderServices(payload) {
   const contractPending = serviceBreakdown.filter((entry) => /pending/i.test(entry.service.agreementStatus)).length;
   const summary = {
     servicePipelines: servicePipelineDefinitions.length,
-    serviceClients: clients.filter((client) => client.services?.length).length,
+    serviceClients: clients.filter((client) => client.services?.length || client.plannedServices?.length).length,
     mappedServices: serviceBreakdown.length,
     contractPending
   };
@@ -5229,13 +5326,34 @@ function renderServices(payload) {
   updateNavBadges();
 }
 
-function getServicePipelineStatus(client, pipeline, serviceKey) {
+function getServicePipelineStatus(client, pipeline, serviceKey, serviceState = "active") {
   const stage = getClientStage(client);
   const issueTags = getClientIssueTags(client);
   const issues = issueTags.map((issue) => `${issue.id} ${issue.label}`).join(" ").toLowerCase();
   const hasCoreConnectionGap = issueTags.some((issue) =>
     ["missing-website", "missing-repo", "missing-vercel", "details-pending"].includes(issue.id)
   );
+
+  if (serviceState === "planned") {
+    if (pipeline.id === "seo-geo") {
+      return client.partnershipSigned ? "strategy" : "approval";
+    }
+    if (pipeline.id === "web-care") {
+      return "handoff";
+    }
+    if (pipeline.id === "social" || pipeline.id === "ads") {
+      return "candidate";
+    }
+    if (pipeline.id === "mobile-apps") {
+      return "idea";
+    }
+    if (pipeline.id === "automations") {
+      return "opportunity";
+    }
+    if (pipeline.id === "commerce") {
+      return "storefront";
+    }
+  }
 
   if (pipeline.id === "web-care") {
     if (stage === "web-helper-care") {
@@ -5306,16 +5424,16 @@ function getServicePipelineStatus(client, pipeline, serviceKey) {
 
 function getServicePipelineCards(pipeline, clients) {
   return clients.flatMap((client) =>
-    (client.services || [])
-      .filter((serviceKey) => pipeline.serviceKeys.includes(serviceKey))
-      .map((serviceKey) => {
-        const service = getClientServiceDefinition(serviceKey);
+    getClientServiceBreakdown(client)
+      .filter((service) => pipeline.serviceKeys.includes(service.key))
+      .map((service) => {
         return {
           client,
-          serviceKey,
+          serviceKey: service.key,
           serviceLabel: service.label,
-          agreementStatus: getClientServiceAgreementStatus(client, serviceKey),
-          stage: getServicePipelineStatus(client, pipeline, serviceKey),
+          serviceState: service.serviceState,
+          agreementStatus: getClientServiceAgreementStatus(client, service.key),
+          stage: getServicePipelineStatus(client, pipeline, service.key, service.serviceState),
           issueCount: getClientIssueTags(client).length
         };
       })
@@ -5357,6 +5475,7 @@ function renderServiceClientCard(card) {
     </div>
     <p>${escapeHtml(card.serviceLabel)}</p>
     <div class="service-client-card-meta">
+      <span class="pill ${card.serviceState === "planned" ? "tone-blue" : "tone-green"}">${escapeHtml(card.serviceState === "planned" ? "planned" : "active")}</span>
       <span class="pill ${getAgreementTone(card.agreementStatus)}">${escapeHtml(card.agreementStatus)}</span>
       <span>${escapeHtml(displayUrl || card.client.repo || "details pending")}</span>
     </div>
@@ -6217,6 +6336,20 @@ async function init() {
   if (elements.clientOnboardForm) {
     elements.clientOnboardForm.addEventListener("submit", submitClientOnboarding);
   }
+  elements.clientServicesInput?.addEventListener("change", (event) => {
+    const input = event.target.closest("input[data-client-service]");
+    if (!input || !input.checked) {
+      return;
+    }
+
+    const oppositeState = input.dataset.clientServiceState === "active" ? "planned" : "active";
+    const oppositeInput = elements.clientServicesInput.querySelector(
+      `input[data-client-service="${input.dataset.clientService}"][data-client-service-state="${oppositeState}"]`
+    );
+    if (oppositeInput) {
+      oppositeInput.checked = false;
+    }
+  });
   if (elements.agentBuildForm) {
     elements.agentBuildForm.addEventListener("submit", submitAgentBuildDraft);
   }

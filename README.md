@@ -83,7 +83,12 @@ Then point frontend API calls to your Railway backend domain.
 
 ### Railway Postgres Client Store
 
-Mission Control persists editable client cards to Postgres when `DATABASE_URL` is available. On the first `/mission/clients` read or write, the backend creates the `mission_clients` table automatically and seeds it from the current repo/local client store if the table is empty.
+Mission Control persists editable client cards to Postgres when `DATABASE_URL` is available. On the first `/mission/clients` read or write, the backend creates or updates the `mission_clients` table automatically and seeds it from the current repo/local client store if the table is empty.
+
+Client services are stored as JSON arrays:
+
+- `services`: active/currently included services
+- `planned_services`: wanted or queued services that are not implemented yet
 
 Recommended backend variables:
 

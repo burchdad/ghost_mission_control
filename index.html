@@ -532,23 +532,74 @@
               <option>Full Growth Stack</option>
             </select>
           </label>
-          <label>
-            <span>Services</span>
-            <select id="clientServicesInput" name="services" multiple>
-              <option value="website-build">Website Build</option>
-              <option value="web-helper-care">Web Helper Care</option>
-              <option value="search-intelligence">SEO / AEO / GEO</option>
-              <option value="local-service">Local Service Growth</option>
-              <option value="lead-funnel">Lead Funnel</option>
-              <option value="ecommerce">Ecommerce</option>
-              <option value="content-social">Content + Social</option>
-              <option value="paid-ads">Paid Ads</option>
-              <option value="software-tool">Software Tool</option>
-              <option value="ai-automation">AI Automation</option>
-              <option value="mobile-app">Mobile App</option>
-              <option value="reporting">Client Reporting</option>
-            </select>
-          </label>
+          <fieldset id="clientServicesInput" class="client-service-picker">
+            <legend>Services</legend>
+            <div class="service-picker-header" aria-hidden="true">
+              <span>Service</span>
+              <span>Active</span>
+              <span>Planned</span>
+            </div>
+            <div class="service-picker-row">
+              <strong>Website Build</strong>
+              <label><input type="checkbox" value="website-build" data-client-service="website-build" data-client-service-state="active" aria-label="Website Build active" /><span>Active</span></label>
+              <label><input type="checkbox" value="website-build" data-client-service="website-build" data-client-service-state="planned" aria-label="Website Build planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Web Helper Care</strong>
+              <label><input type="checkbox" value="web-helper-care" data-client-service="web-helper-care" data-client-service-state="active" aria-label="Web Helper Care active" /><span>Active</span></label>
+              <label><input type="checkbox" value="web-helper-care" data-client-service="web-helper-care" data-client-service-state="planned" aria-label="Web Helper Care planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>SEO / AEO / GEO</strong>
+              <label><input type="checkbox" value="search-intelligence" data-client-service="search-intelligence" data-client-service-state="active" aria-label="SEO AEO GEO active" /><span>Active</span></label>
+              <label><input type="checkbox" value="search-intelligence" data-client-service="search-intelligence" data-client-service-state="planned" aria-label="SEO AEO GEO planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Local Service Growth</strong>
+              <label><input type="checkbox" value="local-service" data-client-service="local-service" data-client-service-state="active" aria-label="Local Service Growth active" /><span>Active</span></label>
+              <label><input type="checkbox" value="local-service" data-client-service="local-service" data-client-service-state="planned" aria-label="Local Service Growth planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Lead Funnel</strong>
+              <label><input type="checkbox" value="lead-funnel" data-client-service="lead-funnel" data-client-service-state="active" aria-label="Lead Funnel active" /><span>Active</span></label>
+              <label><input type="checkbox" value="lead-funnel" data-client-service="lead-funnel" data-client-service-state="planned" aria-label="Lead Funnel planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Ecommerce</strong>
+              <label><input type="checkbox" value="ecommerce" data-client-service="ecommerce" data-client-service-state="active" aria-label="Ecommerce active" /><span>Active</span></label>
+              <label><input type="checkbox" value="ecommerce" data-client-service="ecommerce" data-client-service-state="planned" aria-label="Ecommerce planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Content + Social</strong>
+              <label><input type="checkbox" value="content-social" data-client-service="content-social" data-client-service-state="active" aria-label="Content and Social active" /><span>Active</span></label>
+              <label><input type="checkbox" value="content-social" data-client-service="content-social" data-client-service-state="planned" aria-label="Content and Social planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Paid Ads</strong>
+              <label><input type="checkbox" value="paid-ads" data-client-service="paid-ads" data-client-service-state="active" aria-label="Paid Ads active" /><span>Active</span></label>
+              <label><input type="checkbox" value="paid-ads" data-client-service="paid-ads" data-client-service-state="planned" aria-label="Paid Ads planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Software Tool</strong>
+              <label><input type="checkbox" value="software-tool" data-client-service="software-tool" data-client-service-state="active" aria-label="Software Tool active" /><span>Active</span></label>
+              <label><input type="checkbox" value="software-tool" data-client-service="software-tool" data-client-service-state="planned" aria-label="Software Tool planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>AI Automation</strong>
+              <label><input type="checkbox" value="ai-automation" data-client-service="ai-automation" data-client-service-state="active" aria-label="AI Automation active" /><span>Active</span></label>
+              <label><input type="checkbox" value="ai-automation" data-client-service="ai-automation" data-client-service-state="planned" aria-label="AI Automation planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Mobile App</strong>
+              <label><input type="checkbox" value="mobile-app" data-client-service="mobile-app" data-client-service-state="active" aria-label="Mobile App active" /><span>Active</span></label>
+              <label><input type="checkbox" value="mobile-app" data-client-service="mobile-app" data-client-service-state="planned" aria-label="Mobile App planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Client Reporting</strong>
+              <label><input type="checkbox" value="reporting" data-client-service="reporting" data-client-service-state="active" aria-label="Client Reporting active" /><span>Active</span></label>
+              <label><input type="checkbox" value="reporting" data-client-service="reporting" data-client-service-state="planned" aria-label="Client Reporting planned" /><span>Planned</span></label>
+            </div>
+          </fieldset>
           <label>
             <span>Primary Contact</span>
             <input id="clientContactInput" name="contact" type="text" placeholder="Name, email, or phone" />
