@@ -477,6 +477,18 @@
             <input id="clientLeadSourceDetailInput" name="leadSourceDetail" type="text" placeholder="Facebook message, referral name, campaign, email thread..." />
           </label>
           <label>
+            <span>Lead Pipeline Stage</span>
+            <select id="clientLeadStageInput" name="leadStage">
+              <option value="">Auto from checklist</option>
+              <option value="new-lead">New Lead</option>
+              <option value="contacted-discovery">Contacted / Discovery</option>
+              <option value="proposal-sent">Proposal + Invoice Sent</option>
+              <option value="agreement-returned">Agreement Returned</option>
+              <option value="deposit-paid">Deposit Paid / Build Queue</option>
+              <option value="lost-not-now">Lost / Not Now</option>
+            </select>
+          </label>
+          <label>
             <span>Website URL</span>
             <input id="clientWebsiteInput" name="websiteUrl" type="url" placeholder="https://example.com" />
           </label>

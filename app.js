@@ -114,6 +114,7 @@ const elements = {
   clientStageInput: document.getElementById("clientStageInput"),
   clientLeadSourceInput: document.getElementById("clientLeadSourceInput"),
   clientLeadSourceDetailInput: document.getElementById("clientLeadSourceDetailInput"),
+  clientLeadStageInput: document.getElementById("clientLeadStageInput"),
   clientWebsiteInput: document.getElementById("clientWebsiteInput"),
   clientRepoInput: document.getElementById("clientRepoInput"),
   clientRailwayInput: document.getElementById("clientRailwayInput"),
@@ -240,6 +241,8 @@ let selectedClientId = "";
 let editingClientId = "";
 let draggingClientId = "";
 let lastClientDragAt = 0;
+let draggingLeadId = "";
+let lastLeadDragAt = 0;
 let liveAgentIntelligence = [];
 let liveWebHelpers = [];
 let liveOnboarding = null;
@@ -309,6 +312,15 @@ const leadSourceDefinitions = [
   }
 ];
 
+const leadDeskColumns = [
+  { id: "new-lead", label: "New Lead", helper: "Inquiry captured, needs discovery and proposal prep." },
+  { id: "contacted-discovery", label: "Contacted / Discovery", helper: "Phone, Messenger, or email discussion is active." },
+  { id: "proposal-sent", label: "Proposal + Invoice Sent", helper: "Waiting on agreement response." },
+  { id: "agreement-returned", label: "Agreement Returned", helper: "Waiting on deposit payment." },
+  { id: "deposit-paid", label: "Deposit Paid / Build Queue", helper: "Ready for the initial website draft." },
+  { id: "lost-not-now", label: "Lost / Not Now", helper: "Paused, archived, or not ready yet." }
+];
+
 function getLeadSourceDefinition(sourceId) {
   return leadSourceDefinitions.find((source) => source.id === sourceId) || null;
 }
@@ -329,6 +341,58 @@ function getLeadSourceTone(sourceId) {
     return "tone-yellow";
   }
   return "tone-gray";
+}
+
+function normalizeLeadStageForUi(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+  if (!normalized) {
+    return "";
+  }
+
+  const aliases = {
+    contacted: "contacted-discovery",
+    discovery: "contacted-discovery",
+    "proposal": "proposal-sent",
+    "proposal-invoice-sent": "proposal-sent",
+    "agreement": "agreement-returned",
+    "agreement-back": "agreement-returned",
+    "deposit": "deposit-paid",
+    "build-queue": "deposit-paid",
+    lost: "lost-not-now",
+    paused: "lost-not-now",
+    archived: "lost-not-now"
+  };
+  const mapped = aliases[normalized] || normalized;
+  return leadDeskColumns.some((column) => column.id === mapped) ? mapped : "";
+}
+
+function deriveLeadStage(client) {
+  const explicit = normalizeLeadStageForUi(client?.leadStage || client?.lead_stage);
+  if (explicit) {
+    return explicit;
+  }
+
+  const stage = getClientStage(client);
+  if (stage === "paused-archived") {
+    return "lost-not-now";
+  }
+  if (client?.depositPaid || stage === "deposit-paid") {
+    return "deposit-paid";
+  }
+  if (client?.proposalSigned) {
+    return "agreement-returned";
+  }
+  if (client?.proposalSent || client?.depositInvoiceSent) {
+    return "proposal-sent";
+  }
+  if (client?.contact || client?.businessEmail || client?.businessPhone || client?.notes) {
+    return "contacted-discovery";
+  }
+  return "new-lead";
+}
+
+function getLeadStageLabel(stageId) {
+  return leadDeskColumns.find((column) => column.id === stageId)?.label || "New Lead";
 }
 
 const clientServiceDefinitions = {
@@ -703,6 +767,7 @@ function getSeededClientProfilesForUi() {
     clientDetailsPending: false,
     leadSource: "",
     leadSourceDetail: "",
+    leadStage: "",
     proposalSent: false,
     depositInvoiceSent: false,
     proposalSigned: false,
@@ -1827,6 +1892,7 @@ const clientModalModeDefaults = {
     submitLabel: "Create Client",
     stage: "website-build",
     leadSource: "",
+    leadStage: "",
     services: ["website-build", "web-helper-care"],
     plannedServices: []
   },
@@ -1836,6 +1902,7 @@ const clientModalModeDefaults = {
     submitLabel: "Save Lead",
     stage: "lead",
     leadSource: "",
+    leadStage: "",
     services: ["website-build"],
     plannedServices: []
   }
@@ -1857,6 +1924,7 @@ function resetClientForm(mode = "client") {
   }
   setFieldValue(elements.clientLeadSourceInput, defaults.leadSource);
   setFieldValue(elements.clientLeadSourceDetailInput, "");
+  setFieldValue(elements.clientLeadStageInput, defaults.leadStage);
   setClientServicePickerValues(defaults.services, defaults.plannedServices);
   if (elements.clientSubmitButton) {
     elements.clientSubmitButton.textContent = defaults.submitLabel;
@@ -1875,6 +1943,8 @@ function populateClientForm(client) {
   ensureSelectOption(elements.clientLeadSourceInput, client.leadSource);
   setFieldValue(elements.clientLeadSourceInput, client.leadSource);
   setFieldValue(elements.clientLeadSourceDetailInput, client.leadSourceDetail);
+  ensureSelectOption(elements.clientLeadStageInput, deriveLeadStage(client));
+  setFieldValue(elements.clientLeadStageInput, deriveLeadStage(client));
   setFieldValue(elements.clientWebsiteInput, client.websiteUrl);
   setFieldValue(elements.clientRepoInput, client.repo);
   setFieldValue(elements.clientRailwayInput, client.railwayUrl);
@@ -4201,6 +4271,7 @@ function mergeClientRecordsForUi(existing, incoming) {
     clientDetailsPending: pickBoolean("clientDetailsPending"),
     leadSource: pick("leadSource"),
     leadSourceDetail: pick("leadSourceDetail"),
+    leadStage: pick("leadStage") || deriveLeadStage(incoming) || deriveLeadStage(existing),
     proposalSent: pickBoolean("proposalSent"),
     depositInvoiceSent: pickBoolean("depositInvoiceSent"),
     proposalSigned: pickBoolean("proposalSigned"),
@@ -4765,6 +4836,7 @@ function openClientDetail(clientId) {
       <h3>Quick Actions</h3>
       ${renderClientQuickActions(client, { includeDetails: false })}
     </div>
+    ${renderClientLeadChecklist(client)}
     <div class="client-detail-section">
       <h3>Connections</h3>
       <div class="connection-list">
@@ -4880,6 +4952,7 @@ function buildClientSavePayloadFromRecord(client, overrides = {}) {
     googleBusinessUrl: client.googleBusinessUrl || "",
     leadSource: client.leadSource || "",
     leadSourceDetail: client.leadSourceDetail || "",
+    leadStage: deriveLeadStage(client),
     socialUrls: client.socialUrls || [],
     proposalSent: Boolean(client.proposalSent),
     depositInvoiceSent: Boolean(client.depositInvoiceSent),
@@ -4995,6 +5068,7 @@ async function submitClientOnboarding(event) {
     googleBusinessUrl: elements.clientGoogleBusinessInput?.value || "",
     leadSource: elements.clientLeadSourceInput?.value || "",
     leadSourceDetail: elements.clientLeadSourceDetailInput?.value || "",
+    leadStage: elements.clientLeadStageInput?.value || "",
     socialUrls: String(elements.clientSocialsInput?.value || "")
       .split(/\r?\n/)
       .map((url) => url.trim())
@@ -5032,6 +5106,7 @@ async function submitClientOnboarding(event) {
   } else if (payload.depositInvoiceSent) {
     payload.proposalSent = true;
   }
+  payload.leadStage = payload.leadStage || deriveLeadStage(payload);
 
   const isEditing = Boolean(payload.id);
   elements.clientFormResponse.textContent = isEditing ? "Saving client record..." : "Creating client record...";
@@ -5293,32 +5368,96 @@ function makeOnboardingTask(client, bucket, title, status, detail, options = {})
   };
 }
 
-const leadDeskColumns = [
-  { id: "new-lead", label: "New Lead", helper: "Inquiry captured, proposal not sent." },
-  { id: "proposal-sent", label: "Proposal / Invoice Sent", helper: "Waiting on agreement response." },
-  { id: "agreement-returned", label: "Agreement Returned", helper: "Waiting on deposit payment." },
-  { id: "deposit-paid", label: "Deposit Paid / Build Queue", helper: "Ready for the initial website draft." }
-];
-
 function getLeadDeskColumnId(client) {
-  if (client.depositPaid || getClientStage(client) === "deposit-paid") {
-    return "deposit-paid";
+  return deriveLeadStage(client);
+}
+
+function getLeadStageSaveOverrides(leadStage) {
+  const columnId = normalizeLeadStageForUi(leadStage);
+  const base = { leadStage: columnId };
+  if (columnId === "new-lead") {
+    return {
+      ...base,
+      stage: "lead",
+      proposalSent: false,
+      depositInvoiceSent: false,
+      proposalSigned: false,
+      depositPaid: false
+    };
+  }
+  if (columnId === "contacted-discovery") {
+    return {
+      ...base,
+      stage: "lead",
+      proposalSent: false,
+      depositInvoiceSent: false,
+      proposalSigned: false,
+      depositPaid: false
+    };
+  }
+  if (columnId === "proposal-sent") {
+    return {
+      ...base,
+      stage: "lead",
+      proposalSent: true,
+      depositInvoiceSent: true,
+      proposalSigned: false,
+      depositPaid: false
+    };
+  }
+  if (columnId === "agreement-returned") {
+    return {
+      ...base,
+      stage: "lead",
+      proposalSent: true,
+      depositInvoiceSent: true,
+      proposalSigned: true,
+      depositPaid: false
+    };
+  }
+  if (columnId === "deposit-paid") {
+    return {
+      ...base,
+      stage: "deposit-paid",
+      proposalSent: true,
+      depositInvoiceSent: true,
+      proposalSigned: true,
+      depositPaid: true
+    };
+  }
+  if (columnId === "lost-not-now") {
+    return {
+      ...base,
+      stage: "paused-archived"
+    };
+  }
+  return null;
+}
+
+async function updateLeadStage(clientId, leadStage) {
+  const client = getClientById(clientId);
+  const overrides = getLeadStageSaveOverrides(leadStage);
+  if (!client || !overrides || deriveLeadStage(client) === overrides.leadStage) {
+    return;
   }
 
-  if (client.proposalSigned) {
-    return "agreement-returned";
+  const payload = buildClientSavePayloadFromRecord(client, overrides);
+  try {
+    const result = await saveClientRecord(payload);
+    if (didClientRepoStoreFail(result)) {
+      renderOpsActions(elements.onboardingActions, [`${client.clientName}:${getClientStorageMessage(result)}`], "Lead actions will appear here.");
+    }
+  } catch (error) {
+    renderOpsActions(elements.onboardingActions, [`${client.clientName}: ${String(error.message || error)}`], "Lead actions will appear here.");
   }
-
-  if (client.proposalSent || client.depositInvoiceSent) {
-    return "proposal-sent";
-  }
-
-  return "new-lead";
 }
 
 function getLeadDeskNextAction(client) {
   const column = getLeadDeskColumnId(client);
   if (column === "new-lead") {
+    return "Capture discovery notes, contact path, and lead source.";
+  }
+  if (column === "contacted-discovery") {
     return "Send project proposal and deposit invoice.";
   }
   if (column === "proposal-sent") {
@@ -5327,7 +5466,10 @@ function getLeadDeskNextAction(client) {
   if (column === "agreement-returned") {
     return "Follow up on deposit payment.";
   }
-  return "Move into website build queue.";
+  if (column === "deposit-paid") {
+    return "Move into website build queue.";
+  }
+  return "Decide whether to revive, archive, or remove this lead.";
 }
 
 function renderLeadSourceStrip(queue) {
@@ -5352,10 +5494,10 @@ function renderLeadSourceStrip(queue) {
 }
 
 function renderLeadDeskPipeline(queue) {
-  return `<div class="lead-desk-flow">
+  return `<div class="lead-desk-flow lead-kanban-board">
     ${leadDeskColumns.map((column) => {
       const clients = queue.filter((client) => getLeadDeskColumnId(client) === column.id);
-      return `<section class="onboarding-column">
+      return `<section class="onboarding-column lead-drop-column" data-lead-stage-drop="${escapeHtml(column.id)}">
         <div class="onboarding-column-head">
           <div>
             <h3>${escapeHtml(column.label)}</h3>
@@ -5363,19 +5505,44 @@ function renderLeadDeskPipeline(queue) {
           </div>
           <span>${clients.length}</span>
         </div>
-        ${clients.length ? clients.map((client) => `<article class="onboarding-client-card lead-card" data-client-detail="${escapeHtml(client.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(client.clientName)} details">
+        ${clients.length ? clients.map((client) => `<article class="onboarding-client-card lead-card" draggable="true" data-lead-drag="${escapeHtml(client.id)}" data-client-detail="${escapeHtml(client.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(client.clientName)} details">
           <div class="onboarding-client-head">
             <div>
               <h3>${escapeHtml(client.clientName)}</h3>
               <p>${escapeHtml(`${getLeadSourceLabel(client)}${client.leadSourceDetail ? ` - ${client.leadSourceDetail}` : ""}`)}</p>
               <p>${escapeHtml(client.businessEmail || client.businessPhone || client.contact || "Contact pending")}</p>
             </div>
-            <span class="pill ${client.depositPaid ? "tone-green" : client.proposalSigned ? "tone-blue" : "tone-yellow"}">${escapeHtml(getClientStageLabel(client.stage))}</span>
+            <span class="pill ${column.id === "deposit-paid" ? "tone-green" : column.id === "lost-not-now" ? "tone-gray" : column.id === "agreement-returned" ? "tone-blue" : "tone-yellow"}">${escapeHtml(getLeadStageLabel(column.id))}</span>
           </div>
           <p>${escapeHtml(client.nextAction || getLeadDeskNextAction(client))}</p>
         </article>`).join("") : `<div class="pipeline-empty">No leads</div>`}
       </section>`;
     }).join("")}
+  </div>`;
+}
+
+function renderLeadChecklistList(client) {
+  const tasks = buildOnboardingTasks(client);
+  return `<div class="lead-checklist-list">
+    ${tasks.map((task) => `<article class="lead-checklist-item">
+      <div>
+        <h4>${escapeHtml(task.title)}</h4>
+        <p>${escapeHtml(task.detail)}</p>
+      </div>
+      <span class="pill ${getStatusTone(task.status)}">${escapeHtml(task.status)}</span>
+    </article>`).join("")}
+  </div>`;
+}
+
+function renderClientLeadChecklist(client) {
+  const isLeadContext = Boolean(client.leadStage) || ["lead", "deposit-paid"].includes(getClientStage(client));
+  if (!isLeadContext) {
+    return "";
+  }
+
+  return `<div class="client-detail-section client-detail-section-wide">
+    <h3>Lead / Proposal Checklist</h3>
+    ${renderLeadChecklistList(client)}
   </div>`;
 }
 
@@ -5453,7 +5620,6 @@ function renderOnboarding(payload) {
   const tasksByClient = new Map(rawQueue.map((client) => [client.id, buildOnboardingTasks(client)]));
   const queue = rawQueue.filter((client) => clientMatchesOnboardingFilters(client, filters, tasksByClient.get(client.id) || []));
   const onboardingTasks = queue.flatMap((client) => tasksByClient.get(client.id) || []);
-  const visibleTasks = onboardingTasks.filter((task) => task.status !== "not-included" && taskMatchesOnboardingFilters(task, filters));
   const summary = payload?.summary || {
     activeClients: 0,
     blockedClients: 0,
@@ -5479,29 +5645,16 @@ function renderOnboarding(payload) {
     </div>
     ${renderLeadSourceStrip(rawQueue)}
     ${renderLeadDeskPipeline(queue)}
-    <div class="onboarding-section-title">
-      <h3>Lead Requirements Board</h3>
-      <p>Track contact info, proposal email, deposit invoice, signed agreement, and build-queue readiness.</p>
-    </div>
-    ${visibleTasks.length ? "" : `<article class="onboarding-empty-state">
-      <h3>No active requirement cards</h3>
+    ${queue.length ? `<div class="client-board-note">
+      <div>
+        <h3>Lead Detail Mode</h3>
+        <p>Drag lead cards between stages, then open any card to edit contact info, source, proposal status, services, and checklist items.</p>
+      </div>
+      <span>${queue.length} visible</span>
+    </div>` : `<article class="onboarding-empty-state">
+      <h3>No active lead cards</h3>
       <p>${escapeHtml(boardEmptyCopy)}</p>
-    </article>`}
-    <div class="onboarding-kanban">
-      ${onboardingBuckets.map((bucket) => {
-        const bucketTasksAll = visibleTasks.filter((task) => task.bucket === bucket.id);
-        const bucketTasks = bucketTasksAll.slice(0, 3);
-        const hiddenCount = Math.max(0, bucketTasksAll.length - bucketTasks.length);
-        return `<section class="onboarding-column">
-          <div class="onboarding-column-head">
-            <h3>${escapeHtml(bucket.label)}</h3>
-            <span>${bucketTasksAll.length}</span>
-          </div>
-          ${bucketTasks.length ? bucketTasks.map(renderOnboardingCard).join("") : `<div class="pipeline-empty">${escapeHtml(rawQueue.length ? "No matches" : "Waiting")}</div>`}
-          ${hiddenCount ? `<div class="pipeline-empty">+${hiddenCount} more. Filter or review connection status below.</div>` : ""}
-        </section>`;
-      }).join("")}
-    </div>`;
+    </article>`}`;
 
   elements.onboardingConnections.innerHTML = "";
 
@@ -6844,6 +6997,10 @@ async function init() {
     });
   });
   elements.onboardingPanel?.addEventListener("click", (event) => {
+    if (Date.now() - lastLeadDragAt < 350) {
+      return;
+    }
+
     const skipButton = event.target.closest("[data-onboarding-skip-client][data-onboarding-skip-item]");
     if (skipButton) {
       toggleOnboardingSkip(skipButton.dataset.onboardingSkipClient, skipButton.dataset.onboardingSkipItem);
@@ -6854,6 +7011,55 @@ async function init() {
     if (detailTarget) {
       openClientDetail(detailTarget.dataset.clientDetail);
     }
+  });
+  elements.onboardingPanel?.addEventListener("dragstart", (event) => {
+    const dragTarget = event.target.closest("[data-lead-drag]");
+    if (!dragTarget) {
+      return;
+    }
+
+    draggingLeadId = dragTarget.dataset.leadDrag;
+    dragTarget.classList.add("is-dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggingLeadId);
+  });
+  elements.onboardingPanel?.addEventListener("dragend", () => {
+    lastLeadDragAt = Date.now();
+    draggingLeadId = "";
+    elements.onboardingPanel?.querySelectorAll(".is-dragging, .is-drag-over").forEach((element) => {
+      element.classList.remove("is-dragging", "is-drag-over");
+    });
+  });
+  elements.onboardingPanel?.addEventListener("dragover", (event) => {
+    const dropTarget = event.target.closest("[data-lead-stage-drop]");
+    if (!dropTarget || !draggingLeadId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    elements.onboardingPanel.querySelectorAll(".is-drag-over").forEach((element) => element.classList.remove("is-drag-over"));
+    dropTarget.classList.add("is-drag-over");
+  });
+  elements.onboardingPanel?.addEventListener("dragleave", (event) => {
+    const dropTarget = event.target.closest("[data-lead-stage-drop]");
+    if (dropTarget && !dropTarget.contains(event.relatedTarget)) {
+      dropTarget.classList.remove("is-drag-over");
+    }
+  });
+  elements.onboardingPanel?.addEventListener("drop", (event) => {
+    const dropTarget = event.target.closest("[data-lead-stage-drop]");
+    if (!dropTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    const clientId = event.dataTransfer.getData("text/plain") || draggingLeadId;
+    const leadStage = dropTarget.dataset.leadStageDrop;
+    dropTarget.classList.remove("is-drag-over");
+    draggingLeadId = "";
+    lastLeadDragAt = Date.now();
+    updateLeadStage(clientId, leadStage);
   });
   elements.onboardingPanel?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") {
