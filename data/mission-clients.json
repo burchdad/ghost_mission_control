@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:30:35.143Z",
+  "savedAt": "2026-06-15T11:31:16.152Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -570,6 +570,48 @@
       ],
       "createdAt": "2026-06-15T11:30:34.924Z",
       "updatedAt": "2026-06-15T11:30:34.924Z",
+      "source": "runtime"
+    },
+    {
+      "id": "mobile-detailing",
+      "clientName": "Mobile Detailing",
+      "websiteUrl": "https://mobile-detailing-sigma.vercel.app",
+      "repo": "burchdad/mobile-detailing",
+      "githubUrl": "https://github.com/burchdad/mobile-detailing",
+      "railwayUrl": "",
+      "vercelUrl": "https://mobile-detailing-sigma.vercel.app/",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": false,
+      "clientDetailsPending": false,
+      "leadSource": "",
+      "leadSourceDetail": "",
+      "leadStage": "deposit-paid",
+      "proposalSent": true,
+      "depositInvoiceSent": true,
+      "proposalSigned": true,
+      "partnershipSigned": true,
+      "depositPaid": true,
+      "finalPaymentPaid": false,
+      "businessEmail": "",
+      "businessPhone": "",
+      "plan": "Launch + Care",
+      "contact": "",
+      "notes": "Partner site is live. Buy the final custom domain, then continue SEO and social management.",
+      "stage": "deposit-paid",
+      "status": "deposit-paid",
+      "services": [
+        "website-build",
+        "web-helper-care",
+        "search-intelligence",
+        "content-social"
+      ],
+      "plannedServices": [],
+      "createdAt": "2026-06-15T11:31:15.709Z",
+      "updatedAt": "2026-06-15T11:31:15.709Z",
       "source": "runtime"
     }
   ]
