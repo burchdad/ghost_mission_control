@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:32:41.806Z",
+  "savedAt": "2026-06-15T11:32:46.151Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -388,8 +388,8 @@
       "plan": "Launch + Care",
       "contact": "",
       "notes": "",
-      "stage": "deposit-paid",
-      "status": "deposit-paid",
+      "stage": "launch-handoff",
+      "status": "launch-handoff",
       "services": [
         "website-build",
         "web-helper-care"
@@ -398,7 +398,7 @@
         "search-intelligence"
       ],
       "createdAt": "2026-06-15T11:29:40.623Z",
-      "updatedAt": "2026-06-15T11:29:40.623Z",
+      "updatedAt": "2026-06-15T11:32:45.884Z",
       "source": "runtime"
     },
     {
