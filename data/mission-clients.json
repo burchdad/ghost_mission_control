@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:32:46.151Z",
+  "savedAt": "2026-06-15T11:32:51.007Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -516,8 +516,8 @@
       "plan": "Launch + Care",
       "contact": "",
       "notes": "Primary Ghost AI brand and lead-intelligence backend.",
-      "stage": "deposit-paid",
-      "status": "deposit-paid",
+      "stage": "launch-handoff",
+      "status": "launch-handoff",
       "services": [
         "website-build",
         "web-helper-care",
@@ -527,7 +527,7 @@
       ],
       "plannedServices": [],
       "createdAt": "2026-06-15T11:30:29.578Z",
-      "updatedAt": "2026-06-15T11:30:29.578Z",
+      "updatedAt": "2026-06-15T11:32:50.772Z",
       "source": "runtime"
     },
     {
