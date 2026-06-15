@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:30:19.644Z",
+  "savedAt": "2026-06-15T11:30:29.855Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -485,6 +485,49 @@
       ],
       "createdAt": "2026-06-15T11:30:19.359Z",
       "updatedAt": "2026-06-15T11:30:19.359Z",
+      "source": "runtime"
+    },
+    {
+      "id": "ghost-ai-solutions",
+      "clientName": "Ghost AI Solutions",
+      "websiteUrl": "https://www.ghostai.solutions",
+      "repo": "burchdad/ghostaisolutions",
+      "githubUrl": "https://github.com/burchdad/ghostaisolutions",
+      "railwayUrl": "https://ghostaisolutions-production.up.railway.app/",
+      "vercelUrl": "https://www.ghostai.solutions/",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": true,
+      "clientDetailsPending": false,
+      "leadSource": "",
+      "leadSourceDetail": "",
+      "leadStage": "deposit-paid",
+      "proposalSent": true,
+      "depositInvoiceSent": true,
+      "proposalSigned": true,
+      "partnershipSigned": false,
+      "depositPaid": true,
+      "finalPaymentPaid": false,
+      "businessEmail": "",
+      "businessPhone": "",
+      "plan": "Launch + Care",
+      "contact": "",
+      "notes": "Primary Ghost AI brand and lead-intelligence backend.",
+      "stage": "deposit-paid",
+      "status": "deposit-paid",
+      "services": [
+        "website-build",
+        "web-helper-care",
+        "search-intelligence",
+        "lead-funnel",
+        "content-social"
+      ],
+      "plannedServices": [],
+      "createdAt": "2026-06-15T11:30:29.578Z",
+      "updatedAt": "2026-06-15T11:30:29.578Z",
       "source": "runtime"
     }
   ]
