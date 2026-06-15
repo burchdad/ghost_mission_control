@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:29:44.282Z",
+  "savedAt": "2026-06-15T11:29:52.932Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -63,20 +63,20 @@
       "clientDetailsPending": false,
       "leadSource": "",
       "leadSourceDetail": "",
-      "leadStage": "contacted-discovery",
-      "proposalSent": false,
-      "depositInvoiceSent": false,
-      "proposalSigned": false,
+      "leadStage": "deposit-paid",
+      "proposalSent": true,
+      "depositInvoiceSent": true,
+      "proposalSigned": true,
       "partnershipSigned": false,
-      "depositPaid": false,
+      "depositPaid": true,
       "finalPaymentPaid": false,
       "businessEmail": "",
       "businessPhone": "",
       "plan": "Launch + Care",
       "contact": "",
       "notes": "Website is launched and ready for SEO/monthly maintenance contract review.",
-      "stage": "client-review",
-      "status": "client-review",
+      "stage": "deposit-paid",
+      "status": "deposit-paid",
       "services": [
         "website-build",
         "web-helper-care",
@@ -84,7 +84,7 @@
       ],
       "plannedServices": [],
       "createdAt": "2026-06-14T01:17:41.886Z",
-      "updatedAt": "2026-06-14T01:17:41.886Z",
+      "updatedAt": "2026-06-15T11:29:52.630Z",
       "source": "runtime"
     },
     {
