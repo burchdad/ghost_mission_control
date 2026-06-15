@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:29:52.932Z",
+  "savedAt": "2026-06-15T11:30:19.644Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -442,6 +442,49 @@
       ],
       "createdAt": "2026-06-15T11:29:44.107Z",
       "updatedAt": "2026-06-15T11:29:44.107Z",
+      "source": "runtime"
+    },
+    {
+      "id": "alpha-ghost",
+      "clientName": "Alpha Ghost",
+      "websiteUrl": "https://www.alphaghost.org",
+      "repo": "burchdad/ghost-alpha-terminal",
+      "githubUrl": "https://github.com/burchdad/ghost-alpha-terminal",
+      "railwayUrl": "https://ghostalphaterminal-production.up.railway.app/",
+      "vercelUrl": "https://www.alphaghost.org/",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": true,
+      "clientDetailsPending": false,
+      "leadSource": "",
+      "leadSourceDetail": "",
+      "leadStage": "lost-not-now",
+      "proposalSent": false,
+      "depositInvoiceSent": false,
+      "proposalSigned": false,
+      "partnershipSigned": false,
+      "depositPaid": false,
+      "finalPaymentPaid": false,
+      "businessEmail": "",
+      "businessPhone": "",
+      "plan": "Launch + Care",
+      "contact": "",
+      "notes": "Stock market intelligence and trading bot property.",
+      "stage": "paused-archived",
+      "status": "paused-archived",
+      "services": [
+        "website-build",
+        "web-helper-care",
+        "software-tool"
+      ],
+      "plannedServices": [
+        "search-intelligence"
+      ],
+      "createdAt": "2026-06-15T11:30:19.359Z",
+      "updatedAt": "2026-06-15T11:30:19.359Z",
       "source": "runtime"
     }
   ]
