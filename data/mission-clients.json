@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:32:51.007Z",
+  "savedAt": "2026-06-15T11:32:57.148Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -559,8 +559,8 @@
       "plan": "Launch + Care",
       "contact": "",
       "notes": "Personal digital business card.",
-      "stage": "deposit-paid",
-      "status": "deposit-paid",
+      "stage": "launch-handoff",
+      "status": "launch-handoff",
       "services": [
         "website-build",
         "web-helper-care"
@@ -569,7 +569,7 @@
         "search-intelligence"
       ],
       "createdAt": "2026-06-15T11:30:34.924Z",
-      "updatedAt": "2026-06-15T11:30:34.924Z",
+      "updatedAt": "2026-06-15T11:32:56.892Z",
       "source": "runtime"
     },
     {
