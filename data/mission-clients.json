@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:32:57.148Z",
+  "savedAt": "2026-06-15T11:33:00.947Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -75,8 +75,8 @@
       "plan": "Launch + Care",
       "contact": "",
       "notes": "Website is launched and ready for SEO/monthly maintenance contract review.",
-      "stage": "deposit-paid",
-      "status": "deposit-paid",
+      "stage": "client-review",
+      "status": "client-review",
       "services": [
         "website-build",
         "web-helper-care",
@@ -84,7 +84,7 @@
       ],
       "plannedServices": [],
       "createdAt": "2026-06-14T01:17:41.886Z",
-      "updatedAt": "2026-06-15T11:29:52.630Z",
+      "updatedAt": "2026-06-15T11:33:00.756Z",
       "source": "runtime"
     },
     {
