@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:29:24.839Z",
+  "savedAt": "2026-06-15T11:29:33.166Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -273,6 +273,48 @@
       ],
       "createdAt": "2026-06-14T02:52:12.065Z",
       "updatedAt": "2026-06-15T11:29:24.601Z",
+      "source": "runtime"
+    },
+    {
+      "id": "anna-s-air",
+      "clientName": "Anna's Air",
+      "websiteUrl": "https://www.annasair.com",
+      "repo": "burchdad/anna_air",
+      "githubUrl": "https://github.com/burchdad/anna_air",
+      "railwayUrl": "",
+      "vercelUrl": "https://www.annasair.com/",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": true,
+      "clientDetailsPending": false,
+      "leadSource": "",
+      "leadSourceDetail": "",
+      "leadStage": "deposit-paid",
+      "proposalSent": true,
+      "depositInvoiceSent": true,
+      "proposalSigned": true,
+      "partnershipSigned": false,
+      "depositPaid": true,
+      "finalPaymentPaid": false,
+      "businessEmail": "",
+      "businessPhone": "",
+      "plan": "Launch + Care",
+      "contact": "",
+      "notes": "",
+      "stage": "deposit-paid",
+      "status": "deposit-paid",
+      "services": [
+        "website-build",
+        "web-helper-care"
+      ],
+      "plannedServices": [
+        "local-service"
+      ],
+      "createdAt": "2026-06-15T11:29:32.902Z",
+      "updatedAt": "2026-06-15T11:29:32.902Z",
       "source": "runtime"
     }
   ]
