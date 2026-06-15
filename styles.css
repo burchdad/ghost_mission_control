@@ -1907,10 +1907,9 @@ padding: 0.62rem;
 
 .lead-desk-flow {
   display: grid;
-  grid-template-columns: repeat(6, minmax(180px, 1fr));
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
   gap: 0.62rem;
   margin-bottom: 0.8rem;
-  overflow-x: auto;
   padding-bottom: 0.25rem;
 }
 
@@ -2004,6 +2003,7 @@ padding: 0.62rem;
 }
 
 .onboarding-client-card {
+  position: relative;
   border: 1px solid rgba(145, 194, 220, 0.18);
   border-radius: 8px;
   background: rgba(9, 17, 19, 0.78);
@@ -2012,6 +2012,7 @@ padding: 0.62rem;
 
 .onboarding-client-card.lead-card {
   cursor: pointer;
+  padding-right: 2.45rem;
 }
 
 .onboarding-client-card.is-dragging {
@@ -2023,6 +2024,117 @@ padding: 0.62rem;
 .onboarding-client-card.lead-card:focus-visible {
   border-color: rgba(124, 255, 155, 0.5);
   background: rgba(20, 54, 31, 0.48);
+  outline: none;
+}
+
+.lead-notification-button {
+  position: absolute;
+  top: 0.48rem;
+  right: 0.48rem;
+  display: inline-grid;
+  grid-template-columns: 1fr;
+  place-items: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border: 1px solid rgba(244, 206, 87, 0.55);
+  border-radius: 999px;
+  background: rgba(66, 51, 11, 0.9);
+  color: #f6d66a;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(244, 206, 87, 0.12);
+}
+
+.lead-notification-button span {
+  font-weight: 900;
+  line-height: 1;
+}
+
+.lead-notification-button strong {
+  position: absolute;
+  right: -0.38rem;
+  bottom: -0.35rem;
+  min-width: 0.92rem;
+  height: 0.92rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(11, 24, 14, 0.96);
+  border: 1px solid rgba(124, 255, 155, 0.45);
+  color: var(--green);
+  font-size: 0.55rem;
+}
+
+.lead-notification-button:hover,
+.lead-notification-button:focus-visible {
+  border-color: rgba(124, 255, 155, 0.85);
+  color: var(--green);
+  outline: none;
+}
+
+.lead-notification-panel {
+  max-width: 680px;
+}
+
+.lead-notification-content {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.lead-notification-summary,
+.lead-notification-item {
+  border: 1px solid rgba(177, 194, 163, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.025);
+  padding: 0.75rem;
+}
+
+.lead-notification-summary p {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+}
+
+.lead-notification-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.lead-notification-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.lead-notification-item h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.lead-notification-item p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.lead-notification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.lead-notification-actions button {
+  border: 1px solid rgba(124, 255, 155, 0.42);
+  border-radius: 7px;
+  background: rgba(20, 73, 35, 0.64);
+  color: var(--text);
+  padding: 0.62rem 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.lead-notification-actions button:hover,
+.lead-notification-actions button:focus-visible {
+  border-color: rgba(124, 255, 155, 0.8);
+  background: rgba(37, 118, 57, 0.72);
   outline: none;
 }
 
@@ -4529,6 +4641,30 @@ body[data-active-view="clients"] .client-pipeline {
 
 body[data-active-view="clients"] .pipeline-column {
   min-height: 430px;
+}
+
+body[data-active-view="onboarding"] .layout-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-active-view="onboarding"] .app-shell {
+  width: min(1920px, 100% - 1rem);
+}
+
+body[data-active-view="onboarding"] .side-column {
+  display: none;
+}
+
+body[data-active-view="onboarding"] #onboardingPanel {
+  overflow: visible;
+}
+
+body[data-active-view="onboarding"] .lead-desk-flow {
+  grid-template-columns: repeat(6, minmax(136px, 1fr));
+}
+
+body[data-active-view="onboarding"] .onboarding-column {
+  min-height: 520px;
 }
 
 body[data-active-view="clients"] .pipeline-card h3 {

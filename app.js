@@ -106,6 +106,11 @@ const elements = {
   startOnboardingButton: document.getElementById("startOnboardingButton"),
   closeClientModalButton: document.getElementById("closeClientModalButton"),
   clientOnboardModal: document.getElementById("clientOnboardModal"),
+  leadNotificationModal: document.getElementById("leadNotificationModal"),
+  leadNotificationTitle: document.getElementById("leadNotificationTitle"),
+  leadNotificationSubtitle: document.getElementById("leadNotificationSubtitle"),
+  leadNotificationContent: document.getElementById("leadNotificationContent"),
+  closeLeadNotificationButton: document.getElementById("closeLeadNotificationButton"),
   clientModalTitle: document.getElementById("clientModalTitle"),
   clientModalSubtitle: document.getElementById("clientModalSubtitle"),
   clientOnboardForm: document.getElementById("clientOnboardForm"),
@@ -239,6 +244,7 @@ let commandMemory = [];
 let liveClients = null;
 let selectedClientId = "";
 let editingClientId = "";
+let selectedLeadNotificationId = "";
 let draggingClientId = "";
 let lastClientDragAt = 0;
 let draggingLeadId = "";
@@ -1213,7 +1219,7 @@ const viewVisibility = {
     "activityPanel"
   ],
   clients: ["clientsPanel", "clientActionsPanel"],
-  onboarding: ["onboardingPanel", "onboardingActionsPanel"],
+  onboarding: ["onboardingPanel"],
   services: ["servicesPanel", "serviceActionsPanel"],
   execution: [
     "executionPanel",
@@ -2145,7 +2151,12 @@ function setupCommandPalette() {
     const paletteOpen = !elements.commandPalette.classList.contains("view-hidden");
     const clientModalOpen = elements.clientOnboardModal && !elements.clientOnboardModal.classList.contains("view-hidden");
     const agentBuildModalOpen = elements.agentBuildModal && !elements.agentBuildModal.classList.contains("view-hidden");
+    const leadNotificationOpen = elements.leadNotificationModal && !elements.leadNotificationModal.classList.contains("view-hidden");
     if (!paletteOpen) {
+      if (key === "escape" && leadNotificationOpen) {
+        closeLeadNotification();
+        return;
+      }
       if (key === "escape" && agentBuildModalOpen) {
         closeAgentBuildModal();
         return;
@@ -5137,7 +5148,7 @@ async function submitClientOnboarding(event) {
 }
 
 async function loadOnboarding() {
-  if (!elements.onboardingSummary || !elements.onboardingQueue || !elements.onboardingConnections || !elements.onboardingStages || !elements.onboardingActions) {
+  if (!elements.onboardingSummary || !elements.onboardingQueue || !elements.onboardingConnections || !elements.onboardingStages) {
     return;
   }
 
@@ -5486,6 +5497,120 @@ function getLeadDeskNextAction(client) {
   return "Decide whether to revive, archive, or remove this lead.";
 }
 
+function getLeadNextStageId(client) {
+  const column = getLeadDeskColumnId(client);
+  if (column === "new-lead") {
+    return "contacted-discovery";
+  }
+  if (column === "contacted-discovery") {
+    return "proposal-sent";
+  }
+  if (column === "proposal-sent") {
+    return "agreement-returned";
+  }
+  if (column === "agreement-returned") {
+    return "deposit-paid";
+  }
+  return "";
+}
+
+function getLeadNotificationItems(client) {
+  const tasks = buildOnboardingTasks(client);
+  const activeTasks = tasks.filter((task) => ["missing", "blocked", "access-needed", "planned"].includes(task.status));
+  const column = getLeadDeskColumnId(client);
+  if (column === "deposit-paid") {
+    return [
+      {
+        title: "Closed lead queued",
+        detail: "This won client is visible in Web Clients for website build work.",
+        status: "ready"
+      }
+    ];
+  }
+  if (column === "lost-not-now") {
+    return [
+      {
+        title: "Paused or lost lead",
+        detail: "Decide whether to revive, archive, or remove this lead.",
+        status: "planned"
+      }
+    ];
+  }
+  return activeTasks.length
+    ? activeTasks.slice(0, 4)
+    : [
+        {
+          title: "Ready for next step",
+          detail: getLeadDeskNextAction(client),
+          status: "ready"
+        }
+      ];
+}
+
+function getLeadNotificationCount(client) {
+  return getLeadNotificationItems(client).length;
+}
+
+function renderLeadNotificationButton(client) {
+  const count = getLeadNotificationCount(client);
+  return `<button class="lead-notification-button" type="button" data-lead-notification="${escapeHtml(client.id)}" aria-label="Open ${escapeHtml(client.clientName)} lead notifications">
+    <span>!</span>
+    <strong>${escapeHtml(String(count))}</strong>
+  </button>`;
+}
+
+function renderLeadNotificationActions(client) {
+  const nextStageId = getLeadNextStageId(client);
+  const isClosedLead = getLeadDeskColumnId(client) === "deposit-paid";
+  const actions = [
+    `<button type="button" data-lead-notification-detail="${escapeHtml(client.id)}">${isClosedLead ? "Review Build Queue" : "Open Details"}</button>`,
+    `<button type="button" data-lead-notification-edit="${escapeHtml(client.id)}">Edit Client</button>`
+  ];
+  if (nextStageId) {
+    actions.unshift(`<button type="button" data-lead-action-stage="${escapeHtml(nextStageId)}">Move to ${escapeHtml(getLeadStageLabel(nextStageId))}</button>`);
+  }
+  return `<div class="lead-notification-actions">${actions.join("")}</div>`;
+}
+
+function openLeadNotification(clientId) {
+  const client = (liveOnboarding?.activation?.queue || []).find((entry) => entry.id === clientId) || getClientById(clientId);
+  if (!client || !elements.leadNotificationModal || !elements.leadNotificationContent) {
+    return;
+  }
+
+  selectedLeadNotificationId = client.id;
+  const columnId = getLeadDeskColumnId(client);
+  if (elements.leadNotificationTitle) {
+    elements.leadNotificationTitle.textContent = client.clientName;
+  }
+  if (elements.leadNotificationSubtitle) {
+    elements.leadNotificationSubtitle.textContent = `${getLeadStageLabel(columnId)} - ${getLeadSourceLabel(client)}`;
+  }
+  const items = getLeadNotificationItems(client);
+  elements.leadNotificationContent.innerHTML = `
+    <section class="lead-notification-summary">
+      <span class="pill ${columnId === "deposit-paid" ? "tone-green" : columnId === "lost-not-now" ? "tone-gray" : "tone-yellow"}">${escapeHtml(getLeadStageLabel(columnId))}</span>
+      <p>${escapeHtml(client.nextAction || getLeadDeskNextAction(client))}</p>
+    </section>
+    <div class="lead-notification-list">
+      ${items.map((item) => `<article class="lead-notification-item">
+        <div>
+          <h3>${escapeHtml(item.title)}</h3>
+          <p>${escapeHtml(item.detail)}</p>
+        </div>
+        <span class="pill ${getStatusTone(item.status)}">${escapeHtml(item.status)}</span>
+      </article>`).join("")}
+    </div>
+    ${renderLeadNotificationActions(client)}
+  `;
+  elements.leadNotificationModal.classList.remove("view-hidden");
+}
+
+function closeLeadNotification() {
+  selectedLeadNotificationId = "";
+  elements.leadNotificationModal?.classList.add("view-hidden");
+}
+
 function renderLeadSourceStrip(queue) {
   const counts = new Map();
   queue.forEach((client) => {
@@ -5520,6 +5645,7 @@ function renderLeadDeskPipeline(queue) {
           <span>${clients.length}</span>
         </div>
         ${clients.length ? clients.map((client) => `<article class="onboarding-client-card lead-card" draggable="true" data-lead-drag="${escapeHtml(client.id)}" data-client-detail="${escapeHtml(client.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(client.clientName)} details">
+          ${renderLeadNotificationButton(client)}
           <div class="onboarding-client-head">
             <div>
               <h3>${escapeHtml(client.clientName)}</h3>
@@ -5693,18 +5819,6 @@ function renderOnboarding(payload) {
       </details>`
     : `<article class="ops-card"><h3>No lead blueprint</h3><p>Lead stages will appear when the backend is available.</p></article>`;
 
-  const fallbackActions = rawQueue.length
-    ? [
-        `${summary.openTasks || visibleTasks.filter((task) => ["missing", "blocked", "access-needed"].includes(task.status)).length} lead/proposal tasks need attention.`,
-        "Follow up on proposal, deposit invoice, agreement, or deposit blockers before moving into build.",
-        "Move deposit-paid clients into Website Build when initial draft work begins."
-      ]
-    : [
-        "Add the next lead from phone or Facebook Messenger.",
-        "Send the project proposal and deposit invoice.",
-        "Move the client to Deposit Paid once agreement and deposit are complete."
-      ];
-  renderOpsActions(elements.onboardingActions, payload?.activation?.actions || payload?.actions || fallbackActions, "Lead actions will appear here.");
   updateNavBadges();
 }
 
@@ -6831,6 +6945,7 @@ async function init() {
   elements.openClientModalButton?.addEventListener("click", () => openClientModal());
   elements.startOnboardingButton?.addEventListener("click", () => openClientModal({ mode: "lead", stage: "lead" }));
   elements.closeClientModalButton?.addEventListener("click", closeClientModal);
+  elements.closeLeadNotificationButton?.addEventListener("click", closeLeadNotification);
   elements.closeAgentBuildModalButton?.addEventListener("click", closeAgentBuildModal);
   elements.copyAgentBuildPromptButton?.addEventListener("click", copyAgentBuildPrompt);
   elements.agentBuildTargetInput?.addEventListener("change", () => {
@@ -6986,6 +7101,37 @@ async function init() {
       closeClientModal();
     }
   });
+  elements.leadNotificationModal?.addEventListener("click", (event) => {
+    if (event.target === elements.leadNotificationModal) {
+      closeLeadNotification();
+      return;
+    }
+
+    const stageTarget = event.target.closest("[data-lead-action-stage]");
+    if (stageTarget && selectedLeadNotificationId) {
+      const clientId = selectedLeadNotificationId;
+      const stageId = stageTarget.dataset.leadActionStage;
+      closeLeadNotification();
+      updateLeadStage(clientId, stageId);
+      return;
+    }
+
+    const editTarget = event.target.closest("[data-lead-notification-edit]");
+    if (editTarget) {
+      const clientId = editTarget.dataset.leadNotificationEdit;
+      closeLeadNotification();
+      closeClientDetail();
+      openClientModal({ clientId, title: "Edit Client" });
+      return;
+    }
+
+    const detailTarget = event.target.closest("[data-lead-notification-detail]");
+    if (detailTarget) {
+      const clientId = detailTarget.dataset.leadNotificationDetail;
+      closeLeadNotification();
+      openClientDetail(clientId);
+    }
+  });
   elements.agentBuildModal?.addEventListener("click", (event) => {
     if (event.target === elements.agentBuildModal) {
       closeAgentBuildModal();
@@ -7014,6 +7160,14 @@ async function init() {
       return;
     }
 
+    const notificationTarget = event.target.closest("[data-lead-notification]");
+    if (notificationTarget) {
+      event.preventDefault();
+      event.stopPropagation();
+      openLeadNotification(notificationTarget.dataset.leadNotification);
+      return;
+    }
+
     const skipButton = event.target.closest("[data-onboarding-skip-client][data-onboarding-skip-item]");
     if (skipButton) {
       toggleOnboardingSkip(skipButton.dataset.onboardingSkipClient, skipButton.dataset.onboardingSkipItem);
@@ -7022,6 +7176,9 @@ async function init() {
 
     const detailTarget = event.target.closest("[data-client-detail]");
     if (detailTarget) {
+      if (event.target.closest("button")) {
+        return;
+      }
       openClientDetail(detailTarget.dataset.clientDetail);
     }
   });
@@ -7081,6 +7238,10 @@ async function init() {
 
     const detailTarget = event.target.closest("[data-client-detail]");
     if (!detailTarget) {
+      return;
+    }
+
+    if (event.target.closest("[data-lead-notification]")) {
       return;
     }
 
