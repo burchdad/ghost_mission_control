@@ -2992,14 +2992,20 @@ function normalizeLeadStage(value) {
 
 function deriveLeadStage(client) {
   const explicit = normalizeLeadStage(client?.leadStage || client?.lead_stage);
+  const stage = normalizeClientStage(client?.stage || client?.pipelineStage || client?.status);
+  const isLeadDeskRecord = ["lead", "deposit-paid"].includes(stage) || (stage === "paused-archived" && explicit === "lost-not-now");
+  if (!isLeadDeskRecord) {
+    return "";
+  }
+
   if (explicit) {
     return explicit;
   }
 
-  if (client?.stage === "paused-archived") {
+  if (stage === "paused-archived") {
     return "lost-not-now";
   }
-  if (client?.depositPaid || client?.deposit_paid || client?.stage === "deposit-paid") {
+  if (client?.depositPaid || client?.deposit_paid || stage === "deposit-paid") {
     return "deposit-paid";
   }
   if (client?.proposalSigned || client?.proposal_signed) {
@@ -3012,6 +3018,10 @@ function deriveLeadStage(client) {
     return "contacted-discovery";
   }
   return "new-lead";
+}
+
+function isLeadDeskClient(client) {
+  return Boolean(deriveLeadStage(client));
 }
 
 function normalizeClient(client) {
@@ -3055,7 +3065,7 @@ function normalizeClient(client) {
     clientDetailsPending: normalizeBoolean(client.clientDetailsPending),
     leadSource: normalizeLeadSource(client.leadSource || client.lead_source),
     leadSourceDetail: String(client.leadSourceDetail || client.lead_source_detail || client.leadSourceNote || "").trim(),
-    leadStage: deriveLeadStage(client),
+    leadStage: deriveLeadStage({ ...client, stage }),
     proposalSent: normalizeBoolean(client.proposalSent),
     depositInvoiceSent: normalizeBoolean(client.depositInvoiceSent),
     proposalSigned: normalizeBoolean(client.proposalSigned),
@@ -3509,8 +3519,7 @@ function getLeadDeskOpenTaskCount(client) {
 }
 
 function buildOnboardingActivation(clients) {
-  const onboardingStages = ["lead", "deposit-paid"];
-  const activeClients = clients.filter((client) => onboardingStages.includes(client.stage) || normalizeLeadStage(client.leadStage));
+  const activeClients = clients.filter(isLeadDeskClient);
   const progressTotal = 7;
 
   const queue = activeClients.map((client) => {

@@ -368,11 +368,16 @@ function normalizeLeadStageForUi(value) {
 
 function deriveLeadStage(client) {
   const explicit = normalizeLeadStageForUi(client?.leadStage || client?.lead_stage);
+  const stage = getClientStage(client);
+  const isLeadDeskRecord = ["lead", "deposit-paid"].includes(stage) || (stage === "paused-archived" && explicit === "lost-not-now");
+  if (!isLeadDeskRecord) {
+    return "";
+  }
+
   if (explicit) {
     return explicit;
   }
 
-  const stage = getClientStage(client);
   if (stage === "paused-archived") {
     return "lost-not-now";
   }
@@ -389,6 +394,10 @@ function deriveLeadStage(client) {
     return "contacted-discovery";
   }
   return "new-lead";
+}
+
+function isLeadDeskClient(client) {
+  return Boolean(deriveLeadStage(client));
 }
 
 function getLeadStageLabel(stageId) {
@@ -5535,8 +5544,7 @@ function renderLeadChecklistList(client) {
 }
 
 function renderClientLeadChecklist(client) {
-  const isLeadContext = Boolean(client.leadStage) || ["lead", "deposit-paid"].includes(getClientStage(client));
-  if (!isLeadContext) {
+  if (!isLeadDeskClient(client)) {
     return "";
   }
 
