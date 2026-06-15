@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:33:00.947Z",
+  "savedAt": "2026-06-15T11:33:08.661Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -601,8 +601,8 @@
       "plan": "Launch + Care",
       "contact": "",
       "notes": "Partner site is live. Buy the final custom domain, then continue SEO and social management.",
-      "stage": "deposit-paid",
-      "status": "deposit-paid",
+      "stage": "client-review",
+      "status": "client-review",
       "services": [
         "website-build",
         "web-helper-care",
@@ -611,7 +611,7 @@
       ],
       "plannedServices": [],
       "createdAt": "2026-06-15T11:31:15.709Z",
-      "updatedAt": "2026-06-15T11:31:15.709Z",
+      "updatedAt": "2026-06-15T11:33:08.406Z",
       "source": "runtime"
     }
   ]
