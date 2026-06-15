@@ -86,7 +86,7 @@ const LEAD_PIPELINE_STAGES = [
   { id: "contacted-discovery", label: "Contacted / Discovery" },
   { id: "proposal-sent", label: "Proposal + Invoice Sent" },
   { id: "agreement-returned", label: "Agreement Returned" },
-  { id: "deposit-paid", label: "Deposit Paid / Build Queue" },
+  { id: "deposit-paid", label: "Closed Leads / Build Queue" },
   { id: "lost-not-now", label: "Lost / Not Now" }
 ];
 
@@ -3491,7 +3491,7 @@ function getLeadDeskAction(client) {
   }
 
   if (client.depositPaid || client.stage === "deposit-paid") {
-    return "Move into website build queue for the initial draft.";
+    return "Queued in Web Clients for the initial website build.";
   }
 
   if (client.proposalSigned) {
@@ -3565,7 +3565,7 @@ function buildOnboardingActivation(clients) {
   return {
     queue,
     summary: {
-      activeClients: queue.filter((client) => client.leadStage !== "lost-not-now").length,
+      activeClients: queue.filter((client) => !["deposit-paid", "lost-not-now"].includes(client.leadStage)).length,
       blockedClients: queue.filter((client) => client.blockerCount > 0).length,
       proposalsSent: queue.filter((client) => client.proposalSent || client.depositInvoiceSent || client.proposalSigned || client.depositPaid).length,
       agreementsReturned: queue.filter((client) => client.proposalSigned || client.depositPaid).length,

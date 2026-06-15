@@ -317,7 +317,7 @@ const leadDeskColumns = [
   { id: "contacted-discovery", label: "Contacted / Discovery", helper: "Phone, Messenger, or email discussion is active." },
   { id: "proposal-sent", label: "Proposal + Invoice Sent", helper: "Waiting on agreement response." },
   { id: "agreement-returned", label: "Agreement Returned", helper: "Waiting on deposit payment." },
-  { id: "deposit-paid", label: "Deposit Paid / Build Queue", helper: "Ready for the initial website draft." },
+  { id: "deposit-paid", label: "Closed Leads / Build Queue", helper: "Won leads queued into the Web Clients build pipeline." },
   { id: "lost-not-now", label: "Lost / Not Now", helper: "Paused, archived, or not ready yet." }
 ];
 
@@ -5476,7 +5476,7 @@ function getLeadDeskNextAction(client) {
     return "Follow up on deposit payment.";
   }
   if (column === "deposit-paid") {
-    return "Move into website build queue.";
+    return "Queued in Web Clients for the initial website build.";
   }
   return "Decide whether to revive, archive, or remove this lead.";
 }
