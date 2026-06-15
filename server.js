@@ -90,6 +90,10 @@ const LEAD_PIPELINE_STAGES = [
   { id: "lost-not-now", label: "Lost / Not Now" }
 ];
 
+const CLOSED_LEAD_CLIENT_STAGES = CLIENT_PIPELINE_STAGES
+  .map((stage) => stage.id)
+  .filter((stageId) => stageId !== "lead" && stageId !== "paused-archived");
+
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -2993,8 +2997,15 @@ function normalizeLeadStage(value) {
 function deriveLeadStage(client) {
   const explicit = normalizeLeadStage(client?.leadStage || client?.lead_stage);
   const stage = normalizeClientStage(client?.stage || client?.pipelineStage || client?.status);
-  const isLeadDeskRecord = ["lead", "deposit-paid"].includes(stage) || (stage === "paused-archived" && explicit === "lost-not-now");
-  if (!isLeadDeskRecord) {
+  if (CLOSED_LEAD_CLIENT_STAGES.includes(stage)) {
+    return "deposit-paid";
+  }
+
+  if (stage === "paused-archived") {
+    return explicit === "lost-not-now" ? "lost-not-now" : "";
+  }
+
+  if (stage !== "lead") {
     return "";
   }
 
@@ -3002,12 +3013,6 @@ function deriveLeadStage(client) {
     return explicit;
   }
 
-  if (stage === "paused-archived") {
-    return "lost-not-now";
-  }
-  if (client?.depositPaid || client?.deposit_paid || stage === "deposit-paid") {
-    return "deposit-paid";
-  }
   if (client?.proposalSigned || client?.proposal_signed) {
     return "agreement-returned";
   }

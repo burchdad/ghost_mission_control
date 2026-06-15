@@ -321,6 +321,10 @@ const leadDeskColumns = [
   { id: "lost-not-now", label: "Lost / Not Now", helper: "Paused, archived, or not ready yet." }
 ];
 
+const closedLeadClientStages = webClientPipelineStages
+  .map((stage) => stage.id)
+  .filter((stageId) => stageId !== "paused-archived");
+
 function getLeadSourceDefinition(sourceId) {
   return leadSourceDefinitions.find((source) => source.id === sourceId) || null;
 }
@@ -369,8 +373,15 @@ function normalizeLeadStageForUi(value) {
 function deriveLeadStage(client) {
   const explicit = normalizeLeadStageForUi(client?.leadStage || client?.lead_stage);
   const stage = getClientStage(client);
-  const isLeadDeskRecord = ["lead", "deposit-paid"].includes(stage) || (stage === "paused-archived" && explicit === "lost-not-now");
-  if (!isLeadDeskRecord) {
+  if (closedLeadClientStages.includes(stage)) {
+    return "deposit-paid";
+  }
+
+  if (stage === "paused-archived") {
+    return explicit === "lost-not-now" ? "lost-not-now" : "";
+  }
+
+  if (stage !== "lead") {
     return "";
   }
 
@@ -378,12 +389,6 @@ function deriveLeadStage(client) {
     return explicit;
   }
 
-  if (stage === "paused-archived") {
-    return "lost-not-now";
-  }
-  if (client?.depositPaid || stage === "deposit-paid") {
-    return "deposit-paid";
-  }
   if (client?.proposalSigned) {
     return "agreement-returned";
   }
