@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:29:40.884Z",
+  "savedAt": "2026-06-15T11:29:44.282Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -399,6 +399,49 @@
       ],
       "createdAt": "2026-06-15T11:29:40.623Z",
       "updatedAt": "2026-06-15T11:29:40.623Z",
+      "source": "runtime"
+    },
+    {
+      "id": "peppers-and-vibes",
+      "clientName": "Peppers and Vibes",
+      "websiteUrl": "https://www.peppersandvibes.com",
+      "repo": "burchdad/e-commerce_peptides",
+      "githubUrl": "https://github.com/burchdad/e-commerce_peptides",
+      "railwayUrl": "https://e-commercepeptides-production.up.railway.app/",
+      "vercelUrl": "https://www.peppersandvibes.com/",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": true,
+      "clientDetailsPending": false,
+      "leadSource": "",
+      "leadSourceDetail": "",
+      "leadStage": "deposit-paid",
+      "proposalSent": true,
+      "depositInvoiceSent": true,
+      "proposalSigned": true,
+      "partnershipSigned": false,
+      "depositPaid": true,
+      "finalPaymentPaid": false,
+      "businessEmail": "",
+      "businessPhone": "",
+      "plan": "Launch + Care",
+      "contact": "",
+      "notes": "",
+      "stage": "deposit-paid",
+      "status": "deposit-paid",
+      "services": [
+        "website-build",
+        "web-helper-care",
+        "ecommerce"
+      ],
+      "plannedServices": [
+        "search-intelligence"
+      ],
+      "createdAt": "2026-06-15T11:29:44.107Z",
+      "updatedAt": "2026-06-15T11:29:44.107Z",
       "source": "runtime"
     }
   ]
