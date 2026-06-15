@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:30:29.855Z",
+  "savedAt": "2026-06-15T11:30:35.143Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -528,6 +528,48 @@
       "plannedServices": [],
       "createdAt": "2026-06-15T11:30:29.578Z",
       "updatedAt": "2026-06-15T11:30:29.578Z",
+      "source": "runtime"
+    },
+    {
+      "id": "stephen-burch",
+      "clientName": "Stephen Burch",
+      "websiteUrl": "https://www.stephenburch.app",
+      "repo": "burchdad/i-need-to-make-a-quick",
+      "githubUrl": "https://github.com/burchdad/i-need-to-make-a-quick",
+      "railwayUrl": "",
+      "vercelUrl": "https://www.stephenburch.app/",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": true,
+      "clientDetailsPending": false,
+      "leadSource": "",
+      "leadSourceDetail": "",
+      "leadStage": "deposit-paid",
+      "proposalSent": true,
+      "depositInvoiceSent": true,
+      "proposalSigned": true,
+      "partnershipSigned": false,
+      "depositPaid": true,
+      "finalPaymentPaid": false,
+      "businessEmail": "",
+      "businessPhone": "",
+      "plan": "Launch + Care",
+      "contact": "",
+      "notes": "Personal digital business card.",
+      "stage": "deposit-paid",
+      "status": "deposit-paid",
+      "services": [
+        "website-build",
+        "web-helper-care"
+      ],
+      "plannedServices": [
+        "search-intelligence"
+      ],
+      "createdAt": "2026-06-15T11:30:34.924Z",
+      "updatedAt": "2026-06-15T11:30:34.924Z",
       "source": "runtime"
     }
   ]
