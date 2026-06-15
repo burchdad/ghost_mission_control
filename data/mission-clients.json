@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-15T11:29:33.166Z",
+  "savedAt": "2026-06-15T11:29:37.130Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -315,6 +315,48 @@
       ],
       "createdAt": "2026-06-15T11:29:32.902Z",
       "updatedAt": "2026-06-15T11:29:32.902Z",
+      "source": "runtime"
+    },
+    {
+      "id": "gray-matters-tech",
+      "clientName": "Gray Matters Tech",
+      "websiteUrl": "https://www.graymatterstech.com",
+      "repo": "burchdad/barbara_consulting",
+      "githubUrl": "https://github.com/burchdad/barbara_consulting",
+      "railwayUrl": "https://barbaraconsulting-production.up.railway.app/",
+      "vercelUrl": "https://www.graymatterstech.com/",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": true,
+      "clientDetailsPending": false,
+      "leadSource": "",
+      "leadSourceDetail": "",
+      "leadStage": "deposit-paid",
+      "proposalSent": true,
+      "depositInvoiceSent": true,
+      "proposalSigned": true,
+      "partnershipSigned": false,
+      "depositPaid": true,
+      "finalPaymentPaid": false,
+      "businessEmail": "",
+      "businessPhone": "",
+      "plan": "Launch + Care",
+      "contact": "Barbara Consulting",
+      "notes": "",
+      "stage": "deposit-paid",
+      "status": "deposit-paid",
+      "services": [
+        "website-build",
+        "web-helper-care"
+      ],
+      "plannedServices": [
+        "search-intelligence"
+      ],
+      "createdAt": "2026-06-15T11:29:36.925Z",
+      "updatedAt": "2026-06-15T11:29:36.925Z",
       "source": "runtime"
     }
   ]
