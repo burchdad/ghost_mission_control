@@ -1,4 +1,5 @@
 const http = require("http");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
@@ -46,6 +47,13 @@ const DATABASE_URL = String(process.env.DATABASE_URL || process.env.POSTGRES_URL
 const DATABASE_SSL = String(process.env.DATABASE_SSL || "auto").toLowerCase();
 const WEB_HELPER_AUTO_ACTIVATE = String(process.env.WEB_HELPER_AUTO_ACTIVATE || "true").toLowerCase() !== "false";
 const WEB_HELPER_HANDOFF_STAGE = "launch-handoff";
+const GHOST_WEB_HELPER_WEBHOOK_SECRET = String(process.env.GHOST_WEB_HELPER_WEBHOOK_SECRET || "").trim();
+const GHOST_WEB_HELPER_ALLOWED_SOURCES = String(process.env.GHOST_WEB_HELPER_ALLOWED_SOURCES || "client_admin_dashboard")
+  .split(",")
+  .map((source) => source.trim())
+  .filter(Boolean);
+const GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY = String(process.env.GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY || "testing_branch_only").trim();
+const GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED = String(process.env.GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED || "true").toLowerCase() !== "false";
 const runtimeClients = [];
 let runtimeClientsHydrated = false;
 let runtimeClientsRepoSyncedAt = 0;
@@ -58,6 +66,7 @@ let runtimeClientsDbLastError = "";
 let runtimeClientsDbAvailable = null;
 let clientStorePgPool = null;
 let clientStorePgInitPromise = null;
+let webHelperRequestPgInitPromise = null;
 
 const CLIENT_PIPELINE_STAGES = [
   { id: "lead", label: "Lead / Prospect" },
@@ -1251,6 +1260,238 @@ async function ensureClientStoreTable() {
   return clientStorePgInitPromise;
 }
 
+async function ensureWebHelperRequestTable() {
+  const pool = getClientStorePgPool();
+  if (!pool) {
+    return {
+      ok: false,
+      target: "postgres",
+      skipped: true,
+      reason: isClientStoreDatabaseEnabled() ? runtimeClientsDbLastError : "DATABASE_URL is not configured."
+    };
+  }
+
+  if (webHelperRequestPgInitPromise) {
+    return webHelperRequestPgInitPromise;
+  }
+
+  webHelperRequestPgInitPromise = pool
+    .query(`
+      CREATE TABLE IF NOT EXISTS mission_web_helper_requests (
+        id text PRIMARY KEY,
+        client_id text NOT NULL,
+        web_helper_id text NOT NULL DEFAULT '',
+        source text NOT NULL DEFAULT '',
+        request_type text NOT NULL DEFAULT 'website_update',
+        title text NOT NULL DEFAULT '',
+        summary text NOT NULL DEFAULT '',
+        details text NOT NULL DEFAULT '',
+        page_url text NOT NULL DEFAULT '',
+        priority text NOT NULL DEFAULT 'normal',
+        status text NOT NULL DEFAULT 'new',
+        branch_policy text NOT NULL DEFAULT 'testing_branch_only',
+        approval_required boolean NOT NULL DEFAULT true,
+        attachments jsonb NOT NULL DEFAULT '[]'::jsonb,
+        payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS mission_web_helper_requests_client_idx ON mission_web_helper_requests (client_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS mission_web_helper_requests_status_idx ON mission_web_helper_requests (status, updated_at DESC);
+    `)
+    .then(() => ({ ok: true, target: "postgres", table: "mission_web_helper_requests" }))
+    .catch((error) => {
+      webHelperRequestPgInitPromise = null;
+      return { ok: false, target: "postgres", table: "mission_web_helper_requests", error: String(error?.message || error) };
+    });
+
+  return webHelperRequestPgInitPromise;
+}
+
+function normalizeWebhookSecret(value) {
+  return String(value || "").trim();
+}
+
+function timingSafeEqualText(left, right) {
+  const leftValue = normalizeWebhookSecret(left);
+  const rightValue = normalizeWebhookSecret(right);
+  if (!leftValue || !rightValue) {
+    return false;
+  }
+
+  const leftBuffer = Buffer.from(leftValue);
+  const rightBuffer = Buffer.from(rightValue);
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function verifyWebHelperWebhookSecret(request) {
+  if (!GHOST_WEB_HELPER_WEBHOOK_SECRET) {
+    return { ok: false, status: 503, error: "GHOST_WEB_HELPER_WEBHOOK_SECRET is not configured." };
+  }
+
+  const providedSecret = request.headers["x-ghost-webhook-secret"] || request.headers["x-webhook-secret"] || "";
+  if (!timingSafeEqualText(providedSecret, GHOST_WEB_HELPER_WEBHOOK_SECRET)) {
+    return { ok: false, status: 401, error: "Invalid webhook secret." };
+  }
+
+  return { ok: true };
+}
+
+function normalizeWebHelperRequestPayload(payload, client) {
+  const source = String(payload.source || "client_admin_dashboard").trim();
+  const requestType = String(payload.request_type || payload.requestType || "website_update").trim();
+  const priority = String(payload.priority || "normal").trim().toLowerCase();
+  const branchPolicy = String(payload.branch_policy || payload.branchPolicy || GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY).trim();
+  const approvalRequired =
+    payload.approval_required === undefined && payload.approvalRequired === undefined
+      ? GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED
+      : normalizeBoolean(payload.approval_required ?? payload.approvalRequired);
+  const summary = String(payload.summary || payload.title || `${requestType.replace(/[_-]+/g, " ")} request`).trim();
+  const details = String(payload.details || payload.message || "").trim();
+  const pageUrl = String(payload.page_url || payload.pageUrl || "").trim();
+  const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
+  const id = String(payload.id || `whr_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`).trim();
+
+  return {
+    id,
+    clientId: client.id,
+    webHelperId: String(payload.web_helper_id || payload.webHelperId || `${client.id}-web-helper`).trim(),
+    source,
+    requestType,
+    title: summary,
+    summary,
+    details,
+    pageUrl,
+    priority,
+    status: String(payload.status || "new").trim(),
+    branchPolicy,
+    approvalRequired,
+    attachments,
+    payload
+  };
+}
+
+function dbRowToWebHelperRequest(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    clientId: row.client_id,
+    webHelperId: row.web_helper_id,
+    source: row.source,
+    type: row.request_type,
+    requestType: row.request_type,
+    title: row.title || row.summary,
+    summary: row.summary,
+    details: row.details,
+    pageUrl: row.page_url,
+    priority: row.priority,
+    status: row.status,
+    branchPolicy: row.branch_policy,
+    approvalRequired: Boolean(row.approval_required),
+    attachments: parsePostgresJsonList(row.attachments),
+    payload: row.payload || {},
+    sla: row.approval_required ? "Owner approval" : "Safe update",
+    createdAt: postgresTimestampToIso(row.created_at),
+    updatedAt: postgresTimestampToIso(row.updated_at)
+  };
+}
+
+async function persistWebHelperRequestToPostgres(record) {
+  const init = await ensureWebHelperRequestTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  const result = await getClientStorePgPool().query(
+    `
+    INSERT INTO mission_web_helper_requests (
+      id,
+      client_id,
+      web_helper_id,
+      source,
+      request_type,
+      title,
+      summary,
+      details,
+      page_url,
+      priority,
+      status,
+      branch_policy,
+      approval_required,
+      attachments,
+      payload,
+      created_at,
+      updated_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+      $11, $12, $13, $14::jsonb, $15::jsonb, now(), now()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      client_id = EXCLUDED.client_id,
+      web_helper_id = EXCLUDED.web_helper_id,
+      source = EXCLUDED.source,
+      request_type = EXCLUDED.request_type,
+      title = EXCLUDED.title,
+      summary = EXCLUDED.summary,
+      details = EXCLUDED.details,
+      page_url = EXCLUDED.page_url,
+      priority = EXCLUDED.priority,
+      status = EXCLUDED.status,
+      branch_policy = EXCLUDED.branch_policy,
+      approval_required = EXCLUDED.approval_required,
+      attachments = EXCLUDED.attachments,
+      payload = EXCLUDED.payload,
+      updated_at = now()
+    RETURNING *;
+    `,
+    [
+      record.id,
+      record.clientId,
+      record.webHelperId,
+      record.source,
+      record.requestType,
+      record.title,
+      record.summary,
+      record.details,
+      record.pageUrl,
+      record.priority,
+      record.status,
+      record.branchPolicy,
+      record.approvalRequired,
+      JSON.stringify(record.attachments || []),
+      JSON.stringify(record.payload || {})
+    ]
+  );
+
+  return { ok: true, target: "postgres", table: "mission_web_helper_requests", request: dbRowToWebHelperRequest(result.rows[0]) };
+}
+
+async function readWebHelperRequestsFromPostgres(options = {}) {
+  const init = await ensureWebHelperRequestTable();
+  if (!init.ok) {
+    return { ...init, requests: [] };
+  }
+
+  const clientIds = Array.isArray(options.clientIds) ? options.clientIds.filter(Boolean) : [];
+  const limit = Math.max(1, Math.min(500, Number(options.limit || 200)));
+  const result = clientIds.length
+    ? await getClientStorePgPool().query(
+        "SELECT * FROM mission_web_helper_requests WHERE client_id = ANY($1::text[]) ORDER BY updated_at DESC LIMIT $2",
+        [clientIds, limit]
+      )
+    : await getClientStorePgPool().query("SELECT * FROM mission_web_helper_requests ORDER BY updated_at DESC LIMIT $1", [limit]);
+
+  return {
+    ok: true,
+    target: "postgres",
+    table: "mission_web_helper_requests",
+    requests: result.rows.map(dbRowToWebHelperRequest).filter(Boolean)
+  };
+}
+
 function parsePostgresJsonList(value) {
   if (Array.isArray(value)) {
     return value;
@@ -2251,6 +2492,66 @@ function findClientForWebHelperTarget(targetId) {
   }) || null;
 }
 
+function findClientForWebHelperRequest(payload) {
+  const candidates = [
+    payload.clientId,
+    payload.client_id,
+    payload.webHelperId,
+    payload.web_helper_id,
+    payload.client,
+    payload.clientName,
+    payload.client_name,
+    payload.site,
+    payload.siteUrl,
+    payload.site_url,
+    payload.websiteUrl,
+    payload.website_url,
+    payload.repo,
+    payload.githubRepo,
+    payload.github_repo
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  for (const candidate of candidates) {
+    const client = findClientForWebHelperTarget(candidate);
+    if (client) {
+      return client;
+    }
+  }
+
+  const siteDomain = normalizeIdentityDomain(payload.site || payload.siteUrl || payload.site_url || payload.websiteUrl || payload.website_url);
+  const repoIdentity = normalizeRepoIdentity(payload.repo || payload.githubRepo || payload.github_repo);
+  const clientLoose = looseLookupKey(payload.client || payload.clientName || payload.client_name);
+
+  return getAllClients().find((client) => {
+    const clientRepo = normalizeRepoIdentity(client.repo || client.githubUrl);
+    const clientDomains = [client.websiteUrl, client.vercelUrl].map(normalizeIdentityDomain).filter(Boolean);
+    return (
+      (siteDomain && clientDomains.includes(siteDomain)) ||
+      (repoIdentity && clientRepo === repoIdentity) ||
+      (clientLoose && looseLookupKey(client.clientName).includes(clientLoose))
+    );
+  }) || null;
+}
+
+function validateWebHelperRequestPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return "JSON payload is required.";
+  }
+
+  const source = String(payload.source || "client_admin_dashboard").trim();
+  if (GHOST_WEB_HELPER_ALLOWED_SOURCES.length && !GHOST_WEB_HELPER_ALLOWED_SOURCES.includes(source)) {
+    return `Source ${source || "(blank)"} is not allowed.`;
+  }
+
+  if (!payload.summary && !payload.details && !payload.message) {
+    return "summary, details, or message is required.";
+  }
+
+  return "";
+}
+
 function webHelperTargetMatchesClient(client, targetId) {
   if (!targetId) {
     return false;
@@ -2538,7 +2839,20 @@ function buildWebHelperRequests(site) {
   return requests;
 }
 
-function buildWebHelperAgents(snapshot, requestedSiteId = "") {
+function getStoredRequestsForClient(storedRequests, clientId) {
+  return (storedRequests || [])
+    .filter((request) => request.clientId === clientId)
+    .map((request) => ({
+      ...request,
+      title: request.title || request.summary || "Client website request",
+      summary: request.summary || request.details || "Client submitted a website helper request.",
+      status: request.status || "new",
+      approvalRequired: Boolean(request.approvalRequired),
+      sla: request.sla || (request.approvalRequired ? "Owner approval" : "Safe update")
+    }));
+}
+
+function buildWebHelperAgents(snapshot, requestedSiteId = "", storedRequests = []) {
   const websites = snapshot.websites || [];
   const filteredSites = requestedSiteId
     ? websites.filter((site) => site.id === requestedSiteId || webHelperTargetMatchesClient(findClientForMonitoredSite(site), requestedSiteId))
@@ -2550,7 +2864,8 @@ function buildWebHelperAgents(snapshot, requestedSiteId = "") {
       return null;
     }
 
-    const requests = buildWebHelperRequests(site);
+    const storedClientRequests = client ? getStoredRequestsForClient(storedRequests, client.id) : [];
+    const requests = [...storedClientRequests, ...buildWebHelperRequests(site)];
     const pendingApprovals = requests.filter((request) => request.approvalRequired).length;
     const status = pendingApprovals > 0 ? "needs-approval" : "active";
     let rootUrl = `https://${site.domain}`;
@@ -2593,7 +2908,7 @@ function buildWebHelperAgents(snapshot, requestedSiteId = "") {
   }).filter(Boolean);
 }
 
-function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpers = []) {
+function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpers = [], storedRequests = []) {
   const existingUrls = new Set(
     (existingHelpers || [])
       .map((helper) => {
@@ -2609,7 +2924,7 @@ function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpe
       return !existingUrls.has(normalizeIdentityDomain(client.websiteUrl));
     })
     .map((client) => {
-      const requests = [];
+      const requests = getStoredRequestsForClient(storedRequests, client.id);
       if (client.finalDomainPurchased === false) {
         requests.push({
           id: `${client.id}-domain`,
@@ -6421,16 +6736,24 @@ const server = http.createServer((request, response) => {
       getMissionSnapshot(forceRefresh),
       getWebHelperAutoActivation({
         command: "Auto-activate current live website Web Helpers for handoff"
-      })
+      }),
+      readWebHelperRequestsFromPostgres()
     ])
-      .then(([snapshot, autoActivation]) => {
-        const monitoredHelpers = buildWebHelperAgents(snapshot, requestedSiteId);
-        const clientHelpers = buildClientWebHelperAgents(getAllClients(), requestedSiteId, monitoredHelpers);
+      .then(([snapshot, autoActivation, requestStore]) => {
+        const storedRequests = requestStore.requests || [];
+        const monitoredHelpers = buildWebHelperAgents(snapshot, requestedSiteId, storedRequests);
+        const clientHelpers = buildClientWebHelperAgents(getAllClients(), requestedSiteId, monitoredHelpers, storedRequests);
         const helpers = [...monitoredHelpers, ...clientHelpers];
         sendJson(request, response, 200, {
           generatedAt: new Date().toISOString(),
           siteId: requestedSiteId || null,
           autoActivation,
+          requestStore: {
+            ok: requestStore.ok,
+            target: requestStore.target,
+            count: storedRequests.length,
+            error: requestStore.error || requestStore.reason || ""
+          },
           summary: summarizeWebHelpers(helpers),
           helpers
         });
@@ -6440,6 +6763,59 @@ const server = http.createServer((request, response) => {
           error: "Unable to generate web helper agents",
           detail: String(error?.message || error)
         });
+      });
+
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/web-helper-requests") {
+    const auth = verifyWebHelperWebhookSecret(request);
+    if (!auth.ok) {
+      sendJson(request, response, auth.status || 401, { error: auth.error || "Unauthorized" });
+      return;
+    }
+
+    readJsonBody(request)
+      .then(async (payload) => {
+        const validationError = validateWebHelperRequestPayload(payload);
+        if (validationError) {
+          sendJson(request, response, 400, { error: validationError });
+          return;
+        }
+
+        const client = findClientForWebHelperRequest(payload);
+        if (!client) {
+          sendJson(request, response, 404, {
+            error: "Unable to match request to a Mission Control client.",
+            detail: "Include a matching client id/name, site domain, or repo full name."
+          });
+          return;
+        }
+
+        const record = normalizeWebHelperRequestPayload(payload, client);
+        const stored = await persistWebHelperRequestToPostgres(record);
+        if (!stored.ok) {
+          sendJson(request, response, 503, {
+            error: "Unable to persist Web Helper request.",
+            detail: stored.error || stored.reason || "Postgres request store unavailable."
+          });
+          return;
+        }
+
+        sendJson(request, response, 201, {
+          ok: true,
+          routedTo: {
+            clientId: client.id,
+            clientName: client.clientName,
+            webHelperId: record.webHelperId,
+            websiteUrl: client.websiteUrl,
+            repo: client.repo
+          },
+          request: stored.request
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
       });
 
     return;

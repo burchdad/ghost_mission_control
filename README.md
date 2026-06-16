@@ -213,6 +213,54 @@ GET /mission/sites
 GET /mission/snapshot
 ```
 
+## Client Admin Dashboard Web Helper Requests
+
+Client admin dashboards can send website update or upgrade requests into Mission Control so the correct Web Helper agent can triage the work.
+
+Recommended Mission Control backend variables:
+
+```bash
+GHOST_WEB_HELPER_WEBHOOK_SECRET=<shared-secret>
+GHOST_WEB_HELPER_ALLOWED_SOURCES=client_admin_dashboard
+GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY=testing_branch_only
+GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED=true
+```
+
+Recommended variables on each client website/admin dashboard:
+
+```bash
+GHOST_MISSION_CONTROL_WEBHOOK_URL=https://<railway-domain>/mission/web-helper-requests
+GHOST_MISSION_CONTROL_WEBHOOK_SECRET=<same-shared-secret>
+GHOST_CLIENT_ID=<mission-control-client-id>
+GHOST_CLIENT_NAME="Gray Matters Technology Services"
+GHOST_SITE_URL=https://www.graymatterstech.com
+GHOST_REPO=burchdad/barbara_consulting
+GHOST_WEB_HELPER_ID=<mission-control-client-id>-web-helper
+GHOST_WEB_HELPER_BRANCH_POLICY=testing_branch_only
+GHOST_WEB_HELPER_APPROVAL_REQUIRED=true
+```
+
+The client dashboard should include enough identity for Mission Control to match the request by client, site, or repo:
+
+```json
+{
+  "client": "Gray Matters Technology Services",
+  "site": "www.graymatterstech.com",
+  "repo": "burchdad/barbara_consulting",
+  "source": "client_admin_dashboard",
+  "request_type": "layout_change",
+  "page_url": "/services",
+  "summary": "...",
+  "details": "...",
+  "priority": "normal",
+  "attachments": [],
+  "branch_policy": "testing_branch_only",
+  "approval_required": true
+}
+```
+
+Send requests to `POST /mission/web-helper-requests` with the shared secret in `X-Ghost-Webhook-Secret`. Mission Control matches by client, site, or repo, stores the request, and shows it in the matching Web Helper queue.
+
 ## AI Provider Integration (OpenAI + Anthropic + OpenRouter)
 
 Mission Command now supports optional AI copilot guidance from OpenAI, Anthropic, and OpenRouter with automatic fallback.

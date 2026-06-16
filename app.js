@@ -6594,7 +6594,15 @@ function renderWebHelpers(payload) {
           </div>
           <p>${escapeHtml(request.clientName)} | ${escapeHtml(request.helperName)}</p>
           <p>${escapeHtml(request.summary)}</p>
-          <p class="statline">Type: ${escapeHtml(request.type)} | Status: ${escapeHtml(request.status)} | SLA: ${escapeHtml(request.sla)}</p>
+          ${request.details ? `<p>${escapeHtml(request.details)}</p>` : ""}
+          <p class="statline">
+            Type: ${escapeHtml(request.type || request.requestType || "website_update")}
+            | Status: ${escapeHtml(request.status)}
+            | Priority: ${escapeHtml(request.priority || "normal")}
+            | Page: ${escapeHtml(request.pageUrl || "sitewide")}
+            | Branch: ${escapeHtml(request.branchPolicy || "testing_branch_only")}
+            | SLA: ${escapeHtml(request.sla)}
+          </p>
         </article>`)
         .join("")
     : `<article class="web-helper-request">
