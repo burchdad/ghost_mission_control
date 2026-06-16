@@ -6447,12 +6447,206 @@ function renderWebHelperKnowledge(helper) {
   </div>`;
 }
 
+const webHelperKanbanColumns = [
+  {
+    id: "new",
+    label: "New Intake",
+    hint: "Fresh requests from client dashboards.",
+    match: ["new", "intake", "submitted"]
+  },
+  {
+    id: "triage",
+    label: "Needs Triage",
+    hint: "Clarify scope, page, assets, and risk.",
+    match: ["triage", "queued", "needs-triage"]
+  },
+  {
+    id: "needs_approval",
+    label: "Needs Approval",
+    hint: "Owner approval required before helper work.",
+    match: ["needs_approval", "needs-approval", "needs-review", "approval"]
+  },
+  {
+    id: "approved",
+    label: "Approved / Queue",
+    hint: "Ready for helper assignment on a testing branch.",
+    match: ["approved", "ready", "safe", "assigned"]
+  },
+  {
+    id: "in_progress",
+    label: "In Progress",
+    hint: "Helper is preparing the requested change.",
+    match: ["in_progress", "in-progress", "running", "working"]
+  },
+  {
+    id: "ready_review",
+    label: "Ready for Review",
+    hint: "Changes are ready for owner/client review.",
+    match: ["ready_review", "ready-for-review", "review", "changes_requested", "changes-requested"]
+  },
+  {
+    id: "done",
+    label: "Done / Merged",
+    hint: "Completed, merged, closed, or archived.",
+    match: ["done", "merged", "closed", "complete", "completed"]
+  },
+  {
+    id: "blocked",
+    label: "Blocked",
+    hint: "Needs credentials, assets, details, or manual intervention.",
+    match: ["blocked", "failed", "error", "retry_needed", "retry-needed"]
+  }
+];
+
+function normalizeWebHelperStatus(value) {
+  return String(value || "new").trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function getWebHelperTicketColumn(request) {
+  const status = normalizeWebHelperStatus(request.status);
+  const directColumn = webHelperKanbanColumns.find((column) => column.match.includes(status));
+  if (directColumn) {
+    return directColumn.id;
+  }
+
+  if (request.approvalRequired && ["queued", "needs_review", "needs-review"].includes(status)) {
+    return "needs_approval";
+  }
+
+  return request.approvalRequired && status !== "new" ? "needs_approval" : "triage";
+}
+
+function getPriorityTone(priority) {
+  const value = String(priority || "normal").toLowerCase();
+  if (["urgent", "critical", "high"].includes(value)) {
+    return "tone-red";
+  }
+  if (["medium", "normal"].includes(value)) {
+    return "tone-blue";
+  }
+  return "tone-gray";
+}
+
+function formatWebHelperDateForUi(value) {
+  if (!value) {
+    return "not dated";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function getWebHelperTicketId(request) {
+  return request.id || `${slugForUi(request.clientName)}-${slugForUi(request.title)}-${slugForUi(request.status)}`;
+}
+
+function flattenWebHelperRequests(helpers) {
+  return helpers.flatMap((helper) =>
+    (helper.requests || []).map((request) => ({
+      ...request,
+      id: request.id || request.ticketId || request.payload?.ticket_id || request.payload?.ticketId || "",
+      helperId: helper.id,
+      helperName: helper.name,
+      clientName: helper.clientName,
+      websiteUrl: helper.websiteUrl,
+      repo: helper.repo,
+      branchPolicy: request.branchPolicy || request.branch_policy || request.payload?.branch_policy || "testing_branch_only",
+      pageUrl: request.pageUrl || request.page_url || request.payload?.page_url || "sitewide",
+      priority: request.priority || request.payload?.priority || "normal",
+      requestType: request.requestType || request.type || request.payload?.request_type || "website_update",
+      approvalRequired: Boolean(request.approvalRequired),
+      createdAt: request.createdAt || request.payload?.created_at || request.updatedAt || ""
+    }))
+  );
+}
+
+function renderWebHelperTicketCard(request) {
+  const ticketId = getWebHelperTicketId(request);
+  const approvalLabel = request.approvalRequired ? "approval gate" : "safe scope";
+  const approvalTone = request.approvalRequired ? "exec-retrying" : "exec-running";
+
+  return `<article class="web-helper-ticket">
+    <div class="web-helper-ticket-head">
+      <div>
+        <span class="web-helper-ticket-client">${escapeHtml(request.clientName || "Client")}</span>
+        <h3>${escapeHtml(request.title || request.summary || "Website update request")}</h3>
+      </div>
+      <span class="exec-status ${approvalTone}">${approvalLabel}</span>
+    </div>
+    <p>${escapeHtml(request.summary || request.details || "No summary captured yet.")}</p>
+    ${request.details ? `<p class="web-helper-ticket-detail">${escapeHtml(request.details)}</p>` : ""}
+    <div class="web-helper-ticket-meta">
+      <span class="pill ${getPriorityTone(request.priority)}">${escapeHtml(request.priority || "normal")}</span>
+      <span>${escapeHtml(request.requestType || request.type || "website_update")}</span>
+      <span>${escapeHtml(request.pageUrl || "sitewide")}</span>
+      <span>${escapeHtml(formatWebHelperDateForUi(request.createdAt))}</span>
+    </div>
+    <div class="web-helper-ticket-footer">
+      <span>${escapeHtml(request.helperName || "Unassigned helper")}</span>
+      <span>${escapeHtml(request.repo || "repo pending")}</span>
+      <span>${escapeHtml(request.branchPolicy || "testing_branch_only")}</span>
+      ${ticketId ? `<strong>${escapeHtml(ticketId)}</strong>` : ""}
+    </div>
+  </article>`;
+}
+
+function renderWebHelperCapacityCard(helper) {
+  const tone = helper.status === "active" ? "green" : helper.status === "needs-approval" ? "yellow" : "gray";
+  const targetId = helper.siteId || helper.id || helper.clientName;
+  const activationLabel = helper.activation ? "Relearn Build" : "Activate Helper";
+  const requestCount = (helper.requests || []).length;
+  const pendingCount = (helper.requests || []).filter((request) => request.approvalRequired).length;
+
+  return `<article class="web-helper-card">
+    <div class="web-helper-card-head">
+      <h3>${escapeHtml(helper.clientName)}</h3>
+      <span class="pill ${toneClass[tone] ?? "tone-gray"}">${escapeHtml(helper.statusLabel || helper.status || "ready")}</span>
+    </div>
+    <p class="web-helper-domain">${escapeHtml(helper.websiteUrl)}</p>
+    <div class="web-helper-meta">
+      <div><span>Agent</span>${escapeHtml(helper.name)}</div>
+      <div><span>Open / Approval</span>${escapeHtml(`${requestCount} / ${pendingCount}`)}</div>
+      <div><span>Plan</span>${escapeHtml(helper.plan)}</div>
+      <div><span>Repo</span>${escapeHtml(helper.repo || "Not connected")}</div>
+      <div><span>Deployment</span>${escapeHtml(helper.deployment)}</div>
+      <div><span>Last Deploy</span>${escapeHtml(helper.lastDeploymentLabel)}</div>
+    </div>
+    <div class="web-helper-scope">
+      ${(helper.scope || []).slice(0, 6).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+    </div>
+    ${renderWebHelperKnowledge(helper)}
+    <div class="web-helper-actions">
+      <button type="button" data-web-helper-activate="${escapeHtml(targetId)}">${activationLabel}</button>
+    </div>
+  </article>`;
+}
+
 function renderWebHelpers(payload) {
   if (!elements.webHelperCards || !elements.webHelperRequests || !elements.webHelperSummary) {
     return;
   }
 
   const helpers = payload?.helpers || [];
+  const requests = flattenWebHelperRequests(helpers);
+  const requestsByColumn = webHelperKanbanColumns.reduce((accumulator, column) => {
+    accumulator[column.id] = [];
+    return accumulator;
+  }, {});
+  requests.forEach((request) => {
+    const columnId = getWebHelperTicketColumn(request);
+    requestsByColumn[columnId] = requestsByColumn[columnId] || [];
+    requestsByColumn[columnId].push(request);
+  });
+
   const summary = payload?.summary || {
     helperCount: 0,
     activeCount: 0,
@@ -6471,16 +6665,16 @@ function renderWebHelpers(payload) {
       <strong>${summary.activeCount}</strong>
     </article>
     <article class="web-helper-stat">
-      <span>Open Requests</span>
-      <strong>${summary.openRequests}</strong>
+      <span>New Intake</span>
+      <strong>${requestsByColumn.new.length}</strong>
     </article>
     <article class="web-helper-stat">
-      <span>Approvals</span>
+      <span>Needs Approval</span>
       <strong>${summary.pendingApprovals}</strong>
     </article>
     <article class="web-helper-stat">
-      <span>Template Ready</span>
-      <strong>${summary.templateReadyCount}</strong>
+      <span>In Motion</span>
+      <strong>${requestsByColumn.approved.length + requestsByColumn.in_progress.length + requestsByColumn.ready_review.length}</strong>
     </article>
   `;
 
@@ -6545,69 +6739,33 @@ function renderWebHelpers(payload) {
     return;
   }
 
-  elements.webHelperCards.innerHTML = helpers
-    .map((helper) => {
-      const tone = helper.status === "active" ? "green" : helper.status === "needs-approval" ? "yellow" : "gray";
-      const targetId = helper.siteId || helper.id || helper.clientName;
-      const activationLabel = helper.activation ? "Relearn Build" : "Activate Helper";
-      return `<article class="web-helper-card">
-        <div class="web-helper-card-head">
-          <h3>${escapeHtml(helper.clientName)}</h3>
-          <span class="pill ${toneClass[tone] ?? "tone-gray"}">${escapeHtml(helper.statusLabel || helper.status || "ready")}</span>
-        </div>
-        <p class="web-helper-domain">${escapeHtml(helper.websiteUrl)}</p>
-        <div class="web-helper-meta">
-          <div><span>Agent</span>${escapeHtml(helper.name)}</div>
-          <div><span>Autonomy</span>${escapeHtml(helper.autonomyLevel)}</div>
-          <div><span>Plan</span>${escapeHtml(helper.plan)}</div>
-          <div><span>Repo</span>${escapeHtml(helper.repo || "Not connected")}</div>
-          <div><span>Deployment</span>${escapeHtml(helper.deployment)}</div>
-          <div><span>Last Deploy</span>${escapeHtml(helper.lastDeploymentLabel)}</div>
-        </div>
-        <div class="web-helper-scope">
-          ${(helper.scope || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
-        </div>
-        ${renderWebHelperKnowledge(helper)}
-        <div class="web-helper-actions">
-          <button type="button" data-web-helper-activate="${escapeHtml(targetId)}">${activationLabel}</button>
-        </div>
-      </article>`;
-    })
-    .join("");
-
-  const requests = helpers.flatMap((helper) =>
-    (helper.requests || []).map((request) => ({
-      ...request,
-      helperName: helper.name,
-      clientName: helper.clientName
-    }))
-  );
-
-  elements.webHelperRequests.innerHTML = requests.length
-    ? requests
-        .map((request) => `<article class="web-helper-request">
-          <div class="web-helper-request-head">
-            <h3>${escapeHtml(request.title)}</h3>
-            <span class="exec-status ${request.approvalRequired ? "exec-retrying" : "exec-running"}">
-              ${request.approvalRequired ? "approval" : "safe"}
-            </span>
+  elements.webHelperCards.innerHTML = `
+    <div class="web-helper-kanban">
+      ${webHelperKanbanColumns.map((column) => {
+        const columnRequests = requestsByColumn[column.id] || [];
+        return `<section class="web-helper-kanban-column" aria-label="${escapeHtml(column.label)}">
+          <div class="web-helper-kanban-head">
+            <div>
+              <h3>${escapeHtml(column.label)}</h3>
+              <p>${escapeHtml(column.hint)}</p>
+            </div>
+            <strong>${columnRequests.length}</strong>
           </div>
-          <p>${escapeHtml(request.clientName)} | ${escapeHtml(request.helperName)}</p>
-          <p>${escapeHtml(request.summary)}</p>
-          ${request.details ? `<p>${escapeHtml(request.details)}</p>` : ""}
-          <p class="statline">
-            Type: ${escapeHtml(request.type || request.requestType || "website_update")}
-            | Status: ${escapeHtml(request.status)}
-            | Priority: ${escapeHtml(request.priority || "normal")}
-            | Page: ${escapeHtml(request.pageUrl || "sitewide")}
-            | Branch: ${escapeHtml(request.branchPolicy || "testing_branch_only")}
-            | SLA: ${escapeHtml(request.sla)}
-          </p>
-        </article>`)
-        .join("")
+          <div class="web-helper-kanban-stack">
+            ${columnRequests.length
+              ? columnRequests.map(renderWebHelperTicketCard).join("")
+              : `<div class="web-helper-kanban-empty">No tickets here.</div>`}
+          </div>
+        </section>`;
+      }).join("")}
+    </div>
+  `;
+
+  elements.webHelperRequests.innerHTML = helpers.length
+    ? helpers.map(renderWebHelperCapacityCard).join("")
     : `<article class="web-helper-request">
-        <h3>Request Queue Clear</h3>
-        <p>All client web helper queues are clear.</p>
+        <h3>No Helper Capacity</h3>
+        <p>Activate client helpers to create capacity and triage routes.</p>
       </article>`;
 
   updateNavBadges();
@@ -7154,6 +7312,16 @@ async function init() {
     openAgentBuildModal(buildButton.dataset.agentBuildIndex);
   });
   elements.webHelperCards?.addEventListener("click", (event) => {
+    const activateButton = event.target.closest("[data-web-helper-activate]");
+    if (!activateButton) {
+      return;
+    }
+
+    activateWebHelper(activateButton.dataset.webHelperActivate, {
+      refresh: Boolean(event.shiftKey)
+    });
+  });
+  elements.webHelperRequests?.addEventListener("click", (event) => {
     const activateButton = event.target.closest("[data-web-helper-activate]");
     if (!activateButton) {
       return;
