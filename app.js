@@ -341,9 +341,9 @@ const leadDeskColumns = [
   { id: "lost-not-now", label: "Lost / Not Now", helper: "Paused, archived, or not ready yet." }
 ];
 
-const closedLeadClientStages = webClientPipelineStages
+const closedLeadClientStages = clientPipelineStages
   .map((stage) => stage.id)
-  .filter((stageId) => stageId !== "paused-archived");
+  .filter((stageId) => stageId !== "lead" && stageId !== "paused-archived");
 
 function getLeadSourceDefinition(sourceId) {
   return leadSourceDefinitions.find((source) => source.id === sourceId) || null;
@@ -4731,6 +4731,23 @@ function renderClientUpdateHistory(client) {
   </div>`;
 }
 
+function renderClientDataHealth(dataHealth) {
+  if (!dataHealth) {
+    return "";
+  }
+
+  const clean = dataHealth.status === "clean";
+  return `<div class="client-board-note client-data-health ${clean ? "is-clean" : "needs-attention"}">
+    <div>
+      <h3>${clean ? "Client Data Clean" : "Client Data Needs Review"}</h3>
+      <p>${clean
+        ? "No duplicate client identities or required-field gaps detected."
+        : `${dataHealth.duplicateCount || 0} duplicate identity group(s), ${dataHealth.missingRequiredCount || 0} required-field gap(s).`}</p>
+    </div>
+    <span>${escapeHtml(dataHealth.status || "unknown")}</span>
+  </div>`;
+}
+
 function renderClientPipeline(clients) {
   if (!elements.clientPipeline) {
     return;
@@ -5029,7 +5046,8 @@ function renderClients(payload) {
 
   elements.clientCards.innerHTML = webClients.length
     ? filteredClients.length
-      ? `<div class="client-board-note">
+      ? `${renderClientDataHealth(activePayload.dataHealth)}
+        <div class="client-board-note">
           <div>
             <h3>Client Detail Mode</h3>
             <p>Click any client card to open links, handoff state, connection gaps, services, and operator notes in a centered command modal.</p>
@@ -6844,6 +6862,27 @@ function renderWebHelperTicketActions(ticket) {
   <p id="webHelperTicketActionResponse" class="command-response" aria-live="polite"></p>`;
 }
 
+function renderWebHelperTicketEvents(ticket) {
+  const events = Array.isArray(ticket.events) ? ticket.events : [];
+  if (!events.length) {
+    return `<section class="web-helper-ticket-modal-section">
+      <h3>Activity</h3>
+      <p>No ticket events have been recorded yet.</p>
+    </section>`;
+  }
+
+  return `<section class="web-helper-ticket-modal-section">
+    <h3>Activity</h3>
+    <div class="web-helper-ticket-events">
+      ${events.slice().reverse().map((event) => `<article>
+        <span>${escapeHtml(formatWebHelperDateForUi(event.at || event.createdAt))}</span>
+        <strong>${escapeHtml(event.status || event.type || "event")}</strong>
+        <p>${escapeHtml(event.message || event.actor || "Ticket updated.")}</p>
+      </article>`).join("")}
+    </div>
+  </section>`;
+}
+
 function openWebHelperTicket(ticketId) {
   const ticket = currentWebHelperTickets.find((request) => getWebHelperTicketId(request) === ticketId);
   if (!ticket || !elements.webHelperTicketModal || !elements.webHelperTicketContent) {
@@ -6878,6 +6917,7 @@ function openWebHelperTicket(ticketId) {
       <p>${escapeHtml(ticket.approvalRequired ? "Owner approval is required before this request moves into active helper work or deployment." : "This is marked as safe scope, but deployment should still follow the configured branch policy.")}</p>
       <p>${escapeHtml(`Work should stay under ${ticket.branchPolicy || "testing_branch_only"} until approved and merged.`)}</p>
     </section>
+    ${renderWebHelperTicketEvents(ticket)}
     ${renderWebHelperTicketActions(ticket)}
   `;
   elements.webHelperTicketModal.classList.remove("view-hidden");
@@ -6926,7 +6966,12 @@ async function updateWebHelperTicketStatus(ticketId, status) {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ id: ticketId, status })
+      body: JSON.stringify({
+        id: ticketId,
+        status,
+        actor: "mission_control",
+        message: `Operator moved ticket to ${status}.`
+      })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {

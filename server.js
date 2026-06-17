@@ -263,23 +263,6 @@ function parseMonitoredSites() {
       .filter(Boolean);
   }
 
-  if (!sites.length && typeof getSeededClientProfiles === "function") {
-    try {
-      sites = getSeededClientProfiles()
-        .filter((client) => client.websiteUrl)
-        .map((client) => ({
-          name: client.clientName,
-          domain: "",
-          rootUrl: client.websiteUrl,
-          pages: [client.websiteUrl],
-          autoDiscoverPages: true,
-          source: "client-deployment-map"
-        }));
-    } catch (error) {
-      console.warn("Seeded client monitor fallback is unavailable during startup.", error?.message || error);
-    }
-  }
-
   return sites
     .map((site, index) => {
       const pages = Array.isArray(site.pages)
@@ -1302,10 +1285,12 @@ async function ensureWebHelperRequestTable() {
         branch_policy text NOT NULL DEFAULT 'testing_branch_only',
         approval_required boolean NOT NULL DEFAULT true,
         attachments jsonb NOT NULL DEFAULT '[]'::jsonb,
+        events jsonb NOT NULL DEFAULT '[]'::jsonb,
         payload jsonb NOT NULL DEFAULT '{}'::jsonb,
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
       );
+      ALTER TABLE mission_web_helper_requests ADD COLUMN IF NOT EXISTS events jsonb NOT NULL DEFAULT '[]'::jsonb;
       CREATE INDEX IF NOT EXISTS mission_web_helper_requests_client_idx ON mission_web_helper_requests (client_id, updated_at DESC);
       CREATE INDEX IF NOT EXISTS mission_web_helper_requests_status_idx ON mission_web_helper_requests (status, updated_at DESC);
     `)
@@ -1377,6 +1362,17 @@ function normalizeWebHelperRequestPayload(payload, client) {
     branchPolicy,
     approvalRequired,
     attachments,
+    events: Array.isArray(payload.events)
+      ? payload.events
+      : [
+          {
+            type: "created",
+            status: String(payload.status || "new").trim(),
+            message: "Request captured from client dashboard.",
+            at: new Date().toISOString(),
+            actor: source
+          }
+        ],
     payload
   };
 }
@@ -1402,6 +1398,7 @@ function dbRowToWebHelperRequest(row) {
     branchPolicy: row.branch_policy,
     approvalRequired: Boolean(row.approval_required),
     attachments: parsePostgresJsonList(row.attachments),
+    events: parsePostgresJsonList(row.events),
     payload: row.payload || {},
     sla: row.approval_required ? "Owner approval" : "Safe update",
     createdAt: postgresTimestampToIso(row.created_at),
@@ -1432,12 +1429,13 @@ async function persistWebHelperRequestToPostgres(record) {
       branch_policy,
       approval_required,
       attachments,
+      events,
       payload,
       created_at,
       updated_at
     ) VALUES (
       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-      $11, $12, $13, $14::jsonb, $15::jsonb, now(), now()
+      $11, $12, $13, $14::jsonb, $15::jsonb, $16::jsonb, now(), now()
     )
     ON CONFLICT (id) DO UPDATE SET
       client_id = EXCLUDED.client_id,
@@ -1453,6 +1451,10 @@ async function persistWebHelperRequestToPostgres(record) {
       branch_policy = EXCLUDED.branch_policy,
       approval_required = EXCLUDED.approval_required,
       attachments = EXCLUDED.attachments,
+      events = CASE
+        WHEN mission_web_helper_requests.events = '[]'::jsonb THEN EXCLUDED.events
+        ELSE mission_web_helper_requests.events
+      END,
       payload = EXCLUDED.payload,
       updated_at = now()
     RETURNING *;
@@ -1472,6 +1474,7 @@ async function persistWebHelperRequestToPostgres(record) {
       record.branchPolicy,
       record.approvalRequired,
       JSON.stringify(record.attachments || []),
+      JSON.stringify(record.events || []),
       JSON.stringify(record.payload || {})
     ]
   );
@@ -1502,7 +1505,7 @@ async function readWebHelperRequestsFromPostgres(options = {}) {
   };
 }
 
-async function updateWebHelperRequestStatusInPostgres(id, status) {
+async function updateWebHelperRequestStatusInPostgres(id, status, options = {}) {
   const init = await ensureWebHelperRequestTable();
   if (!init.ok) {
     return init;
@@ -1514,14 +1517,25 @@ async function updateWebHelperRequestStatusInPostgres(id, status) {
     return { ok: false, status: 400, error: "Request id and status are required." };
   }
 
+  const event = {
+    type: "status_change",
+    status: normalizedStatus,
+    message: String(options.message || `Ticket moved to ${normalizedStatus}.`).trim(),
+    actor: String(options.actor || "mission_control").trim(),
+    at: new Date().toISOString()
+  };
+
   const result = await getClientStorePgPool().query(
     `
     UPDATE mission_web_helper_requests
-    SET status = $2, updated_at = now()
+    SET
+      status = $2,
+      events = COALESCE(events, '[]'::jsonb) || $3::jsonb,
+      updated_at = now()
     WHERE id = $1
     RETURNING *;
     `,
-    [normalizedId, normalizedStatus]
+    [normalizedId, normalizedStatus, JSON.stringify([event])]
   );
 
   if (!result.rows.length) {
@@ -3620,6 +3634,64 @@ function getAllClients() {
   });
 
   return [...merged.values()].sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+}
+
+function getClientDataHealth(clients = getAllClients()) {
+  const identityMap = new Map();
+  const duplicateGroups = [];
+  const missingRequired = [];
+
+  clients.forEach((client) => {
+    const keys = getClientIdentityKeys(client);
+    keys.forEach((key) => {
+      const entries = identityMap.get(key) || [];
+      entries.push({
+        id: client.id,
+        clientName: client.clientName,
+        websiteUrl: client.websiteUrl,
+        repo: client.repo,
+        source: client.source || "unknown"
+      });
+      identityMap.set(key, entries);
+    });
+
+    const missing = [];
+    if (!client.websiteUrl) {
+      missing.push("websiteUrl");
+    }
+    if (!client.repo && !client.githubUrl) {
+      missing.push("repo");
+    }
+    if (!client.stage) {
+      missing.push("stage");
+    }
+    if (!client.services?.length) {
+      missing.push("services");
+    }
+    if (missing.length) {
+      missingRequired.push({
+        id: client.id,
+        clientName: client.clientName,
+        missing
+      });
+    }
+  });
+
+  identityMap.forEach((entries, key) => {
+    const uniqueIds = [...new Set(entries.map((entry) => entry.id))];
+    if (uniqueIds.length > 1) {
+      duplicateGroups.push({ key, entries });
+    }
+  });
+
+  return {
+    status: duplicateGroups.length || missingRequired.length ? "attention" : "clean",
+    duplicateGroups,
+    duplicateCount: duplicateGroups.length,
+    missingRequired,
+    missingRequiredCount: missingRequired.length,
+    checkedAt: new Date().toISOString()
+  };
 }
 
 function getClientDerivedActions(client) {
@@ -6742,6 +6814,7 @@ const server = http.createServer((request, response) => {
           generatedAt: new Date().toISOString(),
           summary: summarizeClients(clients),
           pipelineStages: CLIENT_PIPELINE_STAGES,
+          dataHealth: getClientDataHealth(clients),
           clients: clients.map((client) => ({
             ...client,
             actions: getClientDerivedActions(client)
@@ -6758,6 +6831,26 @@ const server = http.createServer((request, response) => {
       .catch((error) => {
         sendJson(request, response, 500, {
           error: "Unable to load clients",
+          detail: String(error?.message || error)
+        });
+      });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/client-health") {
+    syncClientStore(url.searchParams.get("refresh") === "true")
+      .then((storageRead) => {
+        const clients = getAllClients();
+        sendJson(request, response, 200, {
+          ok: true,
+          generatedAt: new Date().toISOString(),
+          storage: getClientStorageStatus(storageRead),
+          dataHealth: getClientDataHealth(clients)
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to load client data health",
           detail: String(error?.message || error)
         });
       });
@@ -6806,6 +6899,7 @@ const server = http.createServer((request, response) => {
           created: savedClient || client,
           summary: summarizeClients(clients),
           pipelineStages: CLIENT_PIPELINE_STAGES,
+          dataHealth: getClientDataHealth(clients),
           storage: getClientStorageStatus(storageWrite),
           clients: clients.map((entry) => ({
             ...entry,
@@ -6915,7 +7009,10 @@ const server = http.createServer((request, response) => {
   if (request.method === "POST" && url.pathname === "/mission/web-helper-requests/status") {
     readJsonBody(request)
       .then(async (payload) => {
-        const updated = await updateWebHelperRequestStatusInPostgres(payload.id, payload.status);
+        const updated = await updateWebHelperRequestStatusInPostgres(payload.id, payload.status, {
+          actor: payload.actor || "mission_control",
+          message: payload.message || ""
+        });
         if (!updated.ok) {
           sendJson(request, response, updated.status || 503, {
             error: updated.error || "Unable to update Web Helper request status.",
@@ -7251,4 +7348,18 @@ function startServer(port, attemptsRemaining) {
   });
 }
 
-startServer(BASE_PORT, MAX_PORT_ATTEMPTS);
+if (require.main === module) {
+  startServer(BASE_PORT, MAX_PORT_ATTEMPTS);
+} else {
+  module.exports = {
+    canonicalClientId,
+    normalizeClient,
+    mergeClientRecords,
+    getClientDataHealth,
+    normalizeClientStage,
+    normalizeLeadStage,
+    deriveLeadStage,
+    normalizeWebHelperRequestPayload,
+    dbRowToWebHelperRequest
+  };
+}

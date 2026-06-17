@@ -1740,6 +1740,21 @@ border-radius: 7px;
   padding: 0.6rem 0.7rem;
 }
 
+.client-data-health.is-clean {
+  border-color: rgba(124, 255, 155, 0.2);
+}
+
+.client-data-health.needs-attention {
+  border-color: rgba(244, 199, 96, 0.42);
+  background: rgba(62, 44, 8, 0.45);
+}
+
+.client-data-health.needs-attention > span {
+  border-color: rgba(244, 199, 96, 0.5);
+  background: rgba(244, 199, 96, 0.12);
+  color: #ffe9a8;
+}
+
 .client-board-note h3 {
   margin: 0;
   font-size: 0.9rem;
@@ -5486,6 +5501,35 @@ body[data-active-view="web-helpers"] .web-helper-ticket-modal-panel {
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.web-helper-ticket-events {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.web-helper-ticket-events article {
+  border: 1px solid rgba(116, 255, 157, 0.16);
+  border-radius: 8px;
+  background: rgba(5, 17, 10, 0.68);
+  padding: 0.58rem 0.62rem;
+}
+
+.web-helper-ticket-events span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.68rem;
+  margin-bottom: 0.18rem;
+}
+
+.web-helper-ticket-events strong {
+  display: block;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.web-helper-ticket-events p {
+  margin-top: 0.18rem;
 }
 
 .web-helper-ticket-actions {
