@@ -7240,6 +7240,21 @@ function renderWebHelperTicketEvents(ticket) {
   </section>`;
 }
 
+function renderWebHelperTicketConversation(ticket) {
+  return `<section class="web-helper-ticket-modal-section web-helper-ticket-conversation">
+    <h3>Ticket Conversation</h3>
+    <p>Capture owner approvals, client notes, agent handoff context, and manual decisions directly on this ticket.</p>
+    <label>
+      <span>Add note for the Web Helper</span>
+      <textarea id="webHelperTicketNoteInput" rows="4" placeholder="Example: Approved for testing branch only. Do not merge until I review the preview."></textarea>
+    </label>
+    <div class="web-helper-ticket-actions">
+      <button class="command-send" type="button" data-web-helper-ticket-note-send="${escapeHtml(getWebHelperTicketId(ticket))}">Save Ticket Note</button>
+      <button class="new-client-button secondary-button" type="button" data-web-helper-ticket-action="chat" data-web-helper-ticket-id="${escapeHtml(getWebHelperTicketId(ticket))}">Open Agent Chat</button>
+    </div>
+  </section>`;
+}
+
 function openWebHelperTicket(ticketId) {
   const ticket = currentWebHelperTickets.find((request) => getWebHelperTicketId(request) === ticketId);
   if (!ticket || !elements.webHelperTicketModal || !elements.webHelperTicketContent) {
@@ -7274,6 +7289,7 @@ function openWebHelperTicket(ticketId) {
       <p>${escapeHtml(ticket.approvalRequired ? "Owner approval is required before this request moves into active helper work or deployment." : "This is marked as safe scope, but deployment should still follow the configured branch policy.")}</p>
       <p>${escapeHtml(`Work should stay under ${ticket.branchPolicy || "testing_branch_only"} until approved and merged.`)}</p>
     </section>
+    ${renderWebHelperTicketConversation(ticket)}
     ${renderWebHelperTicketEvents(ticket)}
     ${renderWebHelperTicketActions(ticket)}
   `;
@@ -7316,6 +7332,94 @@ function setWebHelperTicketStatusLocally(ticketId, status) {
   }));
   renderWebHelpers({ helpers: liveWebHelpers, summary: summarizeWebHelpersForUi(liveWebHelpers) });
   return updatedTicket;
+}
+
+function appendWebHelperTicketEventLocally(ticketId, event) {
+  let updatedTicket = null;
+  liveWebHelpers = (liveWebHelpers || []).map((helper) => ({
+    ...helper,
+    requests: (helper.requests || []).map((request, index) => {
+      const candidate = {
+        ...request,
+        id: request.id || request.ticketId || request.payload?.ticket_id || request.payload?.ticketId || `${helper.id || slugForUi(helper.clientName)}-${slugForUi(request.title || request.summary || request.type || "request")}-${index}`,
+        helperId: helper.id,
+        helperName: helper.name,
+        clientName: helper.clientName
+      };
+      if (getWebHelperTicketId(candidate) !== ticketId) {
+        return request;
+      }
+      updatedTicket = { ...request, events: [...(request.events || []), event] };
+      return updatedTicket;
+    })
+  }));
+  renderWebHelpers({ helpers: liveWebHelpers, summary: summarizeWebHelpersForUi(liveWebHelpers) });
+  return updatedTicket;
+}
+
+async function appendWebHelperTicketEvent(ticketId, event) {
+  const response = await fetch(apiUrl("/mission/web-helper-requests/event"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      id: ticketId,
+      type: event.type || "note",
+      status: event.status || "note",
+      actor: event.actor || "mission_control",
+      message: event.message || ""
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || `Ticket note failed with ${response.status}`);
+  }
+
+  await loadWebHelpers("");
+  return payload.request;
+}
+
+async function saveWebHelperTicketNote(ticketId) {
+  const noteInput = document.getElementById("webHelperTicketNoteInput");
+  const actionResponse = document.getElementById("webHelperTicketActionResponse");
+  const message = String(noteInput?.value || "").trim();
+  if (!message) {
+    if (actionResponse) {
+      actionResponse.textContent = "Add a note before saving.";
+    }
+    return;
+  }
+
+  if (actionResponse) {
+    actionResponse.textContent = "Saving ticket note...";
+  }
+
+  const event = {
+    type: "note",
+    status: "note",
+    message,
+    actor: "mission_control",
+    at: new Date().toISOString()
+  };
+
+  try {
+    await appendWebHelperTicketEvent(ticketId, event);
+    if (actionResponse) {
+      actionResponse.textContent = "Ticket note saved.";
+    }
+    openWebHelperTicket(ticketId);
+  } catch (error) {
+    const localTicket = appendWebHelperTicketEventLocally(ticketId, event);
+    if (actionResponse) {
+      actionResponse.textContent = localTicket
+        ? "Default/generated ticket note saved locally. Stored client tickets persist in Postgres."
+        : `Unable to save ticket note: ${String(error.message || error)}`;
+    }
+    if (localTicket) {
+      openWebHelperTicket(ticketId);
+    }
+  }
 }
 
 async function updateWebHelperTicketStatus(ticketId, status) {
@@ -7368,7 +7472,7 @@ async function updateWebHelperTicketStatus(ticketId, status) {
   }
 }
 
-function openWebHelperAgentChat(ticketId) {
+async function openWebHelperAgentChat(ticketId) {
   const ticket = findCurrentWebHelperTicket(ticketId);
   if (!ticket) {
     return;
@@ -7385,6 +7489,19 @@ function openWebHelperAgentChat(ticketId) {
     `Details: ${ticket.details || ticket.summary || "No details captured."}`,
     "Prepare the next operator action, keep changes review-gated, and do not deploy without approval."
   ].join("\n");
+
+  const event = {
+    type: "agent_chat",
+    status: "agent_chat",
+    message: "Operator opened this ticket in the Execution agent chat workspace.",
+    actor: "mission_control",
+    at: new Date().toISOString()
+  };
+  try {
+    await appendWebHelperTicketEvent(ticketId, event);
+  } catch {
+    appendWebHelperTicketEventLocally(ticketId, event);
+  }
 
   closeWebHelperTicket();
   setActiveView("execution");
@@ -8149,6 +8266,12 @@ async function init() {
     }
 
     const actionButton = event.target.closest("[data-web-helper-ticket-action]");
+    const noteButton = event.target.closest("[data-web-helper-ticket-note-send]");
+    if (noteButton) {
+      saveWebHelperTicketNote(noteButton.dataset.webHelperTicketNoteSend);
+      return;
+    }
+
     if (!actionButton) {
       return;
     }

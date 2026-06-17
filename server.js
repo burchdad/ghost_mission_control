@@ -1555,6 +1555,50 @@ async function updateWebHelperRequestStatusInPostgres(id, status, options = {}) 
   };
 }
 
+async function appendWebHelperRequestEventInPostgres(id, options = {}) {
+  const init = await ensureWebHelperRequestTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  const normalizedId = String(id || "").trim();
+  const message = String(options.message || "").trim();
+  if (!normalizedId || !message) {
+    return { ok: false, status: 400, error: "Request id and message are required." };
+  }
+
+  const event = {
+    type: String(options.type || "note").trim(),
+    status: String(options.status || "note").trim(),
+    message,
+    actor: String(options.actor || "mission_control").trim(),
+    at: new Date().toISOString()
+  };
+
+  const result = await getClientStorePgPool().query(
+    `
+    UPDATE mission_web_helper_requests
+    SET
+      events = COALESCE(events, '[]'::jsonb) || $2::jsonb,
+      updated_at = now()
+    WHERE id = $1
+    RETURNING *;
+    `,
+    [normalizedId, JSON.stringify([event])]
+  );
+
+  if (!result.rows.length) {
+    return { ok: false, status: 404, error: "Web Helper request was not found in the request store." };
+  }
+
+  return {
+    ok: true,
+    target: "postgres",
+    table: "mission_web_helper_requests",
+    request: dbRowToWebHelperRequest(result.rows[0])
+  };
+}
+
 function parsePostgresJsonList(value) {
   if (Array.isArray(value)) {
     return value;
@@ -7224,6 +7268,35 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/mission/web-helper-requests/event") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const updated = await appendWebHelperRequestEventInPostgres(payload.id, {
+          type: payload.type || "note",
+          status: payload.status || "note",
+          actor: payload.actor || "mission_control",
+          message: payload.message || ""
+        });
+        if (!updated.ok) {
+          sendJson(request, response, updated.status || 503, {
+            error: updated.error || "Unable to append Web Helper request event.",
+            detail: updated.reason || ""
+          });
+          return;
+        }
+
+        sendJson(request, response, 200, {
+          ok: true,
+          request: updated.request
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/mission/web-helpers/activate-all") {
     readJsonBody(request)
       .then(async (payload) => {
@@ -7552,6 +7625,7 @@ if (require.main === module) {
     deriveLeadStage,
     buildClientRecord,
     normalizeWebHelperRequestPayload,
-    dbRowToWebHelperRequest
+    dbRowToWebHelperRequest,
+    appendWebHelperRequestEventInPostgres
   };
 }
