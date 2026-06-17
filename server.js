@@ -1045,6 +1045,20 @@ function parseClientStorePayload(raw) {
   return Array.isArray(parsed?.clients) ? parsed.clients : Array.isArray(parsed) ? parsed : [];
 }
 
+const PROTECTED_CLIENT_IDS = new Set(["annas-air", "bougie-and-company", "keisha-law", "procoat-concrete-coatings"]);
+
+function hasProtectedClientIdConflict(left, right) {
+  const leftId = canonicalClientId(left?.id);
+  const rightId = canonicalClientId(right?.id);
+  return Boolean(
+    leftId &&
+      rightId &&
+      leftId !== rightId &&
+      PROTECTED_CLIENT_IDS.has(leftId) &&
+      PROTECTED_CLIENT_IDS.has(rightId)
+  );
+}
+
 function upsertRuntimeClient(client) {
   const normalized = normalizeClient({
     ...client,
@@ -1056,8 +1070,11 @@ function upsertRuntimeClient(client) {
 
   const normalizedKeys = new Set(getClientIdentityKeys(normalized));
   const existingIndex = runtimeClients.findIndex((entry) => {
-    if (entry.id === normalized.id) {
+    if (canonicalClientId(entry.id) === canonicalClientId(normalized.id)) {
       return true;
+    }
+    if (entry.id && normalized.id) {
+      return false;
     }
     return getClientIdentityKeys(entry).some((key) => key !== `id:${canonicalClientId(entry.id)}` && normalizedKeys.has(key));
   });
@@ -3589,11 +3606,11 @@ function repairKnownClientIdentity(client) {
   }
 
   const id = canonicalClientId(client.id);
+  const haystack = `${client.clientName} ${client.websiteUrl} ${client.repo} ${client.githubUrl} ${client.vercelUrl} ${client.businessEmail}`;
   const looksLikeProCoat =
-    /pro(coat|crete)/i.test(`${client.clientName} ${client.websiteUrl} ${client.repo} ${client.githubUrl} ${client.businessEmail}`);
-  const looksLikeBougie = /bougie/i.test(
-    `${client.clientName} ${client.websiteUrl} ${client.repo} ${client.githubUrl} ${client.vercelUrl}`
-  );
+    /pro(coat|crete)/i.test(haystack);
+  const looksLikeBougie = /bougie/i.test(haystack);
+  const looksLikeKeisha = /keisha|kracha|krachal/i.test(haystack);
 
   if (id === "annas-air" && slugify(client.id) !== "annas-air") {
     client = {
@@ -3622,6 +3639,31 @@ function repairKnownClientIdentity(client) {
       finalDomainPurchased: true,
       clientDetailsPending: false,
       finalPaymentPaid: true
+    };
+  }
+
+  if (id === "keisha-law" && (looksLikeBougie || looksLikeProCoat) && !looksLikeKeisha) {
+    return {
+      ...client,
+      clientName: "Keisha Law",
+      websiteUrl: "https://keisha-law.vercel.app",
+      repo: "burchdad/keisha-law",
+      githubUrl: "https://github.com/burchdad/keisha-law",
+      railwayUrl: "",
+      vercelUrl: "https://keisha-law.vercel.app/",
+      mobileAppUrl: "",
+      googleBusinessUrl: "",
+      businessEmail: "ker@krachallaw.com",
+      businessPhone: "",
+      contact: "",
+      notes: "Website is launched and ready for SEO/monthly maintenance contract review.",
+      stage: "web-helper-care",
+      status: "web-helper-care",
+      services: uniq(["website-build", "web-helper-care"]),
+      plannedServices: uniq(["search-intelligence"]),
+      finalDomainPurchased: false,
+      clientDetailsPending: false,
+      finalPaymentPaid: false
     };
   }
 
@@ -3769,7 +3811,7 @@ function addClientToMergedRoster(merged, aliases, client) {
   const existingPrimaryKey = keys
     .filter((key) => key !== stableIdKey)
     .map((key) => aliases.get(key))
-    .find(Boolean) || aliases.get(stableIdKey);
+    .find((key) => key && !hasProtectedClientIdConflict(merged.get(key), client)) || aliases.get(stableIdKey);
   const primaryKey = existingPrimaryKey || stableIdKey;
   const mergedClient = mergeClientRecords(merged.get(primaryKey), client);
   merged.set(primaryKey, mergedClient);
