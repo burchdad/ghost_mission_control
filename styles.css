@@ -2848,6 +2848,24 @@ padding: 0.62rem;
   padding: 0.36rem 0.42rem;
 }
 
+.client-service-meta span.tone-green:not(.pill) {
+  border: 1px solid rgba(124, 255, 155, 0.28);
+  background: rgba(124, 255, 155, 0.1);
+  color: #dfffe7;
+}
+
+.client-service-meta span.tone-yellow:not(.pill) {
+  border: 1px solid rgba(244, 199, 96, 0.3);
+  background: rgba(244, 199, 96, 0.1);
+  color: #ffe7a8;
+}
+
+.client-service-meta span.tone-blue:not(.pill) {
+  border: 1px solid rgba(110, 184, 255, 0.28);
+  background: rgba(110, 184, 255, 0.08);
+  color: #cfeaff;
+}
+
 .summary-card {
   border: 1px solid rgba(177, 194, 163, 0.15);
   border-radius: 7px;

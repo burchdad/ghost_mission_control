@@ -4793,6 +4793,40 @@ function getAgreementTone(status) {
   return "tone-blue";
 }
 
+function getClientServiceDeliveryMeta(client, serviceKey, definition, pipeline) {
+  const stage = getClientStage(client);
+  const hasRepo = Boolean(client.repo || client.githubUrl);
+  const hasVercel = Boolean(client.vercelUrl);
+  const hasWebsite = Boolean(client.websiteUrl);
+  const isLaunched = ["web-helper-care", "growth-services", "paused-archived"].includes(stage);
+  const isPaidOrLaunched = Boolean(client.finalPaymentPaid || isLaunched);
+
+  if (serviceKey === "website-build") {
+    return {
+      pipelineLabel: isPaidOrLaunched && hasWebsite ? "Web Delivery complete" : pipeline?.label || "Web Delivery",
+      pipelineTone: isPaidOrLaunched && hasWebsite ? "tone-green" : "tone-yellow",
+      systemLabel: hasRepo && hasVercel ? "GitHub + Vercel linked" : hasRepo ? "GitHub linked / Vercel missing" : hasVercel ? "Vercel linked / GitHub missing" : "GitHub + Vercel missing",
+      systemTone: hasRepo && hasVercel ? "tone-green" : "tone-yellow"
+    };
+  }
+
+  if (serviceKey === "web-helper-care") {
+    return {
+      pipelineLabel: isLaunched ? "Care active" : pipeline?.label || "Web Care",
+      pipelineTone: isLaunched ? "tone-green" : "tone-yellow",
+      systemLabel: hasWebsite ? "Helper can monitor site" : "Website URL needed",
+      systemTone: hasWebsite ? "tone-green" : "tone-yellow"
+    };
+  }
+
+  return {
+    pipelineLabel: pipeline?.label || titleFromSlug(definition.pipeline || "custom"),
+    pipelineTone: client.services?.includes(serviceKey) ? "tone-green" : "tone-blue",
+    systemLabel: definition.system,
+    systemTone: "tone-blue"
+  };
+}
+
 function getClientServiceBreakdown(client) {
   const activeServices = [...new Set(client.services || [])].map((serviceKey) => ({
     serviceKey,
@@ -4812,12 +4846,13 @@ function getClientServiceBreakdown(client) {
     const definition = getClientServiceDefinition(serviceKey);
     const pipeline = servicePipelineDefinitions.find((entry) => entry.id === definition.pipeline);
     const agreementStatus = getClientServiceAgreementStatus(client, serviceKey);
+    const deliveryMeta = getClientServiceDeliveryMeta(client, serviceKey, definition, pipeline);
     return {
       key: serviceKey,
       serviceState,
       serviceStateLabel,
       ...definition,
-      pipelineLabel: pipeline?.label || titleFromSlug(definition.pipeline || "custom"),
+      ...deliveryMeta,
       agreementStatus
     };
   });
@@ -4842,8 +4877,8 @@ function renderClientServiceBreakdown(client) {
             <div class="client-service-meta">
               <span class="pill ${service.serviceState === "active" ? "tone-green" : "tone-blue"}">${escapeHtml(service.serviceStateLabel)}</span>
               <span class="pill ${getAgreementTone(service.agreementStatus)}">${escapeHtml(service.agreementStatus)}</span>
-              <span>${escapeHtml(service.pipelineLabel)}</span>
-              <span>${escapeHtml(service.system)}</span>
+              <span class="${escapeHtml(service.pipelineTone || "tone-blue")}">${escapeHtml(service.pipelineLabel)}</span>
+              <span class="${escapeHtml(service.systemTone || "tone-blue")}">${escapeHtml(service.systemLabel || service.system)}</span>
             </div>
           </article>`).join("")}
         </div>`
