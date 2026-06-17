@@ -6722,6 +6722,22 @@ function renderWebHelperTicketStats(request, helper) {
   </div>`;
 }
 
+function renderWebHelperTicketActions(ticket) {
+  const actions = [
+    { label: "Open Agent Chat", action: "chat", tone: "secondary" },
+    { label: "Acknowledge", action: "triage", status: "triage", tone: "secondary" },
+    { label: "Approve Change", action: "approve", status: "approved", tone: "primary" },
+    { label: "Start Work", action: "start", status: "in_progress", tone: "secondary" },
+    { label: "Ready for Review", action: "review", status: "ready_review", tone: "secondary" },
+    { label: "Block", action: "block", status: "blocked", tone: "danger" }
+  ];
+
+  return `<div class="web-helper-ticket-actions">
+    ${actions.map((item) => `<button class="${item.tone === "primary" ? "command-send" : item.tone === "danger" ? "danger-button" : "new-client-button secondary-button"}" type="button" data-web-helper-ticket-action="${escapeHtml(item.action)}" data-web-helper-ticket-id="${escapeHtml(getWebHelperTicketId(ticket))}" ${item.status ? `data-web-helper-ticket-status="${escapeHtml(item.status)}"` : ""}>${escapeHtml(item.label)}</button>`).join("")}
+  </div>
+  <p id="webHelperTicketActionResponse" class="command-response" aria-live="polite"></p>`;
+}
+
 function openWebHelperTicket(ticketId) {
   const ticket = currentWebHelperTickets.find((request) => getWebHelperTicketId(request) === ticketId);
   if (!ticket || !elements.webHelperTicketModal || !elements.webHelperTicketContent) {
@@ -6756,12 +6772,107 @@ function openWebHelperTicket(ticketId) {
       <p>${escapeHtml(ticket.approvalRequired ? "Owner approval is required before this request moves into active helper work or deployment." : "This is marked as safe scope, but deployment should still follow the configured branch policy.")}</p>
       <p>${escapeHtml(`Work should stay under ${ticket.branchPolicy || "testing_branch_only"} until approved and merged.`)}</p>
     </section>
+    ${renderWebHelperTicketActions(ticket)}
   `;
   elements.webHelperTicketModal.classList.remove("view-hidden");
 }
 
 function closeWebHelperTicket() {
   elements.webHelperTicketModal?.classList.add("view-hidden");
+}
+
+function findCurrentWebHelperTicket(ticketId) {
+  return currentWebHelperTickets.find((request) => getWebHelperTicketId(request) === ticketId);
+}
+
+function setWebHelperTicketStatusLocally(ticketId, status) {
+  let updatedTicket = null;
+  liveWebHelpers = (liveWebHelpers || []).map((helper) => ({
+    ...helper,
+    requests: (helper.requests || []).map((request, index) => {
+      const candidate = {
+        ...request,
+        id: request.id || request.ticketId || request.payload?.ticket_id || request.payload?.ticketId || `${helper.id || slugForUi(helper.clientName)}-${slugForUi(request.title || request.summary || request.type || "request")}-${index}`,
+        helperId: helper.id,
+        helperName: helper.name,
+        clientName: helper.clientName
+      };
+      if (getWebHelperTicketId(candidate) !== ticketId) {
+        return request;
+      }
+      updatedTicket = { ...request, status };
+      return updatedTicket;
+    })
+  }));
+  renderWebHelpers({ helpers: liveWebHelpers, summary: summarizeWebHelpersForUi(liveWebHelpers) });
+  return updatedTicket;
+}
+
+async function updateWebHelperTicketStatus(ticketId, status) {
+  const actionResponse = document.getElementById("webHelperTicketActionResponse");
+  if (actionResponse) {
+    actionResponse.textContent = "Updating ticket...";
+  }
+
+  try {
+    const response = await fetch(apiUrl("/mission/web-helper-requests/status"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ id: ticketId, status })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || `Status update failed with ${response.status}`);
+    }
+
+    await loadWebHelpers("");
+    if (actionResponse) {
+      actionResponse.textContent = `Ticket moved to ${status}.`;
+    }
+    openWebHelperTicket(ticketId);
+  } catch (error) {
+    const localTicket = setWebHelperTicketStatusLocally(ticketId, status);
+    if (actionResponse) {
+      actionResponse.textContent = localTicket
+        ? `Default/generated ticket moved to ${status} locally. Stored client tickets will persist in Postgres.`
+        : `Unable to update ticket: ${String(error.message || error)}`;
+    }
+    if (localTicket) {
+      openWebHelperTicket(ticketId);
+    }
+  }
+}
+
+function openWebHelperAgentChat(ticketId) {
+  const ticket = findCurrentWebHelperTicket(ticketId);
+  if (!ticket) {
+    return;
+  }
+
+  const prompt = [
+    `Web Helper ticket: ${ticket.title || ticket.summary || ticketId}`,
+    `Client: ${ticket.clientName || "Unknown client"}`,
+    `Page: ${ticket.pageUrl || "sitewide"}`,
+    `Priority: ${ticket.priority || "normal"}`,
+    `Status: ${ticket.status || "new"}`,
+    `Branch policy: ${ticket.branchPolicy || "testing_branch_only"}`,
+    `Approval required: ${ticket.approvalRequired ? "yes" : "no"}`,
+    `Details: ${ticket.details || ticket.summary || "No details captured."}`,
+    "Prepare the next operator action, keep changes review-gated, and do not deploy without approval."
+  ].join("\n");
+
+  closeWebHelperTicket();
+  setActiveView("execution");
+  setFocusMode(true, "execution");
+  if (elements.executionCommandInput) {
+    elements.executionCommandInput.value = prompt;
+    elements.executionCommandInput.focus();
+  }
+  if (elements.executionCommandResponse) {
+    elements.executionCommandResponse.textContent = "Ticket context loaded. Run when you want the Web Helper agent plan.";
+  }
 }
 
 function renderWebHelpers(payload) {
@@ -7453,7 +7564,21 @@ async function init() {
   elements.webHelperTicketModal?.addEventListener("click", (event) => {
     if (event.target === elements.webHelperTicketModal) {
       closeWebHelperTicket();
+      return;
     }
+
+    const actionButton = event.target.closest("[data-web-helper-ticket-action]");
+    if (!actionButton) {
+      return;
+    }
+
+    const ticketId = actionButton.dataset.webHelperTicketId;
+    if (actionButton.dataset.webHelperTicketAction === "chat") {
+      openWebHelperAgentChat(ticketId);
+      return;
+    }
+
+    updateWebHelperTicketStatus(ticketId, actionButton.dataset.webHelperTicketStatus || "triage");
   });
   elements.agentOpsPanel?.addEventListener("click", (event) => {
     const buildButton = event.target.closest("[data-agent-build-index]");

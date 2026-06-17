@@ -5160,6 +5160,28 @@ outline: 2px solid #eaffef;
   outline-offset: 2px;
 }
 
+.danger-button {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  min-height: 38px;
+  min-width: 104px;
+  border: 1px solid rgba(255, 107, 107, 0.58);
+  border-radius: 7px;
+  background: rgba(255, 107, 107, 0.12);
+  color: #ffdede;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 900;
+  padding: 0.52rem 0.85rem;
+  text-align: center;
+}
+
+.danger-button:hover {
+  background: rgba(255, 107, 107, 0.2);
+  border-color: rgba(255, 107, 107, 0.78);
+}
+
 .client-pipeline::-webkit-scrollbar {
 height: 11px;
 }
@@ -5437,6 +5459,21 @@ body[data-active-view="web-helpers"] .web-helper-ticket-modal-panel {
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.web-helper-ticket-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  border-top: 1px solid rgba(177, 194, 163, 0.14);
+  padding-top: 0.7rem;
+}
+
+.web-helper-ticket-actions .command-send,
+.web-helper-ticket-actions .new-client-button,
+.web-helper-ticket-actions .danger-button {
+  min-width: 128px;
 }
 
 @media (max-width: 1480px) {

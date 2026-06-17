@@ -1492,6 +1492,40 @@ async function readWebHelperRequestsFromPostgres(options = {}) {
   };
 }
 
+async function updateWebHelperRequestStatusInPostgres(id, status) {
+  const init = await ensureWebHelperRequestTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  const normalizedId = String(id || "").trim();
+  const normalizedStatus = String(status || "").trim();
+  if (!normalizedId || !normalizedStatus) {
+    return { ok: false, status: 400, error: "Request id and status are required." };
+  }
+
+  const result = await getClientStorePgPool().query(
+    `
+    UPDATE mission_web_helper_requests
+    SET status = $2, updated_at = now()
+    WHERE id = $1
+    RETURNING *;
+    `,
+    [normalizedId, normalizedStatus]
+  );
+
+  if (!result.rows.length) {
+    return { ok: false, status: 404, error: "Web Helper request was not found in the request store." };
+  }
+
+  return {
+    ok: true,
+    target: "postgres",
+    table: "mission_web_helper_requests",
+    request: dbRowToWebHelperRequest(result.rows[0])
+  };
+}
+
 function parsePostgresJsonList(value) {
   if (Array.isArray(value)) {
     return value;
@@ -6812,6 +6846,30 @@ const server = http.createServer((request, response) => {
             repo: client.repo
           },
           request: stored.request
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/web-helper-requests/status") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const updated = await updateWebHelperRequestStatusInPostgres(payload.id, payload.status);
+        if (!updated.ok) {
+          sendJson(request, response, updated.status || 503, {
+            error: updated.error || "Unable to update Web Helper request status.",
+            detail: updated.reason || ""
+          });
+          return;
+        }
+
+        sendJson(request, response, 200, {
+          ok: true,
+          request: updated.request
         });
       })
       .catch((error) => {
