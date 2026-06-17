@@ -172,6 +172,11 @@ const elements = {
   webHelperSummary: document.getElementById("webHelperSummary"),
   webHelperCards: document.getElementById("webHelperCards"),
   webHelperRequests: document.getElementById("webHelperRequests"),
+  webHelperTicketModal: document.getElementById("webHelperTicketModal"),
+  closeWebHelperTicketButton: document.getElementById("closeWebHelperTicketButton"),
+  webHelperTicketTitle: document.getElementById("webHelperTicketTitle"),
+  webHelperTicketSubtitle: document.getElementById("webHelperTicketSubtitle"),
+  webHelperTicketContent: document.getElementById("webHelperTicketContent"),
   operationsPanel: document.getElementById("operationsPanel"),
   clientsPanel: document.getElementById("clientsPanel"),
   clientActionsPanel: document.getElementById("clientActionsPanel"),
@@ -251,6 +256,7 @@ let draggingLeadId = "";
 let lastLeadDragAt = 0;
 let liveAgentIntelligence = [];
 let liveWebHelpers = [];
+let currentWebHelperTickets = [];
 let liveOnboarding = null;
 let liveServiceCatalog = null;
 let liveToolRegistry = null;
@@ -2152,7 +2158,12 @@ function setupCommandPalette() {
     const clientModalOpen = elements.clientOnboardModal && !elements.clientOnboardModal.classList.contains("view-hidden");
     const agentBuildModalOpen = elements.agentBuildModal && !elements.agentBuildModal.classList.contains("view-hidden");
     const leadNotificationOpen = elements.leadNotificationModal && !elements.leadNotificationModal.classList.contains("view-hidden");
+    const webHelperTicketOpen = elements.webHelperTicketModal && !elements.webHelperTicketModal.classList.contains("view-hidden");
     if (!paletteOpen) {
+      if (key === "escape" && webHelperTicketOpen) {
+        closeWebHelperTicket();
+        return;
+      }
       if (key === "escape" && leadNotificationOpen) {
         closeLeadNotification();
         return;
@@ -6522,9 +6533,20 @@ function getPriorityTone(priority) {
     return "tone-red";
   }
   if (["medium", "normal"].includes(value)) {
-    return "tone-blue";
+    return "tone-yellow";
   }
-  return "tone-gray";
+  return "tone-green";
+}
+
+function getPriorityCardClass(priority) {
+  const value = String(priority || "normal").toLowerCase();
+  if (["urgent", "critical", "high"].includes(value)) {
+    return "is-high-priority";
+  }
+  if (["medium", "normal"].includes(value)) {
+    return "is-medium-priority";
+  }
+  return "is-low-priority";
 }
 
 function formatWebHelperDateForUi(value) {
@@ -6551,9 +6573,9 @@ function getWebHelperTicketId(request) {
 
 function flattenWebHelperRequests(helpers) {
   return helpers.flatMap((helper) =>
-    (helper.requests || []).map((request) => ({
+    (helper.requests || []).map((request, index) => ({
       ...request,
-      id: request.id || request.ticketId || request.payload?.ticket_id || request.payload?.ticketId || "",
+      id: request.id || request.ticketId || request.payload?.ticket_id || request.payload?.ticketId || `${helper.id || slugForUi(helper.clientName)}-${slugForUi(request.title || request.summary || request.type || "request")}-${index}`,
       helperId: helper.id,
       helperName: helper.name,
       clientName: helper.clientName,
@@ -6571,32 +6593,16 @@ function flattenWebHelperRequests(helpers) {
 
 function renderWebHelperTicketCard(request) {
   const ticketId = getWebHelperTicketId(request);
-  const approvalLabel = request.approvalRequired ? "approval gate" : "safe scope";
-  const approvalTone = request.approvalRequired ? "exec-retrying" : "exec-running";
+  const shortPage = request.pageUrl && request.pageUrl !== "sitewide" ? request.pageUrl : request.requestType || request.type || "website_update";
 
-  return `<article class="web-helper-ticket">
-    <div class="web-helper-ticket-head">
-      <div>
-        <span class="web-helper-ticket-client">${escapeHtml(request.clientName || "Client")}</span>
-        <h3>${escapeHtml(request.title || request.summary || "Website update request")}</h3>
-      </div>
-      <span class="exec-status ${approvalTone}">${approvalLabel}</span>
-    </div>
-    <p>${escapeHtml(request.summary || request.details || "No summary captured yet.")}</p>
-    ${request.details ? `<p class="web-helper-ticket-detail">${escapeHtml(request.details)}</p>` : ""}
-    <div class="web-helper-ticket-meta">
+  return `<button class="web-helper-ticket ${getPriorityCardClass(request.priority)}" type="button" data-web-helper-ticket="${escapeHtml(ticketId)}" aria-label="Open ${escapeHtml(request.title || "web helper ticket")}">
+    <span class="web-helper-ticket-client">${escapeHtml(request.clientName || "Client")}</span>
+    <strong>${escapeHtml(request.title || request.summary || "Website update request")}</strong>
+    <span class="web-helper-ticket-row">
       <span class="pill ${getPriorityTone(request.priority)}">${escapeHtml(request.priority || "normal")}</span>
-      <span>${escapeHtml(request.requestType || request.type || "website_update")}</span>
-      <span>${escapeHtml(request.pageUrl || "sitewide")}</span>
-      <span>${escapeHtml(formatWebHelperDateForUi(request.createdAt))}</span>
-    </div>
-    <div class="web-helper-ticket-footer">
-      <span>${escapeHtml(request.helperName || "Unassigned helper")}</span>
-      <span>${escapeHtml(request.repo || "repo pending")}</span>
-      <span>${escapeHtml(request.branchPolicy || "testing_branch_only")}</span>
-      ${ticketId ? `<strong>${escapeHtml(ticketId)}</strong>` : ""}
-    </div>
-  </article>`;
+      <span>${escapeHtml(shortPage)}</span>
+    </span>
+  </button>`;
 }
 
 function renderWebHelperCapacityCard(helper) {
@@ -6630,6 +6636,74 @@ function renderWebHelperCapacityCard(helper) {
   </article>`;
 }
 
+function renderWebHelperTicketStats(request, helper) {
+  const stats = [
+    { label: "Status", value: request.status || "new" },
+    { label: "Priority", value: request.priority || "normal" },
+    { label: "Type", value: request.requestType || request.type || "website_update" },
+    { label: "Page", value: request.pageUrl || "sitewide" },
+    { label: "Branch Policy", value: request.branchPolicy || "testing_branch_only" },
+    { label: "Approval", value: request.approvalRequired ? "Required" : "Safe scope" },
+    { label: "Created", value: formatWebHelperDateForUi(request.createdAt) },
+    { label: "Ticket", value: getWebHelperTicketId(request) }
+  ];
+
+  if (helper) {
+    stats.push(
+      { label: "Helper", value: helper.name || request.helperName || "Unassigned" },
+      { label: "Open / Approval", value: `${(helper.requests || []).length} / ${(helper.requests || []).filter((item) => item.approvalRequired).length}` },
+      { label: "Repo", value: helper.repo || request.repo || "Not connected" },
+      { label: "Deployment", value: helper.deployment || "Deployment pending" }
+    );
+  }
+
+  return `<div class="client-modal-stats web-helper-ticket-stats">
+    ${stats.map((item) => `<div><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join("")}
+  </div>`;
+}
+
+function openWebHelperTicket(ticketId) {
+  const ticket = currentWebHelperTickets.find((request) => getWebHelperTicketId(request) === ticketId);
+  if (!ticket || !elements.webHelperTicketModal || !elements.webHelperTicketContent) {
+    return;
+  }
+
+  const helper = liveWebHelpers.find((item) => item.id === ticket.helperId || item.name === ticket.helperName || item.clientName === ticket.clientName);
+  elements.webHelperTicketTitle.textContent = ticket.title || ticket.summary || "Web Helper Ticket";
+  elements.webHelperTicketSubtitle.textContent = `${ticket.clientName || "Client"} - ${ticket.status || "new"} - ${ticket.priority || "normal"}`;
+  elements.webHelperTicketContent.innerHTML = `
+    <section class="client-modal-overview web-helper-ticket-overview ${getPriorityCardClass(ticket.priority)}">
+      <div>
+        <span class="web-helper-ticket-client">${escapeHtml(ticket.clientName || "Client")}</span>
+        <h3>${escapeHtml(ticket.title || ticket.summary || "Website update request")}</h3>
+        <p>${escapeHtml(ticket.summary || "No summary captured yet.")}</p>
+      </div>
+      <span class="pill ${getPriorityTone(ticket.priority)}">${escapeHtml(ticket.priority || "normal")}</span>
+    </section>
+    ${renderWebHelperTicketStats(ticket, helper)}
+    <section class="web-helper-ticket-modal-section">
+      <h3>Request Details</h3>
+      <p>${escapeHtml(ticket.details || ticket.summary || "No expanded details were captured for this request.")}</p>
+    </section>
+    <section class="web-helper-ticket-modal-section">
+      <h3>Helper Context</h3>
+      <p>${escapeHtml(helper?.name || ticket.helperName || "Unassigned helper")}</p>
+      <p>${escapeHtml(helper?.websiteUrl || ticket.websiteUrl || "Website URL pending")}</p>
+      <div class="web-helper-scope">${(helper?.scope || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
+    </section>
+    <section class="web-helper-ticket-modal-section">
+      <h3>Guardrails</h3>
+      <p>${escapeHtml(ticket.approvalRequired ? "Owner approval is required before this request moves into active helper work or deployment." : "This is marked as safe scope, but deployment should still follow the configured branch policy.")}</p>
+      <p>${escapeHtml(`Work should stay under ${ticket.branchPolicy || "testing_branch_only"} until approved and merged.`)}</p>
+    </section>
+  `;
+  elements.webHelperTicketModal.classList.remove("view-hidden");
+}
+
+function closeWebHelperTicket() {
+  elements.webHelperTicketModal?.classList.add("view-hidden");
+}
+
 function renderWebHelpers(payload) {
   if (!elements.webHelperCards || !elements.webHelperRequests || !elements.webHelperSummary) {
     return;
@@ -6637,6 +6711,7 @@ function renderWebHelpers(payload) {
 
   const helpers = payload?.helpers || [];
   const requests = flattenWebHelperRequests(helpers);
+  currentWebHelperTickets = requests;
   const requestsByColumn = webHelperKanbanColumns.reduce((accumulator, column) => {
     accumulator[column.id] = [];
     return accumulator;
@@ -6762,7 +6837,10 @@ function renderWebHelpers(payload) {
   `;
 
   elements.webHelperRequests.innerHTML = helpers.length
-    ? helpers.map(renderWebHelperCapacityCard).join("")
+    ? `<article class="web-helper-request">
+        <h3>Capacity Moved to Ticket Details</h3>
+        <p>Click any ticket card to review helper assignment, repo, deployment, branch policy, scope, and approval context.</p>
+      </article>`
     : `<article class="web-helper-request">
         <h3>No Helper Capacity</h3>
         <p>Activate client helpers to create capacity and triage routes.</p>
@@ -7113,6 +7191,7 @@ async function init() {
   elements.closeClientModalButton?.addEventListener("click", closeClientModal);
   elements.closeLeadNotificationButton?.addEventListener("click", closeLeadNotification);
   elements.closeAgentBuildModalButton?.addEventListener("click", closeAgentBuildModal);
+  elements.closeWebHelperTicketButton?.addEventListener("click", closeWebHelperTicket);
   elements.copyAgentBuildPromptButton?.addEventListener("click", copyAgentBuildPrompt);
   elements.agentBuildTargetInput?.addEventListener("change", () => {
     const agent = {
@@ -7303,6 +7382,11 @@ async function init() {
       closeAgentBuildModal();
     }
   });
+  elements.webHelperTicketModal?.addEventListener("click", (event) => {
+    if (event.target === elements.webHelperTicketModal) {
+      closeWebHelperTicket();
+    }
+  });
   elements.agentOpsPanel?.addEventListener("click", (event) => {
     const buildButton = event.target.closest("[data-agent-build-index]");
     if (!buildButton) {
@@ -7312,6 +7396,12 @@ async function init() {
     openAgentBuildModal(buildButton.dataset.agentBuildIndex);
   });
   elements.webHelperCards?.addEventListener("click", (event) => {
+    const ticketButton = event.target.closest("[data-web-helper-ticket]");
+    if (ticketButton) {
+      openWebHelperTicket(ticketButton.dataset.webHelperTicket);
+      return;
+    }
+
     const activateButton = event.target.closest("[data-web-helper-activate]");
     if (!activateButton) {
       return;

@@ -5247,3 +5247,185 @@ grid-template-columns: 1fr;
 width: 100%;
   }
 }
+
+/* Web Helper triage is a board-first view: cards stay compact and details open in a modal. */
+body[data-active-view="web-helpers"] .app-shell {
+  width: min(2100px, 100% - 0.5rem);
+}
+
+body[data-active-view="web-helpers"] .layout-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-active-view="web-helpers"] .side-column {
+  display: none;
+}
+
+body[data-active-view="web-helpers"] .web-helper-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+body[data-active-view="web-helpers"] .web-helper-kanban {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(120px, 1fr));
+  gap: 0.4rem;
+  overflow: visible;
+}
+
+body[data-active-view="web-helpers"] .web-helper-kanban-column {
+  min-height: calc(100vh - 178px);
+  padding: 0.42rem;
+}
+
+body[data-active-view="web-helpers"] .web-helper-kanban-head {
+  min-height: 42px;
+  padding-bottom: 0.3rem;
+}
+
+body[data-active-view="web-helpers"] .web-helper-kanban-head h3 {
+  font-size: 0.68rem;
+}
+
+body[data-active-view="web-helpers"] .web-helper-kanban-head p {
+  display: none;
+}
+
+body[data-active-view="web-helpers"] .web-helper-ticket {
+  width: 100%;
+  min-height: 72px;
+  display: grid;
+  gap: 0.26rem;
+  border: 1px solid rgba(145, 194, 220, 0.2);
+  border-left-width: 4px;
+  border-radius: 7px;
+  background: rgba(11, 18, 19, 0.92);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+body[data-active-view="web-helpers"] .web-helper-ticket:hover,
+body[data-active-view="web-helpers"] .web-helper-ticket:focus-visible {
+  outline: none;
+  transform: translateY(-1px);
+  border-color: rgba(124, 255, 155, 0.44);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+}
+
+body[data-active-view="web-helpers"] .web-helper-ticket.is-high-priority {
+  border-left-color: var(--red);
+  background: linear-gradient(135deg, rgba(255, 107, 107, 0.14), rgba(11, 18, 19, 0.92));
+}
+
+body[data-active-view="web-helpers"] .web-helper-ticket.is-medium-priority {
+  border-left-color: var(--yellow);
+  background: linear-gradient(135deg, rgba(244, 199, 96, 0.13), rgba(11, 18, 19, 0.92));
+}
+
+body[data-active-view="web-helpers"] .web-helper-ticket.is-low-priority {
+  border-left-color: var(--green);
+  background: linear-gradient(135deg, rgba(124, 255, 155, 0.1), rgba(11, 18, 19, 0.92));
+}
+
+body[data-active-view="web-helpers"] .web-helper-ticket-client {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body[data-active-view="web-helpers"] .web-helper-ticket strong {
+  display: -webkit-box;
+  min-height: 2.2em;
+  color: #f5fff1;
+  font-size: 0.64rem;
+  line-height: 1.1;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+body[data-active-view="web-helpers"] .web-helper-ticket-row {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+body[data-active-view="web-helpers"] .web-helper-ticket-row > span:not(.pill) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.54rem;
+}
+
+body[data-active-view="web-helpers"] .web-helper-ticket-modal-panel {
+  width: min(980px, 100%);
+}
+
+.web-helper-ticket-modal-content {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.web-helper-ticket-overview {
+  grid-column: auto;
+}
+
+.web-helper-ticket-overview.is-high-priority {
+  border-color: rgba(255, 107, 107, 0.44);
+}
+
+.web-helper-ticket-overview.is-medium-priority {
+  border-color: rgba(244, 199, 96, 0.44);
+}
+
+.web-helper-ticket-overview.is-low-priority {
+  border-color: rgba(124, 255, 155, 0.34);
+}
+
+.web-helper-ticket-stats {
+  grid-column: auto;
+}
+
+.web-helper-ticket-modal-section {
+  border: 1px solid rgba(177, 194, 163, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0.72rem;
+}
+
+.web-helper-ticket-modal-section h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.86rem;
+}
+
+.web-helper-ticket-modal-section p {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 1480px) {
+  body[data-active-view="web-helpers"] .web-helper-kanban {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  body[data-active-view="web-helpers"] .web-helper-kanban-column {
+    min-height: 320px;
+  }
+}
+
+@media (max-width: 760px) {
+  body[data-active-view="web-helpers"] .web-helper-summary,
+  body[data-active-view="web-helpers"] .web-helper-kanban {
+    grid-template-columns: 1fr;
+  }
+
+  body[data-active-view="web-helpers"] .web-helper-kanban-column {
+    min-height: auto;
+  }
+}
