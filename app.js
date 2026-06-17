@@ -4245,6 +4245,15 @@ function slugForUi(value) {
     .replace(/^-+|-+$/g, "") || "item";
 }
 
+function canonicalClientIdForUi(value) {
+  const id = slugForUi(value);
+  const aliases = {
+    "anna-s-air": "annas-air",
+    "anna-air": "annas-air"
+  };
+  return aliases[id] || id;
+}
+
 function compactIdentityKey(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -4284,7 +4293,7 @@ function getClientIdentityKeysForUi(client) {
     client?.vercelUrl ? `site:${normalizeIdentityDomainForUi(client.vercelUrl)}` : "",
     client?.repo || client?.githubUrl ? `repo:${normalizeRepoIdentityForUi(client.repo || client.githubUrl)}` : "",
     client?.clientName ? `name:${compactIdentityKey(client.clientName)}` : "",
-    client?.id ? `id:${slugForUi(client.id)}` : ""
+    client?.id ? `id:${canonicalClientIdForUi(client.id)}` : ""
   ].filter(Boolean);
 }
 
@@ -4340,7 +4349,7 @@ function mergeClientRecordsForUi(existing, incoming) {
 
 function addClientToMergedUiRoster(merged, aliases, client) {
   const keys = getClientIdentityKeysForUi(client);
-  const stableIdKey = client?.id ? `id:${slugForUi(client.id)}` : "";
+  const stableIdKey = client?.id ? `id:${canonicalClientIdForUi(client.id)}` : "";
   const existingPrimaryKey = stableIdKey ? aliases.get(stableIdKey) : keys.map((key) => aliases.get(key)).find(Boolean);
   const primaryKey = existingPrimaryKey || stableIdKey || `name:${compactIdentityKey(client.clientName)}`;
   const mergedClient = mergeClientRecordsForUi(merged.get(primaryKey), client);

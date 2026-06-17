@@ -177,6 +177,15 @@ function slugify(value) {
     .replace(/^-+|-+$/g, "") || `site-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function canonicalClientId(value) {
+  const id = slugify(value);
+  const aliases = {
+    "anna-s-air": "annas-air",
+    "anna-air": "annas-air"
+  };
+  return aliases[id] || id;
+}
+
 function normalizeDomain(value) {
   const trimmed = String(value || "").trim();
   if (!trimmed) {
@@ -3451,9 +3460,16 @@ function repairKnownClientIdentity(client) {
     return client;
   }
 
-  const id = slugify(client.id);
+  const id = canonicalClientId(client.id);
   const looksLikeProCoat =
     /pro(coat|crete)/i.test(`${client.clientName} ${client.websiteUrl} ${client.repo} ${client.githubUrl} ${client.businessEmail}`);
+
+  if (id === "annas-air" && slugify(client.id) !== "annas-air") {
+    client = {
+      ...client,
+      id: "annas-air"
+    };
+  }
 
   if (id === "bougie-and-company" && looksLikeProCoat) {
     return {
@@ -3523,7 +3539,7 @@ function getClientIdentityKeys(client) {
     client?.vercelUrl ? `site:${normalizeIdentityDomain(client.vercelUrl)}` : "",
     client?.repo || client?.githubUrl ? `repo:${normalizeRepoIdentity(client.repo || client.githubUrl)}` : "",
     client?.clientName ? `name:${looseLookupKey(client.clientName)}` : "",
-    client?.id ? `id:${slugify(client.id)}` : ""
+    client?.id ? `id:${canonicalClientId(client.id)}` : ""
   ].filter(Boolean);
 }
 
@@ -3584,7 +3600,7 @@ function addClientToMergedRoster(merged, aliases, client) {
   }
 
   const keys = getClientIdentityKeys(client);
-  const stableIdKey = `id:${slugify(client.id)}`;
+  const stableIdKey = `id:${canonicalClientId(client.id)}`;
   const existingPrimaryKey = aliases.get(stableIdKey);
   const primaryKey = existingPrimaryKey || stableIdKey;
   const mergedClient = mergeClientRecords(merged.get(primaryKey), client);

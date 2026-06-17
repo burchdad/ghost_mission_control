@@ -274,48 +274,6 @@
       "source": "runtime"
     },
     {
-      "id": "anna-s-air",
-      "clientName": "Anna's Air",
-      "websiteUrl": "https://www.annasair.com",
-      "repo": "burchdad/anna_air",
-      "githubUrl": "https://github.com/burchdad/anna_air",
-      "railwayUrl": "",
-      "vercelUrl": "https://www.annasair.com/",
-      "mobileAppUrl": "",
-      "googleBusinessUrl": "",
-      "analyticsUrl": "",
-      "adsStatus": "",
-      "socialUrls": [],
-      "finalDomainPurchased": true,
-      "clientDetailsPending": false,
-      "leadSource": "",
-      "leadSourceDetail": "",
-      "leadStage": "deposit-paid",
-      "proposalSent": true,
-      "depositInvoiceSent": true,
-      "proposalSigned": true,
-      "partnershipSigned": false,
-      "depositPaid": true,
-      "finalPaymentPaid": false,
-      "businessEmail": "",
-      "businessPhone": "",
-      "plan": "Launch + Care",
-      "contact": "",
-      "notes": "",
-      "stage": "launch-handoff",
-      "status": "launch-handoff",
-      "services": [
-        "website-build",
-        "web-helper-care"
-      ],
-      "plannedServices": [
-        "local-service"
-      ],
-      "createdAt": "2026-06-15T11:29:32.902Z",
-      "updatedAt": "2026-06-15T11:33:19.134Z",
-      "source": "runtime"
-    },
-    {
       "id": "gray-matters-tech",
       "clientName": "Gray Matters Tech",
       "websiteUrl": "https://www.graymatterstech.com",
