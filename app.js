@@ -1839,7 +1839,14 @@ function closeCommandPalette() {
 
 function getClientById(clientId) {
   const clients = liveClients?.clients?.length ? liveClients.clients : buildClientPayloadFallback().clients;
-  return clients.find((client) => client.id === clientId) || null;
+  const canonicalId = canonicalClientIdForUi(clientId);
+  return clients.find((client) => canonicalClientIdForUi(client.id) === canonicalId) || null;
+}
+
+function getClientBySharedIdentity(client) {
+  const clients = liveClients?.clients?.length ? liveClients.clients : buildClientPayloadFallback().clients;
+  const keys = new Set(getClientIdentityKeysForUi(client));
+  return clients.find((candidate) => getClientIdentityKeysForUi(candidate).some((key) => keys.has(key))) || null;
 }
 
 function setFieldValue(field, value = "") {
@@ -1975,6 +1982,7 @@ function populateClientForm(client) {
   editingClientId = client.id;
   setFieldValue(elements.clientEditIdInput, client.id);
   setFieldValue(elements.clientNameInput, client.clientName);
+  ensureSelectOption(elements.clientStageInput, getClientStage(client));
   setFieldValue(elements.clientStageInput, getClientStage(client));
   ensureSelectOption(elements.clientLeadSourceInput, client.leadSource);
   setFieldValue(elements.clientLeadSourceInput, client.leadSource);
@@ -4216,6 +4224,10 @@ async function loadClients() {
     renderClients(liveClients);
   }
 
+  if (liveOnboarding) {
+    renderOnboarding(liveOnboarding);
+  }
+
   const activeSite = getActiveSite() || getEmptySiteState();
   renderBuildQueue(activeSite);
   if (activeView === "web-helpers") {
@@ -5577,6 +5589,22 @@ function getLeadDeskNextAction(client) {
   return "Decide whether to revive, archive, or remove this lead.";
 }
 
+function getLeadCardSourceLine(client) {
+  const source = getLeadSourceLabel(client);
+  const detail = String(client.leadSourceDetail || "").trim();
+  return detail ? `${source}: ${detail}` : source;
+}
+
+function getLeadCardContactLine(client) {
+  const contact = String(client.contact || "").trim();
+  const email = String(client.businessEmail || "").trim();
+  const phone = String(client.businessPhone || "").trim();
+  if (contact && email) {
+    return `${contact} / ${email}`;
+  }
+  return contact || email || phone || "Contact pending";
+}
+
 function getLeadNextStageId(client) {
   const column = getLeadDeskColumnId(client);
   if (column === "new-lead") {
@@ -5729,8 +5757,8 @@ function renderLeadDeskPipeline(queue) {
           <div class="onboarding-client-head">
             <div>
               <h3>${escapeHtml(client.clientName)}</h3>
-              <p>${escapeHtml(`${getLeadSourceLabel(client)}${client.leadSourceDetail ? ` - ${client.leadSourceDetail}` : ""}`)}</p>
-              <p>${escapeHtml(client.businessEmail || client.businessPhone || client.contact || "Contact pending")}</p>
+              <p>${escapeHtml(getLeadCardSourceLine(client))}</p>
+              <p>${escapeHtml(getLeadCardContactLine(client))}</p>
             </div>
             <span class="pill ${column.id === "deposit-paid" ? "tone-green" : column.id === "lost-not-now" ? "tone-gray" : column.id === "agreement-returned" ? "tone-blue" : "tone-yellow"}">${escapeHtml(getLeadStageLabel(column.id))}</span>
           </div>
@@ -5739,6 +5767,22 @@ function renderLeadDeskPipeline(queue) {
       </section>`;
     }).join("")}
   </div>`;
+}
+
+function syncOnboardingClientWithRoster(client) {
+  const liveClient = getClientById(client.id) || getClientBySharedIdentity(client);
+  if (!liveClient) {
+    return client;
+  }
+
+  return {
+    ...mergeClientRecordsForUi(client, liveClient),
+    connections: client.connections || [],
+    progress: client.progress,
+    blockerCount: client.blockerCount,
+    checklist: client.checklist || [],
+    nextAction: client.nextAction || getLeadDeskNextAction(liveClient)
+  };
 }
 
 function renderLeadChecklistList(client) {
@@ -5835,7 +5879,7 @@ function getSkippedOnboardingCount(tasks) {
 
 function renderOnboarding(payload) {
   const filters = getOnboardingFilters();
-  const rawQueue = (payload?.activation?.queue || []).map(applyOnboardingSkips);
+  const rawQueue = (payload?.activation?.queue || []).map(syncOnboardingClientWithRoster).map(applyOnboardingSkips);
   const tasksByClient = new Map(rawQueue.map((client) => [client.id, buildOnboardingTasks(client)]));
   const queue = rawQueue.filter((client) => clientMatchesOnboardingFilters(client, filters, tasksByClient.get(client.id) || []));
   const onboardingTasks = queue.flatMap((client) => tasksByClient.get(client.id) || []);
