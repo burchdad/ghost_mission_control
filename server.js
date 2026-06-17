@@ -3743,7 +3743,6 @@ function normalizeRepoIdentity(value) {
 function getClientIdentityKeys(client) {
   return [
     client?.websiteUrl ? `site:${normalizeIdentityDomain(client.websiteUrl)}` : "",
-    client?.vercelUrl ? `site:${normalizeIdentityDomain(client.vercelUrl)}` : "",
     client?.repo || client?.githubUrl ? `repo:${normalizeRepoIdentity(client.repo || client.githubUrl)}` : "",
     client?.clientName ? `name:${looseLookupKey(client.clientName)}` : "",
     client?.id ? `id:${canonicalClientId(client.id)}` : ""
@@ -3855,7 +3854,7 @@ function getClientDataHealth(clients = getAllClients()) {
     if (!client.websiteUrl) {
       missing.push("websiteUrl");
     }
-    if (!client.repo && !client.githubUrl) {
+    if (!["lead", "deposit-paid"].includes(client.stage) && !client.repo && !client.githubUrl) {
       missing.push("repo");
     }
     if (!client.stage) {
