@@ -1054,13 +1054,18 @@ function upsertRuntimeClient(client) {
     return null;
   }
 
-  const existingIndex = runtimeClients.findIndex((entry) => entry.id === normalized.id);
+  const normalizedKeys = new Set(getClientIdentityKeys(normalized));
+  const existingIndex = runtimeClients.findIndex((entry) => {
+    if (entry.id === normalized.id) {
+      return true;
+    }
+    return getClientIdentityKeys(entry).some((key) => key !== `id:${canonicalClientId(entry.id)}` && normalizedKeys.has(key));
+  });
   if (existingIndex >= 0) {
-    runtimeClients[existingIndex] = {
-      ...runtimeClients[existingIndex],
+    runtimeClients[existingIndex] = mergeClientRecords(runtimeClients[existingIndex], {
       ...normalized,
       source: "runtime"
-    };
+    });
     return runtimeClients[existingIndex];
   }
 
@@ -1802,6 +1807,71 @@ async function persistRuntimeClientsToPostgres() {
   runtimeClientsDbLastError = "";
   runtimeClientsDbLastPersistAt = Date.now();
   return { ok: true, target: "postgres", table: "mission_clients", count };
+}
+
+async function deleteRuntimeClientFromPostgres(clientId) {
+  const init = await ensureClientStoreTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  const normalizedId = canonicalClientId(clientId);
+  if (!normalizedId) {
+    return { ok: false, target: "postgres", status: 400, error: "Client id is required." };
+  }
+
+  const result = await getClientStorePgPool().query("DELETE FROM mission_clients WHERE id = $1 RETURNING id", [normalizedId]);
+  runtimeClientsDbAvailable = true;
+  runtimeClientsDbLastError = "";
+  runtimeClientsDbLastPersistAt = Date.now();
+  return { ok: true, target: "postgres", table: "mission_clients", deleted: result.rowCount };
+}
+
+function removeRuntimeClient(clientId) {
+  const normalizedId = canonicalClientId(clientId);
+  const before = runtimeClients.length;
+  for (let index = runtimeClients.length - 1; index >= 0; index -= 1) {
+    if (canonicalClientId(runtimeClients[index]?.id) === normalizedId) {
+      runtimeClients.splice(index, 1);
+    }
+  }
+  persistRuntimeClients();
+  return before - runtimeClients.length;
+}
+
+function buildClientResponsePayload(storageWrite, status = 200, extra = {}) {
+  const clients = getAllClients();
+  return {
+    ...extra,
+    summary: summarizeClients(clients),
+    pipelineStages: CLIENT_PIPELINE_STAGES,
+    dataHealth: getClientDataHealth(clients),
+    storage: getClientStorageStatus(storageWrite),
+    clients: clients.map((entry) => ({
+      ...entry,
+      actions: getClientDerivedActions(entry)
+    }))
+  };
+}
+
+async function persistClientMutationFallback(databaseWrite) {
+  if (databaseWrite.ok) {
+    return databaseWrite;
+  }
+
+  try {
+    const repoWrite = await persistRuntimeClientsToGitHubStore();
+    return { ...repoWrite, fallbackFrom: databaseWrite };
+  } catch (error) {
+    runtimeClientsRepoLastError = String(error?.message || error);
+    return {
+      ok: false,
+      target: "client-store",
+      error: runtimeClientsRepoLastError,
+      fallbackFrom: databaseWrite,
+      fallbackWrite: { ok: false, target: "github", error: runtimeClientsRepoLastError }
+    };
+  }
 }
 
 async function loadRuntimeClientsFromPostgres() {
@@ -3538,6 +3608,15 @@ function buildClientRecord(input) {
     normalized.proposalSent = true;
   }
 
+  if (
+    normalized.finalPaymentPaid &&
+    ["final-payment", "launch-handoff"].includes(normalized.stage) &&
+    !normalized.partnershipSigned
+  ) {
+    normalized.stage = "completed-archived";
+    normalized.status = "completed-archived";
+  }
+
   return normalized;
 }
 
@@ -3615,7 +3694,10 @@ function addClientToMergedRoster(merged, aliases, client) {
 
   const keys = getClientIdentityKeys(client);
   const stableIdKey = `id:${canonicalClientId(client.id)}`;
-  const existingPrimaryKey = aliases.get(stableIdKey);
+  const existingPrimaryKey = keys
+    .filter((key) => key !== stableIdKey)
+    .map((key) => aliases.get(key))
+    .find(Boolean) || aliases.get(stableIdKey);
   const primaryKey = existingPrimaryKey || stableIdKey;
   const mergedClient = mergeClientRecords(merged.get(primaryKey), client);
   merged.set(primaryKey, mergedClient);
@@ -6913,6 +6995,115 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/mission/clients/archive") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        await syncClientStore(true);
+        const clientId = canonicalClientId(payload.id || payload.clientId);
+        const archiveStage = normalizeClientStage(payload.stage || "completed-archived");
+        const client = getAllClients().find((entry) => canonicalClientId(entry.id) === clientId);
+        if (!client) {
+          sendJson(request, response, 404, { error: "Client not found" });
+          return;
+        }
+
+        const archivedClient = buildClientRecord({
+          ...client,
+          stage: archiveStage,
+          finalPaymentPaid: archiveStage === "completed-archived" ? client.finalPaymentPaid || Boolean(payload.finalPaymentPaid) : client.finalPaymentPaid,
+          notes: [client.notes, payload.note || "Archived from Mission Control."].filter(Boolean).join("\n"),
+          updatedAt: new Date().toISOString()
+        });
+        const savedClient = upsertRuntimeClient(archivedClient);
+        persistRuntimeClients();
+        const storageWrite = await persistClientMutationFallback(await persistRuntimeClientToPostgres(savedClient || archivedClient));
+        sendJson(request, response, 200, buildClientResponsePayload(storageWrite, 200, {
+          archived: savedClient || archivedClient,
+          message: `${client.clientName} moved to ${archiveStage}.`
+        }));
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/clients/delete") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        await syncClientStore(true);
+        const clientId = canonicalClientId(payload.id || payload.clientId);
+        const client = getAllClients().find((entry) => canonicalClientId(entry.id) === clientId);
+        if (!client) {
+          sendJson(request, response, 404, { error: "Client not found" });
+          return;
+        }
+
+        const removed = removeRuntimeClient(clientId);
+        const databaseWrite = await deleteRuntimeClientFromPostgres(clientId);
+        const storageWrite = await persistClientMutationFallback(databaseWrite);
+        sendJson(request, response, 200, buildClientResponsePayload(storageWrite, 200, {
+          deleted: { id: client.id, clientName: client.clientName, runtimeRemoved: removed },
+          message: `${client.clientName} removed from Mission Control runtime records.`
+        }));
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/clients/merge") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        await syncClientStore(true);
+        const sourceId = canonicalClientId(payload.sourceId || payload.source_id);
+        const targetId = canonicalClientId(payload.targetId || payload.target_id);
+        if (!sourceId || !targetId || sourceId === targetId) {
+          sendJson(request, response, 400, { error: "Distinct sourceId and targetId are required." });
+          return;
+        }
+
+        const clients = getAllClients();
+        const sourceClient = clients.find((entry) => canonicalClientId(entry.id) === sourceId);
+        const targetClient = clients.find((entry) => canonicalClientId(entry.id) === targetId);
+        if (!sourceClient || !targetClient) {
+          sendJson(request, response, 404, { error: "Source or target client was not found." });
+          return;
+        }
+
+        const mergedClient = buildClientRecord({
+          ...mergeClientRecords(sourceClient, { ...targetClient, source: "runtime" }),
+          id: targetClient.id,
+          clientName: targetClient.clientName || sourceClient.clientName,
+          source: "runtime",
+          notes: [
+            sourceClient.notes,
+            targetClient.notes,
+            payload.note || `Merged ${sourceClient.clientName} into ${targetClient.clientName}.`
+          ].filter(Boolean).join("\n"),
+          updatedAt: new Date().toISOString()
+        });
+        removeRuntimeClient(sourceId);
+        const savedClient = upsertRuntimeClient(mergedClient);
+        persistRuntimeClients();
+        const targetWrite = await persistRuntimeClientToPostgres(savedClient || mergedClient);
+        const sourceDelete = await deleteRuntimeClientFromPostgres(sourceId);
+        const storageWrite = await persistClientMutationFallback(targetWrite.ok ? sourceDelete : targetWrite);
+        sendJson(request, response, 200, buildClientResponsePayload(storageWrite, 200, {
+          merged: {
+            source: { id: sourceClient.id, clientName: sourceClient.clientName },
+            target: savedClient || mergedClient
+          },
+          message: `${sourceClient.clientName} merged into ${targetClient.clientName}.`
+        }));
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/mission/web-helpers") {
     const forceRefresh = url.searchParams.get("refresh") === "true";
     const requestedSiteId = url.searchParams.get("siteId") || "";
@@ -7359,6 +7550,7 @@ if (require.main === module) {
     normalizeClientStage,
     normalizeLeadStage,
     deriveLeadStage,
+    buildClientRecord,
     normalizeWebHelperRequestPayload,
     dbRowToWebHelperRequest
   };

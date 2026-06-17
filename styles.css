@@ -3450,7 +3450,34 @@ min-height: 118px;
 }
 
 .client-onboard-form textarea {
-resize: vertical;
+  resize: vertical;
+}
+
+.client-form-actions,
+.data-health-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.client-form-actions .command-send {
+  margin-left: auto;
+}
+
+.data-health-actions {
+  margin-top: 0.55rem;
+}
+
+.data-health-actions .new-client-button {
+  min-width: auto;
+  min-height: 30px;
+  padding: 0.34rem 0.55rem;
+  font-size: 0.68rem;
+}
+
+.error-text {
+  color: #ffd0d0;
 }
 
 .client-onboard-form input:focus-visible,

@@ -147,6 +147,8 @@ const elements = {
   clientServicesInput: document.getElementById("clientServicesInput"),
   clientContactInput: document.getElementById("clientContactInput"),
   clientNotesInput: document.getElementById("clientNotesInput"),
+  clientArchiveButton: document.getElementById("clientArchiveButton"),
+  clientDeleteButton: document.getElementById("clientDeleteButton"),
   clientSubmitButton: document.getElementById("clientSubmitButton"),
   clientFormResponse: document.getElementById("clientFormResponse"),
   agentBuildModal: document.getElementById("agentBuildModal"),
@@ -1993,6 +1995,8 @@ function resetClientForm(mode = "client") {
   if (elements.clientSubmitButton) {
     elements.clientSubmitButton.textContent = defaults.submitLabel;
   }
+  elements.clientArchiveButton?.classList.add("view-hidden");
+  elements.clientDeleteButton?.classList.add("view-hidden");
 }
 
 function populateClientForm(client) {
@@ -2035,6 +2039,8 @@ function populateClientForm(client) {
   if (elements.clientSubmitButton) {
     elements.clientSubmitButton.textContent = "Save Client";
   }
+  elements.clientArchiveButton?.classList.remove("view-hidden");
+  elements.clientDeleteButton?.classList.remove("view-hidden");
 }
 
 function openClientModal(options = {}) {
@@ -4383,7 +4389,11 @@ function mergeClientRecordsForUi(existing, incoming) {
 function addClientToMergedUiRoster(merged, aliases, client) {
   const keys = getClientIdentityKeysForUi(client);
   const stableIdKey = client?.id ? `id:${canonicalClientIdForUi(client.id)}` : "";
-  const existingPrimaryKey = stableIdKey ? aliases.get(stableIdKey) : keys.map((key) => aliases.get(key)).find(Boolean);
+  const existingPrimaryKey =
+    keys
+      .filter((key) => key !== stableIdKey)
+      .map((key) => aliases.get(key))
+      .find(Boolean) || (stableIdKey ? aliases.get(stableIdKey) : "");
   const primaryKey = existingPrimaryKey || stableIdKey || `name:${compactIdentityKey(client.clientName)}`;
   const mergedClient = mergeClientRecordsForUi(merged.get(primaryKey), client);
   merged.set(primaryKey, mergedClient);
@@ -4808,17 +4818,21 @@ function openClientDataHealth() {
       <div><span>Last Check</span><strong>${escapeHtml(formatClientDate(dataHealth.checkedAt || dataHealth.updatedAt))}</strong></div>
     </div>
     ${renderDataHealthList("Duplicate Identity Groups", duplicateGroups, "No duplicate identity groups found.", (group) => {
-      const clients = group.clients || group.records || group.items || [];
+      const clients = group.clients || group.records || group.items || group.entries || [];
+      const target = clients[0] || {};
       return `<article>
         <strong>${escapeHtml(group.key || group.identity || group.websiteUrl || "Duplicate group")}</strong>
         <p>${escapeHtml(group.reason || group.message || "These records appear to describe the same client.")}</p>
         <div class="ops-chip-row">${clients.map((client) => `<span>${escapeHtml(client.clientName || client.id || client)}</span>`).join("")}</div>
+        ${clients.length > 1 ? `<div class="data-health-actions">
+          ${clients.slice(1).map((client) => `<button class="new-client-button secondary-button" type="button" data-client-merge-source="${escapeHtml(client.id || client)}" data-client-merge-target="${escapeHtml(target.id || target)}">Merge ${escapeHtml(client.clientName || client.id || client)} into ${escapeHtml(target.clientName || target.id || target)}</button>`).join("")}
+        </div>` : ""}
       </article>`;
     })}
     ${renderDataHealthList("Required Field Gaps", missingRequired, "No required field gaps found.", (item) => `<article>
       <strong>${escapeHtml(item.clientName || item.id || "Client")}</strong>
-      <p>${escapeHtml(item.message || item.reason || `Missing ${Array.isArray(item.fields) ? item.fields.join(", ") : item.field || "required data"}.`)}</p>
-      <div class="ops-chip-row">${(Array.isArray(item.fields) ? item.fields : [item.field]).filter(Boolean).map((field) => `<span>${escapeHtml(field)}</span>`).join("")}</div>
+      <p>${escapeHtml(item.message || item.reason || `Missing ${Array.isArray(item.fields || item.missing) ? (item.fields || item.missing).join(", ") : item.field || "required data"}.`)}</p>
+      <div class="ops-chip-row">${(Array.isArray(item.fields || item.missing) ? (item.fields || item.missing) : [item.field]).filter(Boolean).map((field) => `<span>${escapeHtml(field)}</span>`).join("")}</div>
     </article>`)}
   `;
   elements.clientDataHealthModal.classList.remove("view-hidden");
@@ -5327,6 +5341,104 @@ async function saveClientRecord(payload) {
   return result;
 }
 
+async function postClientMutation(path, payload) {
+  const response = await fetch(apiUrl(path), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || `Client mutation failed with status ${response.status}`);
+  }
+
+  liveClients = mergeClientPayloadWithSeed(result);
+  renderClients(liveClients);
+  loadOnboarding();
+  renderBuildQueue(getActiveSite() || getEmptySiteState());
+  if (activeView === "web-helpers") {
+    loadWebHelpers("");
+  }
+  return result;
+}
+
+async function archiveEditingClient() {
+  const clientId = editingClientId || elements.clientEditIdInput?.value;
+  if (!clientId) {
+    return;
+  }
+
+  elements.clientFormResponse.textContent = "Archiving client...";
+  try {
+    const result = await postClientMutation("/mission/clients/archive", {
+      id: clientId,
+      stage: "completed-archived",
+      finalPaymentPaid: Boolean(elements.clientFinalPaymentInput?.checked),
+      note: "Archived from client edit modal."
+    });
+    elements.clientFormResponse.textContent = `${result.message || "Client archived."}${getClientStorageMessage(result)}`;
+    closeClientModal();
+  } catch (error) {
+    elements.clientFormResponse.textContent = String(error.message || error);
+  }
+}
+
+async function deleteEditingClient() {
+  const clientId = editingClientId || elements.clientEditIdInput?.value;
+  const client = getClientById(clientId);
+  if (!client) {
+    return;
+  }
+
+  const confirmed = window.confirm(`Remove ${client.clientName} from Mission Control runtime records? Use this for duplicates or bad records only.`);
+  if (!confirmed) {
+    return;
+  }
+
+  elements.clientFormResponse.textContent = "Deleting duplicate record...";
+  try {
+    const result = await postClientMutation("/mission/clients/delete", { id: clientId });
+    elements.clientFormResponse.textContent = `${result.message || "Client removed."}${getClientStorageMessage(result)}`;
+    closeClientModal();
+  } catch (error) {
+    elements.clientFormResponse.textContent = String(error.message || error);
+  }
+}
+
+async function mergeClientRecordsFromUi(sourceId, targetId) {
+  if (!sourceId || !targetId || sourceId === targetId) {
+    return;
+  }
+
+  const source = getClientById(sourceId);
+  const target = getClientById(targetId);
+  const confirmed = window.confirm(`Merge ${source?.clientName || sourceId} into ${target?.clientName || targetId}? The source duplicate will be removed.`);
+  if (!confirmed) {
+    return;
+  }
+
+  if (elements.clientDataHealthContent) {
+    elements.clientDataHealthContent.insertAdjacentHTML("afterbegin", `<p class="command-response">Merging duplicate client records...</p>`);
+  }
+
+  try {
+    const result = await postClientMutation("/mission/clients/merge", {
+      sourceId,
+      targetId,
+      note: "Merged from Client Data Health."
+    });
+    liveClientDataHealth = result.dataHealth || liveClientDataHealth;
+    openClientDataHealth();
+  } catch (error) {
+    if (elements.clientDataHealthContent) {
+      elements.clientDataHealthContent.insertAdjacentHTML("afterbegin", `<p class="command-response error-text">${escapeHtml(String(error.message || error))}</p>`);
+    }
+  }
+}
+
 function getClientStorageMessage(result) {
   const write = result?.storage?.lastWrite || result?.storage?.database?.lastWrite || result?.storage?.repoStore?.lastWrite;
   const databaseWrite = result?.storage?.database?.lastWrite;
@@ -5435,6 +5547,13 @@ async function submitClientOnboarding(event) {
     payload.proposalSent = true;
   } else if (payload.depositInvoiceSent) {
     payload.proposalSent = true;
+  }
+  if (
+    payload.finalPaymentPaid &&
+    ["final-payment", "launch-handoff"].includes(payload.stage) &&
+    !payload.partnershipSigned
+  ) {
+    payload.stage = "completed-archived";
   }
   payload.leadStage = payload.leadStage || deriveLeadStage(payload);
 
@@ -7184,7 +7303,14 @@ function setWebHelperTicketStatusLocally(ticketId, status) {
       if (getWebHelperTicketId(candidate) !== ticketId) {
         return request;
       }
-      updatedTicket = { ...request, status };
+      const event = {
+        type: "status_change",
+        status,
+        message: `Local/default ticket moved to ${status}.`,
+        actor: "mission_control",
+        at: new Date().toISOString()
+      };
+      updatedTicket = { ...request, status, events: [...(request.events || []), event] };
       return updatedTicket;
     })
   }));
@@ -7193,6 +7319,14 @@ function setWebHelperTicketStatusLocally(ticketId, status) {
 }
 
 async function updateWebHelperTicketStatus(ticketId, status) {
+  const statusMessages = {
+    triage: "Operator acknowledged the ticket and moved it into triage.",
+    approved: "Owner approved helper work on the configured testing branch.",
+    in_progress: "Helper work started under the configured branch policy.",
+    ready_review: "Helper marked the requested change ready for owner/client review.",
+    blocked: "Ticket blocked pending credentials, assets, details, or manual intervention.",
+    done: "Ticket completed, merged, or archived."
+  };
   const actionResponse = document.getElementById("webHelperTicketActionResponse");
   if (actionResponse) {
     actionResponse.textContent = "Updating ticket...";
@@ -7208,7 +7342,7 @@ async function updateWebHelperTicketStatus(ticketId, status) {
         id: ticketId,
         status,
         actor: "mission_control",
-        message: `Operator moved ticket to ${status}.`
+        message: statusMessages[status] || `Operator moved ticket to ${status}.`
       })
     });
     const payload = await response.json().catch(() => ({}));
@@ -7762,6 +7896,8 @@ async function init() {
   elements.closeAgentBuildModalButton?.addEventListener("click", closeAgentBuildModal);
   elements.closeWebHelperTicketButton?.addEventListener("click", closeWebHelperTicket);
   elements.closeClientDataHealthButton?.addEventListener("click", closeClientDataHealth);
+  elements.clientArchiveButton?.addEventListener("click", archiveEditingClient);
+  elements.clientDeleteButton?.addEventListener("click", deleteEditingClient);
   elements.copyAgentBuildPromptButton?.addEventListener("click", copyAgentBuildPrompt);
   elements.agentBuildTargetInput?.addEventListener("change", () => {
     const agent = {
@@ -7998,6 +8134,12 @@ async function init() {
   elements.clientDataHealthModal?.addEventListener("click", (event) => {
     if (event.target === elements.clientDataHealthModal) {
       closeClientDataHealth();
+      return;
+    }
+
+    const mergeButton = event.target.closest("[data-client-merge-source][data-client-merge-target]");
+    if (mergeButton) {
+      mergeClientRecordsFromUi(mergeButton.dataset.clientMergeSource, mergeButton.dataset.clientMergeTarget);
     }
   });
   elements.webHelperTicketModal?.addEventListener("click", (event) => {

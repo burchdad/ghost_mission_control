@@ -679,7 +679,11 @@
             <span>Notes</span>
             <textarea id="clientNotesInput" name="notes" rows="3" placeholder="Anything the agent should know first..."></textarea>
           </label>
-          <button id="clientSubmitButton" class="command-send" type="submit">Create Client</button>
+          <div class="client-form-actions">
+            <button id="clientArchiveButton" class="new-client-button secondary-button view-hidden" type="button">Archive Client</button>
+            <button id="clientDeleteButton" class="danger-button view-hidden" type="button">Delete Duplicate</button>
+            <button id="clientSubmitButton" class="command-send" type="submit">Create Client</button>
+          </div>
           <p id="clientFormResponse" class="command-response" aria-live="polite"></p>
         </form>
       </div>

@@ -6,6 +6,7 @@ const {
   mergeClientRecords,
   getClientDataHealth,
   deriveLeadStage,
+  buildClientRecord,
   normalizeWebHelperRequestPayload,
   dbRowToWebHelperRequest
 } = require("../server");
@@ -111,12 +112,34 @@ function testWebHelperRequestEvents() {
   assert.strictEqual(row.events[0].status, "new");
 }
 
+function testFinalPaymentCompletesWebBuildStage() {
+  const client = buildClientRecord({
+    clientName: "Done Build",
+    stage: "launch-handoff",
+    depositPaid: true,
+    finalPaymentPaid: true,
+    services: ["website-build"]
+  });
+  assert.strictEqual(client.stage, "completed-archived");
+
+  const careClient = buildClientRecord({
+    clientName: "Care Build",
+    stage: "web-helper-care",
+    depositPaid: true,
+    finalPaymentPaid: true,
+    partnershipSigned: true,
+    services: ["website-build", "web-helper-care"]
+  });
+  assert.strictEqual(careClient.stage, "web-helper-care");
+}
+
 [
   testCanonicalClientAliases,
   testClientMergePreservesRuntimeUpdates,
   testLeadStageMapping,
   testDataHealthDetectsDuplicateIdentity,
-  testWebHelperRequestEvents
+  testWebHelperRequestEvents,
+  testFinalPaymentCompletesWebBuildStage
 ].forEach((test) => test());
 
 console.log("Regression tests passed");
