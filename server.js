@@ -3591,6 +3591,9 @@ function repairKnownClientIdentity(client) {
   const id = canonicalClientId(client.id);
   const looksLikeProCoat =
     /pro(coat|crete)/i.test(`${client.clientName} ${client.websiteUrl} ${client.repo} ${client.githubUrl} ${client.businessEmail}`);
+  const looksLikeBougie = /bougie/i.test(
+    `${client.clientName} ${client.websiteUrl} ${client.repo} ${client.githubUrl} ${client.vercelUrl}`
+  );
 
   if (id === "annas-air" && slugify(client.id) !== "annas-air") {
     client = {
@@ -3619,6 +3622,31 @@ function repairKnownClientIdentity(client) {
       finalDomainPurchased: true,
       clientDetailsPending: false,
       finalPaymentPaid: true
+    };
+  }
+
+  if (id === "procoat-concrete-coatings" && looksLikeBougie) {
+    return {
+      ...client,
+      clientName: "ProCoat Concrete Coatings",
+      websiteUrl: "https://etxprocoat.com",
+      repo: "burchdad/procrete_coatings",
+      githubUrl: "https://github.com/burchdad/procrete_coatings",
+      railwayUrl: "",
+      vercelUrl: "https://vercel.com/burchdads-projects/procrete-coatings",
+      mobileAppUrl: "",
+      googleBusinessUrl: "",
+      businessEmail: "steven.procoat@gmail.com",
+      businessPhone: "",
+      contact: "",
+      notes: "Concrete coatings website project in the web build pipeline.",
+      stage: "website-build",
+      status: "website-build",
+      services: uniq(["website-build"]),
+      plannedServices: uniq(["web-helper-care"]),
+      finalDomainPurchased: true,
+      clientDetailsPending: false,
+      finalPaymentPaid: false
     };
   }
 
