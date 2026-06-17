@@ -4332,8 +4332,9 @@ function mergeClientRecordsForUi(existing, incoming) {
 
 function addClientToMergedUiRoster(merged, aliases, client) {
   const keys = getClientIdentityKeysForUi(client);
-  const existingPrimaryKey = keys.map((key) => aliases.get(key)).find(Boolean);
-  const primaryKey = existingPrimaryKey || `id:${slugForUi(client.id || client.clientName)}`;
+  const stableIdKey = client?.id ? `id:${slugForUi(client.id)}` : "";
+  const existingPrimaryKey = stableIdKey ? aliases.get(stableIdKey) : keys.map((key) => aliases.get(key)).find(Boolean);
+  const primaryKey = existingPrimaryKey || stableIdKey || `name:${compactIdentityKey(client.clientName)}`;
   const mergedClient = mergeClientRecordsForUi(merged.get(primaryKey), client);
   merged.set(primaryKey, mergedClient);
   getClientIdentityKeysForUi(mergedClient).forEach((key) => aliases.set(key, primaryKey));
@@ -4562,7 +4563,7 @@ function renderClientModalStats(client) {
     <div><span>Readiness</span><strong>${escapeHtml(`${readyChecks}/${totalChecks} ops checks`)}</strong></div>
     <div><span>Connections</span><strong>${escapeHtml(issueCount ? `${issueCount} gaps` : "Ready")}</strong></div>
     <div><span>Lead Source</span><strong>${escapeHtml(getLeadSourceLabel(client))}</strong></div>
-    <div><span>Record</span><strong>${escapeHtml(client.source || "deployment-map")}</strong></div>
+    <div><span>Record</span><strong>${escapeHtml(`${client.source || "deployment-map"} / ${client.id || "no-id"}`)}</strong></div>
   </div>`;
 }
 

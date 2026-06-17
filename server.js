@@ -3399,7 +3399,7 @@ function normalizeClient(client) {
   const stage = normalizeClientStage(client.stage || client.pipelineStage || client.status);
   const now = new Date().toISOString();
 
-  return {
+  return repairKnownClientIdentity({
     id,
     clientName,
     websiteUrl,
@@ -3438,7 +3438,42 @@ function normalizeClient(client) {
     createdAt: client.createdAt || now,
     updatedAt: client.updatedAt || now,
     source: client.source || "configured"
-  };
+  });
+}
+
+function repairKnownClientIdentity(client) {
+  if (!client) {
+    return client;
+  }
+
+  const id = slugify(client.id);
+  const looksLikeProCoat =
+    /pro(coat|crete)/i.test(`${client.clientName} ${client.websiteUrl} ${client.repo} ${client.githubUrl} ${client.businessEmail}`);
+
+  if (id === "bougie-and-company" && looksLikeProCoat) {
+    return {
+      ...client,
+      clientName: "Bougie and Company",
+      websiteUrl: "https://www.bougieandcompany.com",
+      repo: "bougie_and_company",
+      githubUrl: "https://github.com/burchdad/bougie_and_company",
+      railwayUrl: "https://railway.com/project/3032a264-caf7-4d92-a0f8-406d00cd395c",
+      vercelUrl: "https://vercel.com/burchdads-projects/bougie-and-company-oy7t",
+      businessEmail: "",
+      businessPhone: "",
+      contact: "",
+      notes: "Website finished, domain wrapped, final website payment accepted. Web Helper care is active; SEO/monthly contract is the next service step.",
+      stage: "web-helper-care",
+      status: "web-helper-care",
+      services: uniq(["website-build", "web-helper-care", "ecommerce"]),
+      plannedServices: uniq(["search-intelligence"]),
+      finalDomainPurchased: true,
+      clientDetailsPending: false,
+      finalPaymentPaid: true
+    };
+  }
+
+  return client;
 }
 
 function buildClientRecord(input) {
@@ -3544,8 +3579,9 @@ function addClientToMergedRoster(merged, aliases, client) {
   }
 
   const keys = getClientIdentityKeys(client);
-  const existingPrimaryKey = keys.map((key) => aliases.get(key)).find(Boolean);
-  const primaryKey = existingPrimaryKey || `id:${slugify(client.id)}`;
+  const stableIdKey = `id:${slugify(client.id)}`;
+  const existingPrimaryKey = aliases.get(stableIdKey);
+  const primaryKey = existingPrimaryKey || stableIdKey;
   const mergedClient = mergeClientRecords(merged.get(primaryKey), client);
   merged.set(primaryKey, mergedClient);
   getClientIdentityKeys(mergedClient).forEach((key) => aliases.set(key, primaryKey));
