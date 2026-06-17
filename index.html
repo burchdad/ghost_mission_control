@@ -105,6 +105,17 @@
 
       <section class="layout-grid">
         <div class="main-column">
+          <section class="module-panel view-panel" id="cockpitPanel" aria-label="Mission overview cockpit">
+            <div class="panel-header client-pipeline-header">
+              <div>
+                <h2>Operator Cockpit</h2>
+                <p>Today’s web builds, approval gates, data-health warnings, and next operator actions.</p>
+              </div>
+              <button class="new-client-button secondary-button" type="button" data-view-shortcut="web-helpers">Open Triage</button>
+            </div>
+            <div id="cockpitBoard" class="cockpit-board"></div>
+          </section>
+
           <section class="module-panel view-panel" id="clientsPanel" aria-label="Web client registry">
             <div class="panel-header client-pipeline-header">
               <div>
@@ -216,6 +227,32 @@
               <p>Review client website requests, gate approvals, assign helpers, and keep every change on the right branch before merge.</p>
             </div>
             <div id="webHelperSummary" class="web-helper-summary"></div>
+            <div class="web-helper-filter-row" aria-label="Web Helper ticket filters">
+              <input id="webHelperSearchInput" type="search" placeholder="Search tickets, clients, pages..." aria-label="Search Web Helper tickets" />
+              <select id="webHelperStatusFilter" aria-label="Filter Web Helper tickets by status">
+                <option value="all">All statuses</option>
+                <option value="new">New</option>
+                <option value="triage">Needs triage</option>
+                <option value="needs_approval">Needs approval</option>
+                <option value="approved">Approved / queue</option>
+                <option value="in_progress">In progress</option>
+                <option value="ready_review">Ready for review</option>
+                <option value="done">Done</option>
+                <option value="blocked">Blocked</option>
+              </select>
+              <select id="webHelperPriorityFilter" aria-label="Filter Web Helper tickets by priority">
+                <option value="all">All priorities</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="normal">Normal</option>
+                <option value="low">Low</option>
+              </select>
+              <select id="webHelperApprovalFilter" aria-label="Filter Web Helper tickets by approval requirement">
+                <option value="all">All approval states</option>
+                <option value="required">Approval required</option>
+                <option value="safe">Safe scope</option>
+              </select>
+            </div>
             <div id="webHelperCards" class="web-helper-cards"></div>
           </section>
 
@@ -658,6 +695,19 @@
           <button id="closeLeadNotificationButton" class="icon-button" type="button" aria-label="Close lead notification">X</button>
         </div>
         <div id="leadNotificationContent" class="lead-notification-content"></div>
+      </div>
+    </div>
+
+    <div id="clientDataHealthModal" class="client-modal view-hidden" role="dialog" aria-modal="true" aria-labelledby="clientDataHealthTitle">
+      <div class="client-modal-panel data-health-modal-panel">
+        <div class="panel-header compact client-modal-header">
+          <div>
+            <h2 id="clientDataHealthTitle">Client Data Health</h2>
+            <p>Duplicate identities, missing required fields, and records that need cleanup.</p>
+          </div>
+          <button id="closeClientDataHealthButton" class="icon-button" type="button" aria-label="Close client data health">X</button>
+        </div>
+        <div id="clientDataHealthContent" class="data-health-modal-content"></div>
       </div>
     </div>
 

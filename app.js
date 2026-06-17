@@ -50,6 +50,8 @@ const elements = {
   kpiSection: document.getElementById("kpiSection"),
   missionSummary: document.getElementById("missionSummary"),
   missionStatuses: document.getElementById("missionStatuses"),
+  cockpitPanel: document.getElementById("cockpitPanel"),
+  cockpitBoard: document.getElementById("cockpitBoard"),
   moduleCards: document.getElementById("moduleCards"),
   alertList: document.getElementById("alertList"),
   perceptionPanel: document.getElementById("perceptionPanel"),
@@ -111,6 +113,10 @@ const elements = {
   leadNotificationSubtitle: document.getElementById("leadNotificationSubtitle"),
   leadNotificationContent: document.getElementById("leadNotificationContent"),
   closeLeadNotificationButton: document.getElementById("closeLeadNotificationButton"),
+  clientDataHealthModal: document.getElementById("clientDataHealthModal"),
+  clientDataHealthTitle: document.getElementById("clientDataHealthTitle"),
+  clientDataHealthContent: document.getElementById("clientDataHealthContent"),
+  closeClientDataHealthButton: document.getElementById("closeClientDataHealthButton"),
   clientModalTitle: document.getElementById("clientModalTitle"),
   clientModalSubtitle: document.getElementById("clientModalSubtitle"),
   clientOnboardForm: document.getElementById("clientOnboardForm"),
@@ -170,6 +176,10 @@ const elements = {
   toolCards: document.getElementById("toolCards"),
   toolActions: document.getElementById("toolActions"),
   webHelperSummary: document.getElementById("webHelperSummary"),
+  webHelperSearchInput: document.getElementById("webHelperSearchInput"),
+  webHelperStatusFilter: document.getElementById("webHelperStatusFilter"),
+  webHelperPriorityFilter: document.getElementById("webHelperPriorityFilter"),
+  webHelperApprovalFilter: document.getElementById("webHelperApprovalFilter"),
   webHelperCards: document.getElementById("webHelperCards"),
   webHelperRequests: document.getElementById("webHelperRequests"),
   webHelperTicketModal: document.getElementById("webHelperTicketModal"),
@@ -263,6 +273,7 @@ let liveToolRegistry = null;
 let livePredictiveSignals = [];
 let liveStrategicPlan = null;
 let liveAutonomousGoals = [];
+let liveClientDataHealth = null;
 let activeSiteId = "";
 
 const clientPipelineStages = [
@@ -1227,6 +1238,7 @@ const agentsSubviewVisibility = {
 
 const viewVisibility = {
   "mission-control": [
+    "cockpitPanel",
     "operationsPanel",
     "alertsPanel",
     "perceptionPanel",
@@ -1268,6 +1280,7 @@ function setActiveView(view) {
 
   const shellPanels = [
     "operationsPanel",
+    "cockpitPanel",
     "clientsPanel",
     "clientActionsPanel",
     "onboardingPanel",
@@ -1340,7 +1353,7 @@ function setActiveView(view) {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
 
-  const mainColumnPanels = ["operationsPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "intelligencePanel", "strategyPanel", "executionPanel", "agentOpsPanel"];
+  const mainColumnPanels = ["operationsPanel", "cockpitPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "intelligencePanel", "strategyPanel", "executionPanel", "agentOpsPanel"];
   const sideColumnPanels = [
     "clientActionsPanel",
     "onboardingActionsPanel",
@@ -1414,6 +1427,14 @@ function setupNavigation() {
       setFocusMode(false);
     });
   }
+
+  document.addEventListener("click", (event) => {
+    const shortcut = event.target.closest("[data-view-shortcut]");
+    if (!shortcut || elements.cockpitBoard?.contains(shortcut)) {
+      return;
+    }
+    setActiveView(shortcut.dataset.viewShortcut);
+  });
 
   setupCommandPalette();
 
@@ -4737,7 +4758,7 @@ function renderClientDataHealth(dataHealth) {
   }
 
   const clean = dataHealth.status === "clean";
-  return `<div class="client-board-note client-data-health ${clean ? "is-clean" : "needs-attention"}">
+  return `<button class="client-board-note client-data-health ${clean ? "is-clean" : "needs-attention"}" type="button" data-client-data-health>
     <div>
       <h3>${clean ? "Client Data Clean" : "Client Data Needs Review"}</h3>
       <p>${clean
@@ -4745,7 +4766,179 @@ function renderClientDataHealth(dataHealth) {
         : `${dataHealth.duplicateCount || 0} duplicate identity group(s), ${dataHealth.missingRequiredCount || 0} required-field gap(s).`}</p>
     </div>
     <span>${escapeHtml(dataHealth.status || "unknown")}</span>
-  </div>`;
+  </button>`;
+}
+
+function renderDataHealthList(title, items, emptyText, renderer) {
+  const rows = Array.isArray(items) ? items : [];
+  return `<section class="data-health-section">
+    <div class="data-health-section-head">
+      <h3>${escapeHtml(title)}</h3>
+      <span>${rows.length}</span>
+    </div>
+    ${rows.length
+      ? `<div class="data-health-list">${rows.map(renderer).join("")}</div>`
+      : `<p>${escapeHtml(emptyText)}</p>`}
+  </section>`;
+}
+
+function openClientDataHealth() {
+  if (!elements.clientDataHealthModal || !elements.clientDataHealthContent) {
+    return;
+  }
+
+  const dataHealth = liveClientDataHealth || {};
+  const duplicateGroups = dataHealth.duplicateGroups || dataHealth.duplicates || [];
+  const missingRequired = dataHealth.missingRequired || dataHealth.requiredFieldGaps || dataHealth.missingFields || [];
+  elements.clientDataHealthContent.innerHTML = `
+    <section class="client-modal-overview data-health-overview ${dataHealth.status === "attention" ? "needs-attention" : "is-clean"}">
+      <div>
+        <span>Client Records</span>
+        <h3>${escapeHtml(dataHealth.status === "attention" ? "Cleanup needed" : "Data is clean")}</h3>
+        <p>${escapeHtml(dataHealth.status === "attention"
+          ? "Resolve duplicate identities and missing required fields so cards, modals, and pipelines stay synced."
+          : "No duplicate client identities or required field gaps are currently detected.")}</p>
+      </div>
+      <span class="pill ${dataHealth.status === "attention" ? "tone-yellow" : "tone-green"}">${escapeHtml(dataHealth.status || "unknown")}</span>
+    </section>
+    <div class="client-modal-stats">
+      <div><span>Duplicate Groups</span><strong>${escapeHtml(dataHealth.duplicateCount || duplicateGroups.length || 0)}</strong></div>
+      <div><span>Field Gaps</span><strong>${escapeHtml(dataHealth.missingRequiredCount || missingRequired.length || 0)}</strong></div>
+      <div><span>Source</span><strong>${escapeHtml(dataHealth.source || "runtime scan")}</strong></div>
+      <div><span>Last Check</span><strong>${escapeHtml(formatClientDate(dataHealth.checkedAt || dataHealth.updatedAt))}</strong></div>
+    </div>
+    ${renderDataHealthList("Duplicate Identity Groups", duplicateGroups, "No duplicate identity groups found.", (group) => {
+      const clients = group.clients || group.records || group.items || [];
+      return `<article>
+        <strong>${escapeHtml(group.key || group.identity || group.websiteUrl || "Duplicate group")}</strong>
+        <p>${escapeHtml(group.reason || group.message || "These records appear to describe the same client.")}</p>
+        <div class="ops-chip-row">${clients.map((client) => `<span>${escapeHtml(client.clientName || client.id || client)}</span>`).join("")}</div>
+      </article>`;
+    })}
+    ${renderDataHealthList("Required Field Gaps", missingRequired, "No required field gaps found.", (item) => `<article>
+      <strong>${escapeHtml(item.clientName || item.id || "Client")}</strong>
+      <p>${escapeHtml(item.message || item.reason || `Missing ${Array.isArray(item.fields) ? item.fields.join(", ") : item.field || "required data"}.`)}</p>
+      <div class="ops-chip-row">${(Array.isArray(item.fields) ? item.fields : [item.field]).filter(Boolean).map((field) => `<span>${escapeHtml(field)}</span>`).join("")}</div>
+    </article>`)}
+  `;
+  elements.clientDataHealthModal.classList.remove("view-hidden");
+}
+
+function closeClientDataHealth() {
+  elements.clientDataHealthModal?.classList.add("view-hidden");
+}
+
+function getCockpitClients() {
+  return (liveClients?.clients?.length ? mergeClientPayloadWithSeed(liveClients).clients : buildClientPayloadFallback().clients) || [];
+}
+
+function buildCockpitActions(clients, tickets, dataHealth) {
+  const actions = [];
+  const approvalTicket = tickets.find((ticket) => ticket.approvalRequired && !["done", "completed", "merged"].includes(normalizeWebHelperStatus(ticket.status)));
+  if (approvalTicket) {
+    actions.push({
+      title: "Review Web Helper approval",
+      detail: `${approvalTicket.clientName || "Client"}: ${approvalTicket.title || approvalTicket.summary || "Request waiting"}`,
+      tone: "yellow",
+      view: "web-helpers"
+    });
+  }
+
+  const finalPaymentClient = clients.find((client) => getClientStage(client) === "final-payment" || client.finalPaymentPaid === false && getClientStage(client) === "launch-handoff");
+  if (finalPaymentClient) {
+    actions.push({
+      title: "Check final payment gate",
+      detail: `${finalPaymentClient.clientName} is near handoff and should not drift into care until payment/handoff are clear.`,
+      tone: "yellow",
+      view: "clients"
+    });
+  }
+
+  if (dataHealth?.status === "attention") {
+    actions.push({
+      title: "Clean client data health",
+      detail: `${dataHealth.duplicateCount || 0} duplicate group(s), ${dataHealth.missingRequiredCount || 0} field gap(s).`,
+      tone: "red",
+      action: "data-health"
+    });
+  }
+
+  const buildClient = clients.find((client) => ["deposit-paid", "website-build", "client-review"].includes(getWebClientPipelineStage(client)));
+  if (buildClient) {
+    actions.push({
+      title: "Move active build forward",
+      detail: `${buildClient.clientName} is in ${getClientStageLabel(getClientStage(buildClient))}.`,
+      tone: "blue",
+      view: "clients"
+    });
+  }
+
+  return actions.slice(0, 5);
+}
+
+function renderCockpit() {
+  if (!elements.cockpitBoard) {
+    return;
+  }
+
+  const clients = getCockpitClients();
+  const webClients = clients.filter((client) => getClientStage(client) !== "lead");
+  const tickets = flattenWebHelperRequests(liveWebHelpers || []);
+  const dataHealth = liveClientDataHealth;
+  const activeBuilds = webClients.filter((client) => ["deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"].includes(getWebClientPipelineStage(client)));
+  const approvals = tickets.filter((ticket) => ticket.approvalRequired && ["new", "triage", "needs_approval", "approved"].includes(normalizeWebHelperStatus(ticket.status)));
+  const blocked = tickets.filter((ticket) => normalizeWebHelperStatus(ticket.status) === "blocked");
+  const leadQueue = liveOnboarding?.activation?.queue || [];
+  const actions = buildCockpitActions(webClients, tickets, dataHealth);
+
+  const stats = [
+    { label: "Active Builds", value: activeBuilds.length, tone: activeBuilds.length ? "blue" : "green" },
+    { label: "Approval Gates", value: approvals.length, tone: approvals.length ? "yellow" : "green" },
+    { label: "Blocked Tickets", value: blocked.length, tone: blocked.length ? "red" : "green" },
+    { label: "Lead Queue", value: leadQueue.length, tone: leadQueue.length ? "blue" : "gray" },
+    { label: "Data Health", value: dataHealth?.status || "unknown", tone: dataHealth?.status === "attention" ? "yellow" : "green" }
+  ];
+
+  elements.cockpitBoard.innerHTML = `
+    <div class="cockpit-stat-grid">
+      ${stats.map((stat) => `<article class="cockpit-stat tone-border-${escapeHtml(stat.tone)}">
+        <span>${escapeHtml(stat.label)}</span>
+        <strong>${escapeHtml(stat.value)}</strong>
+      </article>`).join("")}
+    </div>
+    <div class="cockpit-work-grid">
+      <section class="cockpit-lane">
+        <div class="cockpit-lane-head">
+          <h3>Next Operator Actions</h3>
+          <span>${actions.length}</span>
+        </div>
+        ${actions.length ? actions.map((action) => `<button class="cockpit-action tone-border-${escapeHtml(action.tone)}" type="button" ${action.view ? `data-view-shortcut="${escapeHtml(action.view)}"` : ""} ${action.action ? `data-cockpit-action="${escapeHtml(action.action)}"` : ""}>
+          <strong>${escapeHtml(action.title)}</strong>
+          <span>${escapeHtml(action.detail)}</span>
+        </button>`).join("") : `<div class="pipeline-empty">No urgent operator actions.</div>`}
+      </section>
+      <section class="cockpit-lane">
+        <div class="cockpit-lane-head">
+          <h3>Build Focus</h3>
+          <span>${activeBuilds.length}</span>
+        </div>
+        ${activeBuilds.slice(0, 5).map((client) => `<button class="cockpit-mini-card" type="button" data-client-detail="${escapeHtml(client.id)}">
+          <strong>${escapeHtml(client.clientName)}</strong>
+          <span>${escapeHtml(getClientStageLabel(getClientStage(client)))}</span>
+        </button>`).join("") || `<div class="pipeline-empty">No active builds.</div>`}
+      </section>
+      <section class="cockpit-lane">
+        <div class="cockpit-lane-head">
+          <h3>Approval Queue</h3>
+          <span>${approvals.length}</span>
+        </div>
+        ${approvals.slice(0, 5).map((ticket) => `<button class="cockpit-mini-card" type="button" data-web-helper-ticket="${escapeHtml(getWebHelperTicketId(ticket))}">
+          <strong>${escapeHtml(ticket.clientName || "Client")}</strong>
+          <span>${escapeHtml(ticket.title || ticket.summary || "Approval needed")}</span>
+        </button>`).join("") || `<div class="pipeline-empty">No approvals waiting.</div>`}
+      </section>
+    </div>
+  `;
 }
 
 function renderClientPipeline(clients) {
@@ -5029,6 +5222,7 @@ function closeClientDetail() {
 
 function renderClients(payload) {
   const activePayload = payload?.clients?.length ? mergeClientPayloadWithSeed(payload) : buildClientPayloadFallback();
+  liveClientDataHealth = activePayload.dataHealth || null;
   const clients = activePayload.clients || [];
   const webClients = clients.filter((client) => getClientStage(client) !== "lead");
   const summary = summarizeClientsForUi(webClients);
@@ -5068,6 +5262,7 @@ function renderClients(payload) {
   );
   renderOpsActions(elements.clientActions, clientActions.length ? clientActions : activePayload.actions || [], "Client actions will appear here.");
   updateNavBadges();
+  renderCockpit();
 }
 
 function getSelectedClientServices() {
@@ -5962,6 +6157,7 @@ function renderOnboarding(payload) {
     : `<article class="ops-card"><h3>No lead blueprint</h3><p>Lead stages will appear when the backend is available.</p></article>`;
 
   updateNavBadges();
+  renderCockpit();
 }
 
 async function loadServices() {
@@ -6769,10 +6965,52 @@ function flattenWebHelperRequests(helpers) {
       pageUrl: request.pageUrl || request.page_url || request.payload?.page_url || "sitewide",
       priority: request.priority || request.payload?.priority || "normal",
       requestType: request.requestType || request.type || request.payload?.request_type || "website_update",
-      approvalRequired: Boolean(request.approvalRequired),
+      approvalRequired: Boolean(request.approvalRequired ?? request.approval_required ?? request.payload?.approval_required),
       createdAt: request.createdAt || request.payload?.created_at || request.updatedAt || ""
     }))
   );
+}
+
+function getWebHelperFilterState() {
+  return {
+    search: String(elements.webHelperSearchInput?.value || "").trim().toLowerCase(),
+    status: elements.webHelperStatusFilter?.value || "all",
+    priority: elements.webHelperPriorityFilter?.value || "all",
+    approval: elements.webHelperApprovalFilter?.value || "all"
+  };
+}
+
+function webHelperTicketMatchesFilters(ticket, filters = getWebHelperFilterState()) {
+  const column = getWebHelperTicketColumn(ticket);
+  const priority = String(ticket.priority || "normal").toLowerCase();
+  if (filters.status !== "all" && column !== filters.status) {
+    return false;
+  }
+  if (filters.priority !== "all" && priority !== filters.priority) {
+    return false;
+  }
+  if (filters.approval === "required" && !ticket.approvalRequired) {
+    return false;
+  }
+  if (filters.approval === "safe" && ticket.approvalRequired) {
+    return false;
+  }
+  if (!filters.search) {
+    return true;
+  }
+
+  const haystack = [
+    ticket.clientName,
+    ticket.title,
+    ticket.summary,
+    ticket.details,
+    ticket.pageUrl,
+    ticket.requestType,
+    ticket.helperName,
+    ticket.repo,
+    ticket.branchPolicy
+  ].join(" ").toLowerCase();
+  return haystack.includes(filters.search);
 }
 
 function renderWebHelperTicketCard(request) {
@@ -7033,12 +7271,14 @@ function renderWebHelpers(payload) {
 
   const helpers = payload?.helpers || [];
   const requests = flattenWebHelperRequests(helpers);
+  const filters = getWebHelperFilterState();
+  const visibleRequests = requests.filter((request) => webHelperTicketMatchesFilters(request, filters));
   currentWebHelperTickets = requests;
   const requestsByColumn = webHelperKanbanColumns.reduce((accumulator, column) => {
     accumulator[column.id] = [];
     return accumulator;
   }, {});
-  requests.forEach((request) => {
+  visibleRequests.forEach((request) => {
     const columnId = getWebHelperTicketColumn(request);
     requestsByColumn[columnId] = requestsByColumn[columnId] || [];
     requestsByColumn[columnId].push(request);
@@ -7137,6 +7377,12 @@ function renderWebHelpers(payload) {
   }
 
   elements.webHelperCards.innerHTML = `
+    <div class="web-helper-filter-status">
+      <span>${visibleRequests.length} of ${requests.length} tickets visible</span>
+      ${filters.search || filters.status !== "all" || filters.priority !== "all" || filters.approval !== "all"
+        ? "<strong>Filtered triage view</strong>"
+        : "<strong>All tickets</strong>"}
+    </div>
     <div class="web-helper-kanban">
       ${webHelperKanbanColumns.map((column) => {
         const columnRequests = requestsByColumn[column.id] || [];
@@ -7169,6 +7415,7 @@ function renderWebHelpers(payload) {
       </article>`;
 
   updateNavBadges();
+  renderCockpit();
   renderExecutionConsole();
 }
 
@@ -7514,6 +7761,7 @@ async function init() {
   elements.closeLeadNotificationButton?.addEventListener("click", closeLeadNotification);
   elements.closeAgentBuildModalButton?.addEventListener("click", closeAgentBuildModal);
   elements.closeWebHelperTicketButton?.addEventListener("click", closeWebHelperTicket);
+  elements.closeClientDataHealthButton?.addEventListener("click", closeClientDataHealth);
   elements.copyAgentBuildPromptButton?.addEventListener("click", copyAgentBuildPrompt);
   elements.agentBuildTargetInput?.addEventListener("change", () => {
     const agent = {
@@ -7541,11 +7789,46 @@ async function init() {
   elements.clientSearchInput?.addEventListener("input", () => renderClients(liveClients));
   elements.clientStageFilter?.addEventListener("change", () => renderClients(liveClients));
   elements.clientIssueFilter?.addEventListener("change", () => renderClients(liveClients));
+  elements.webHelperSearchInput?.addEventListener("input", () => renderWebHelpers({ helpers: liveWebHelpers, summary: summarizeWebHelpersForUi(liveWebHelpers) }));
+  elements.webHelperStatusFilter?.addEventListener("change", () => renderWebHelpers({ helpers: liveWebHelpers, summary: summarizeWebHelpersForUi(liveWebHelpers) }));
+  elements.webHelperPriorityFilter?.addEventListener("change", () => renderWebHelpers({ helpers: liveWebHelpers, summary: summarizeWebHelpersForUi(liveWebHelpers) }));
+  elements.webHelperApprovalFilter?.addEventListener("change", () => renderWebHelpers({ helpers: liveWebHelpers, summary: summarizeWebHelpersForUi(liveWebHelpers) }));
   elements.onboardingSearchInput?.addEventListener("input", () => renderOnboarding(liveOnboarding));
   elements.onboardingBucketFilter?.addEventListener("change", () => renderOnboarding(liveOnboarding));
   elements.onboardingStatusFilter?.addEventListener("change", () => renderOnboarding(liveOnboarding));
+  elements.cockpitBoard?.addEventListener("click", (event) => {
+    const dataHealthTarget = event.target.closest("[data-cockpit-action='data-health'], [data-client-data-health]");
+    if (dataHealthTarget) {
+      openClientDataHealth();
+      return;
+    }
+
+    const viewTarget = event.target.closest("[data-view-shortcut]");
+    if (viewTarget) {
+      setActiveView(viewTarget.dataset.viewShortcut);
+      return;
+    }
+
+    const clientTarget = event.target.closest("[data-client-detail]");
+    if (clientTarget) {
+      openClientDetail(clientTarget.dataset.clientDetail);
+      return;
+    }
+
+    const ticketTarget = event.target.closest("[data-web-helper-ticket]");
+    if (ticketTarget) {
+      setActiveView("web-helpers");
+      openWebHelperTicket(ticketTarget.dataset.webHelperTicket);
+    }
+  });
   elements.clientsPanel?.addEventListener("click", (event) => {
     if (Date.now() - lastClientDragAt < 350) {
+      return;
+    }
+
+    const dataHealthTarget = event.target.closest("[data-client-data-health]");
+    if (dataHealthTarget) {
+      openClientDataHealth();
       return;
     }
 
@@ -7710,6 +7993,11 @@ async function init() {
   elements.agentBuildModal?.addEventListener("click", (event) => {
     if (event.target === elements.agentBuildModal) {
       closeAgentBuildModal();
+    }
+  });
+  elements.clientDataHealthModal?.addEventListener("click", (event) => {
+    if (event.target === elements.clientDataHealthModal) {
+      closeClientDataHealth();
     }
   });
   elements.webHelperTicketModal?.addEventListener("click", (event) => {
