@@ -588,7 +588,7 @@ const servicePipelineDefinitions = [
     label: "Automations + Lead Systems",
     description: "Lead Command, CRM, workflow agents, software builds, and revenue automation systems.",
     system: "Ghost Lead Command + GhostCRM + tool registry",
-    serviceKeys: ["lead-funnel", "software-tool"],
+    serviceKeys: ["lead-funnel", "software-tool", "ai-automation"],
     stages: [
       { id: "opportunity", label: "Opportunity" },
       { id: "mapped", label: "Mapped" },
@@ -1178,6 +1178,7 @@ let executionPollTimer = null;
 let activeView = "mission-control";
 let activeExecutionSubview = "overview";
 let activeAgentsSubview = "rankings";
+let activeServiceSubview = "all";
 let isFocusMode = false;
 let paletteSelectionIndex = 0;
 let currentPaletteActions = [];
@@ -1197,6 +1198,7 @@ const badgeCounts = {
 const storageKeys = {
   executionSubview: "ghostMissionControl.executionSubview",
   agentsSubview: "ghostMissionControl.agentsSubview",
+  serviceSubview: "ghostMissionControl.serviceSubview",
   focusMode: "ghostMissionControl.focusMode",
   deferredRecommendation: "ghostMissionControl.deferredRecommendation",
   skippedOnboarding: "ghostMissionControl.skippedOnboarding"
@@ -2273,6 +2275,11 @@ function restoreSubviewPreferences() {
   const storedAgentsSubview = loadStoredValue(storageKeys.agentsSubview);
   if (storedAgentsSubview && agentsSubviewVisibility[storedAgentsSubview]) {
     activeAgentsSubview = storedAgentsSubview;
+  }
+
+  const storedServiceSubview = loadStoredValue(storageKeys.serviceSubview);
+  if (storedServiceSubview === "all" || servicePipelineDefinitions.some((pipeline) => pipeline.id === storedServiceSubview)) {
+    activeServiceSubview = storedServiceSubview;
   }
 }
 
@@ -5879,22 +5886,27 @@ function renderServices(payload) {
     { label: "Integration Queue", description: "Services that need API credentials, account mapping, or workflow wiring.", services: integrationServices },
     { label: "Planned Packages", description: "Revenue services prepared for future clients or upsells.", services: plannedServices }
   ];
+  const visiblePipelines = getVisibleServicePipelines();
+  const selectedPipeline = activeServiceSubview === "all"
+    ? null
+    : servicePipelineDefinitions.find((pipeline) => pipeline.id === activeServiceSubview);
 
   elements.serviceCards.innerHTML = services.length
-    ? `<div class="service-command-strip">
+    ? `${renderServiceSubviewTabs(clients)}
+      <div class="service-command-strip">
         <article>
           <span>Operating Model</span>
-          <strong>Web first, then service pipelines</strong>
-          <p>Web Clients stays focused on launch and care. Expansion services route through their own kanban lanes with recurring contract status visible in the client modal.</p>
+          <strong>${selectedPipeline ? `${escapeHtml(selectedPipeline.label)} pipeline focus` : "Web first, then service pipelines"}</strong>
+          <p>${selectedPipeline ? `Showing the ${escapeHtml(selectedPipeline.label)} service lane only, with mapped clients, planned services, and contract status kept together.` : "Web Clients stays focused on launch and care. Expansion services route through their own kanban lanes with recurring contract status visible in the client modal."}</p>
         </article>
         <article>
           <span>Connected Systems</span>
-          <strong>GEO, Lead Command, CRM, cards, apps</strong>
-          <p>Each service pipeline can later connect to its own operator system without making the web client board carry every detail.</p>
+          <strong>${selectedPipeline ? escapeHtml(selectedPipeline.system) : "GEO, Lead Command, CRM, cards, apps"}</strong>
+          <p>${selectedPipeline ? "Use this focused view when you want to work one service line without scrolling past the rest of the stack." : "Each service pipeline can later connect to its own operator system without making the web client board carry every detail."}</p>
         </article>
       </div>
       <div class="service-pipeline-stack">
-        ${servicePipelineDefinitions.map((pipeline) => renderServicePipeline(pipeline, clients)).join("")}
+        ${visiblePipelines.map((pipeline) => renderServicePipeline(pipeline, clients)).join("")}
       </div>
       <details class="service-catalog-details">
         <summary>Service Package Catalog</summary>
@@ -5921,8 +5933,56 @@ function renderServices(payload) {
     "Define approval rules for ads, socials, reports, and site changes.",
     "Attach Web Helper tasks to active care and growth services."
   ];
-  renderOpsActions(elements.serviceActions, actions, "Service actions will appear here.");
+  renderOpsActions(elements.serviceActions, getServiceActions(actions), "Service actions will appear here.");
   updateNavBadges();
+}
+
+function getVisibleServicePipelines() {
+  if (activeServiceSubview === "all") {
+    return servicePipelineDefinitions;
+  }
+
+  const selectedPipeline = servicePipelineDefinitions.find((pipeline) => pipeline.id === activeServiceSubview);
+  return selectedPipeline ? [selectedPipeline] : servicePipelineDefinitions;
+}
+
+function renderServiceSubviewTabs(clients) {
+  const tabs = [
+    {
+      id: "all",
+      label: "All",
+      count: servicePipelineDefinitions.reduce((total, pipeline) => total + getServicePipelineCards(pipeline, clients).length, 0)
+    },
+    ...servicePipelineDefinitions.map((pipeline) => ({
+      id: pipeline.id,
+      label: pipeline.label,
+      count: getServicePipelineCards(pipeline, clients).length
+    }))
+  ];
+
+  return `<div class="subview-tabs service-subview-tabs" aria-label="Service pipeline views">
+    ${tabs.map((tab) => `<button class="subview-tab ${activeServiceSubview === tab.id ? "active" : ""}" type="button" data-service-tab="${escapeHtml(tab.id)}">
+      <span>${escapeHtml(tab.label)}</span>
+      <strong>${tab.count}</strong>
+    </button>`).join("")}
+  </div>`;
+}
+
+function getServiceActions(actions) {
+  if (activeServiceSubview === "all") {
+    return actions;
+  }
+
+  const selectedPipeline = servicePipelineDefinitions.find((pipeline) => pipeline.id === activeServiceSubview);
+  if (!selectedPipeline) {
+    return actions;
+  }
+
+  return [
+    `Review ${selectedPipeline.label} mapped clients and contract status.`,
+    `Confirm ${selectedPipeline.system} access, approvals, and reporting handoff.`,
+    `Move stalled ${selectedPipeline.label} clients into the next service stage.`
+  ];
 }
 
 function getServicePipelineStatus(client, pipeline, serviceKey, serviceState = "active") {
@@ -7317,6 +7377,14 @@ async function init() {
     openClientDetail(detailTarget.dataset.clientDetail);
   });
   elements.servicesPanel?.addEventListener("click", (event) => {
+    const serviceTab = event.target.closest("[data-service-tab]");
+    if (serviceTab) {
+      activeServiceSubview = serviceTab.dataset.serviceTab || "all";
+      saveStoredValue(storageKeys.serviceSubview, activeServiceSubview);
+      renderServices(liveServiceCatalog);
+      return;
+    }
+
     const detailTarget = event.target.closest("[data-client-detail]");
     if (!detailTarget) {
       return;
