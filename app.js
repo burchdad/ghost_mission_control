@@ -272,12 +272,20 @@ const clientPipelineStages = [
   { id: "client-review", label: "Client Review" },
   { id: "final-payment", label: "Final Payment" },
   { id: "launch-handoff", label: "Web Helper Handoff" },
+  { id: "completed-archived", label: "Completed / Archived" },
   { id: "web-helper-care", label: "Web Helper Care" },
   { id: "growth-services", label: "Growth Services" },
   { id: "paused-archived", label: "Paused / Archived" }
 ];
 
-const webClientPipelineStages = clientPipelineStages.filter((stage) => stage.id !== "lead");
+const webClientPipelineStages = [
+  "deposit-paid",
+  "website-build",
+  "client-review",
+  "final-payment",
+  "launch-handoff",
+  "completed-archived"
+].map((stageId) => clientPipelineStages.find((stage) => stage.id === stageId)).filter(Boolean);
 
 const leadSourceDefinitions = [
   {
@@ -816,7 +824,7 @@ function summarizeClientsForUi(clients) {
     if (["lead", "deposit-paid"].includes(stage)) {
       summary.onboardingCount += 1;
     }
-    if (["web-helper-care", "growth-services", "paused-archived"].includes(stage)) {
+    if (["web-helper-care", "growth-services", "paused-archived", "completed-archived"].includes(stage)) {
       summary.liveCount += 1;
     }
     const searchServices = [...new Set([...(client.services || []), ...(client.plannedServices || [])])];
@@ -826,7 +834,7 @@ function summarizeClientsForUi(clients) {
     if (client.repo) {
       summary.repoLinked += 1;
     }
-    if (stage === "website-build") {
+    if (["deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"].includes(stage)) {
       summary.websiteBuildCount += 1;
     }
     summary.connectionGaps += issues.length;
@@ -4348,6 +4356,14 @@ function getClientStageLabel(stageId) {
   return clientPipelineStages.find((stage) => stage.id === stageId)?.label || stageId || "Website Build";
 }
 
+function getWebClientPipelineStage(client) {
+  const stage = getClientStage(client);
+  if (["web-helper-care", "growth-services", "paused-archived", "completed-archived"].includes(stage)) {
+    return "completed-archived";
+  }
+  return webClientPipelineStages.some((entry) => entry.id === stage) ? stage : "website-build";
+}
+
 function getClientIssueTags(client) {
   const issues = [];
   const services = [...new Set([...(client.services || []), ...(client.plannedServices || [])])];
@@ -4419,7 +4435,7 @@ function getFilteredClients(clients) {
       return false;
     }
 
-    if (filters.stage !== "all" && getClientStage(client) !== filters.stage) {
+    if (filters.stage !== "all" && getWebClientPipelineStage(client) !== filters.stage) {
       return false;
     }
 
@@ -4701,7 +4717,7 @@ function renderClientPipeline(clients) {
 
   elements.clientPipeline.innerHTML = webClientPipelineStages
     .map((stage) => {
-      const stageClients = clients.filter((client) => getClientStage(client) === stage.id);
+      const stageClients = clients.filter((client) => getWebClientPipelineStage(client) === stage.id);
       const cards = stageClients.length
         ? stageClients.map((client) => {
           const issueCount = getClientIssueTags(client).length;
@@ -4712,6 +4728,7 @@ function renderClientPipeline(clients) {
               <span>${issueCount}</span>
             </div>
             <p>${escapeHtml(displayUrl || "Open details")}</p>
+            <small>${escapeHtml(getLeadSourceLabel(client))}${client.businessEmail ? ` / ${escapeHtml(client.businessEmail)}` : ""}</small>
           </article>`;
         }).join("")
         : `<div class="pipeline-empty">No clients</div>`;
@@ -4981,7 +4998,7 @@ function renderClients(payload) {
   renderOpsSummary(elements.clientSummary, [
     { label: "Clients", value: summary.clientCount },
     { label: "Website Build", value: summary.websiteBuildCount },
-    { label: "Care / Growth", value: summary.liveCount },
+    { label: "Completed / Post-build", value: summary.liveCount },
     { label: "SEO/AEO/GEO", value: summary.searchClients },
     { label: "Connection Gaps", value: summary.connectionGaps }
   ]);
@@ -5113,7 +5130,7 @@ async function updateClientStage(clientId, stageId) {
     return;
   }
 
-  const targetStage = clientPipelineStages.find((stage) => stage.id === stageId);
+  const targetStage = webClientPipelineStages.find((stage) => stage.id === stageId);
   if (!targetStage) {
     return;
   }

@@ -75,6 +75,7 @@ const CLIENT_PIPELINE_STAGES = [
   { id: "client-review", label: "Client Review" },
   { id: "final-payment", label: "Final Payment" },
   { id: "launch-handoff", label: "Web Helper Handoff" },
+  { id: "completed-archived", label: "Completed / Archived" },
   { id: "web-helper-care", label: "Web Helper Care" },
   { id: "growth-services", label: "Growth Services" },
   { id: "paused-archived", label: "Paused / Archived" }
@@ -3248,6 +3249,10 @@ function normalizeClientStage(value) {
 
   if (stage === "onboarding") {
     return "website-build";
+  }
+
+  if (["completed", "complete", "archived", "done"].includes(stage)) {
+    return "completed-archived";
   }
 
   if (stage === "live") {

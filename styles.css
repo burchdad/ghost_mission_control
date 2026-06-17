@@ -2866,6 +2866,15 @@ padding: 0.62rem;
   color: #cfeaff;
 }
 
+.pipeline-card small {
+  display: block;
+  margin-top: 0.26rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .summary-card {
   border: 1px solid rgba(177, 194, 163, 0.15);
   border-radius: 7px;
@@ -4818,7 +4827,7 @@ body[data-active-view="clients"] #clientsPanel {
 }
 
 body[data-active-view="clients"] .client-pipeline {
-  grid-template-columns: repeat(9, minmax(128px, 1fr));
+  grid-template-columns: repeat(6, minmax(170px, 1fr));
 }
 
 body[data-active-view="clients"] .pipeline-column {
