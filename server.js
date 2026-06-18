@@ -58,6 +58,10 @@ const CODEX_BUILD_WEBHOOK_URL = String(process.env.CODEX_BUILD_WEBHOOK_URL || ""
 const CODEX_BUILD_WEBHOOK_SECRET = String(process.env.CODEX_BUILD_WEBHOOK_SECRET || "").trim();
 const CODEX_BUILD_DEFAULT_BASE_BRANCH = String(process.env.CODEX_BUILD_DEFAULT_BASE_BRANCH || "main").trim();
 const CODEX_BUILD_DEFAULT_TEST_COMMAND = String(process.env.CODEX_BUILD_DEFAULT_TEST_COMMAND || "npm run check && npm run build").trim();
+const WEB_HELPER_AUTOMATION_ENABLED = String(process.env.WEB_HELPER_AUTOMATION_ENABLED || "true").toLowerCase() !== "false";
+const CLIENT_UPDATE_EMAIL_WEBHOOK_URL = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_URL || "").trim();
+const CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET || "").trim();
+const GHOST_MISSION_CONTROL_PUBLIC_URL = String(process.env.GHOST_MISSION_CONTROL_PUBLIC_URL || process.env.RAILWAY_PUBLIC_DOMAIN || "").trim();
 const runtimeClients = [];
 let runtimeClientsHydrated = false;
 let runtimeClientsRepoSyncedAt = 0;
@@ -1981,6 +1985,360 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
     ticket: updatedTicket.ok ? updatedTicket.request : ticket,
     relay
   };
+}
+
+function assessWebHelperRequest(ticket, client = {}) {
+  const text = `${ticket.title || ""} ${ticket.summary || ""} ${ticket.details || ""} ${ticket.pageUrl || ""}`.toLowerCase();
+  const urgentTerms = ["urgent", "down", "offline", "broken", "error", "payment", "checkout", "form", "lead", "security"];
+  const complexTerms = ["new page", "redesign", "integration", "api", "database", "payment", "checkout", "auth", "login", "dns"];
+  const simpleTerms = ["text", "copy", "typo", "image", "photo", "hours", "phone", "email", "link"];
+  const missingDetails = !String(ticket.details || ticket.summary || "").trim() || String(ticket.details || ticket.summary || "").trim().length < 12;
+  const priority = urgentTerms.some((term) => text.includes(term)) ? "high" : ticket.priority || "normal";
+  const complexity = complexTerms.some((term) => text.includes(term))
+    ? "complex"
+    : simpleTerms.some((term) => text.includes(term))
+      ? "simple"
+      : "standard";
+  const risk = complexity === "complex" || text.includes("dns") || text.includes("payment") || text.includes("form")
+    ? "owner_review"
+    : "normal";
+
+  return {
+    priority,
+    complexity,
+    risk,
+    missingDetails,
+    route: missingDetails ? "blocked" : "codex_build",
+    recommendedStatus: missingDetails ? "blocked" : "triage",
+    summary: missingDetails
+      ? "Ticket needs more detail before Codex build handoff."
+      : `Ticket assessed as ${complexity} complexity / ${priority} priority for ${client.clientName || ticket.clientName || "client"}.`
+  };
+}
+
+async function runWebHelperAutomationForTicket(ticket, options = {}) {
+  if (!WEB_HELPER_AUTOMATION_ENABLED || !ticket?.id) {
+    return { ok: true, skipped: true, reason: "Web Helper automation is disabled or ticket is missing." };
+  }
+
+  const client = getAllClients().find((entry) => entry.id === ticket.clientId) || findClientForWebHelperTarget(ticket.clientId);
+  const assessment = assessWebHelperRequest(ticket, client || {});
+  const assessmentEvent = await appendWebHelperRequestEventInPostgres(ticket.id, {
+    type: "automation_assessment",
+    status: "triage",
+    actor: "web_helper_agent",
+    message: `${assessment.summary} Route: ${assessment.route}. Risk: ${assessment.risk}.`
+  });
+  if (!assessmentEvent.ok) {
+    return assessmentEvent;
+  }
+
+  if (assessment.missingDetails) {
+    const blocked = await updateWebHelperRequestStatusInPostgres(ticket.id, "blocked", {
+      actor: "web_helper_agent",
+      message: "Automation paused because the request needs more details before a safe Codex handoff."
+    });
+    return { ok: blocked.ok, assessment, ticket: blocked.request || ticket, codex: null };
+  }
+
+  const triaged = await updateWebHelperRequestStatusInPostgres(ticket.id, "triage", {
+    actor: "web_helper_agent",
+    message: "Automation completed intake assessment and is preparing the Codex build prompt."
+  });
+  if (!triaged.ok) {
+    return triaged;
+  }
+
+  if (options.skipCodexBuild) {
+    return { ok: true, assessment, ticket: triaged.request, codex: null };
+  }
+
+  const codex = await createCodexBuildTaskFromWebHelperRequest(ticket.id);
+  return { ok: codex.ok, assessment, ticket: codex.ticket || triaged.request, codex };
+}
+
+async function updateCodexBuildTaskStatus(taskId, status, event = {}) {
+  const init = await ensureCodexBuildTaskTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  const normalizedId = String(taskId || "").trim();
+  const normalizedStatus = String(status || "").trim();
+  if (!normalizedId || !normalizedStatus) {
+    return { ok: false, status: 400, error: "Task id and status are required." };
+  }
+
+  const taskEvent = {
+    type: String(event.type || "codex_task_update").trim(),
+    status: normalizedStatus,
+    actor: String(event.actor || "codex_runner").trim(),
+    message: String(event.message || `Codex build task moved to ${normalizedStatus}.`).trim(),
+    at: new Date().toISOString(),
+    data: event.data || {}
+  };
+
+  const result = await getClientStorePgPool().query(
+    `
+    UPDATE mission_codex_build_tasks
+    SET
+      status = $2,
+      relay = COALESCE(relay, '{}'::jsonb) || $3::jsonb,
+      events = COALESCE(events, '[]'::jsonb) || $4::jsonb,
+      updated_at = now()
+    WHERE id = $1
+    RETURNING *;
+    `,
+    [normalizedId, normalizedStatus, JSON.stringify(event.data || {}), JSON.stringify([taskEvent])]
+  );
+
+  if (!result.rows.length) {
+    return { ok: false, status: 404, error: "Codex build task was not found." };
+  }
+
+  return {
+    ok: true,
+    target: "postgres",
+    table: "mission_codex_build_tasks",
+    task: dbRowToCodexBuildTask(result.rows[0])
+  };
+}
+
+async function findCodexBuildTaskForTicket(ticketId) {
+  const init = await ensureCodexBuildTaskTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  const normalizedTicketId = String(ticketId || "").trim();
+  if (!normalizedTicketId) {
+    return { ok: false, status: 400, error: "Ticket id is required." };
+  }
+
+  const result = await getClientStorePgPool().query(
+    "SELECT * FROM mission_codex_build_tasks WHERE source_ticket_id = $1 ORDER BY updated_at DESC LIMIT 1",
+    [normalizedTicketId]
+  );
+  if (!result.rows.length) {
+    return { ok: false, status: 404, error: "No Codex build task is linked to this ticket." };
+  }
+
+  return { ok: true, task: dbRowToCodexBuildTask(result.rows[0]) };
+}
+
+function buildClientConfirmationUrl(ticketId, taskId) {
+  const base = GHOST_MISSION_CONTROL_PUBLIC_URL
+    ? (GHOST_MISSION_CONTROL_PUBLIC_URL.startsWith("http") ? GHOST_MISSION_CONTROL_PUBLIC_URL : `https://${GHOST_MISSION_CONTROL_PUBLIC_URL}`)
+    : "";
+  if (!base) {
+    return "";
+  }
+
+  const token = buildClientConfirmationToken(ticketId, taskId);
+  return `${base.replace(/\/+$/, "")}/mission/web-helper-requests/client-confirm?ticketId=${encodeURIComponent(ticketId)}&taskId=${encodeURIComponent(taskId)}&token=${encodeURIComponent(token)}`;
+}
+
+function buildClientConfirmationToken(ticketId, taskId) {
+  return crypto
+    .createHash("sha256")
+    .update(`${ticketId}:${taskId}:${CODEX_BUILD_WEBHOOK_SECRET || GHOST_WEB_HELPER_WEBHOOK_SECRET}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+async function notifyClientUpdateReady(ticket, task, options = {}) {
+  const client = getAllClients().find((entry) => entry.id === ticket.clientId) || {};
+  const confirmationUrl = buildClientConfirmationUrl(ticket.id, task.id);
+  const payload = {
+    source: "ghost_mission_control",
+    type: "web_helper_update_ready",
+    clientId: ticket.clientId,
+    clientName: client.clientName || ticket.clientName || "",
+    to: client.businessEmail || options.email || "",
+    ticketId: ticket.id,
+    taskId: task.id,
+    summary: ticket.summary || ticket.title || "Website update completed",
+    pageUrl: ticket.pageUrl || "",
+    branch: task.targetBranch || "",
+    repo: task.repo || "",
+    confirmationUrl,
+    message: "The requested website update has been merged and is ready for client review."
+  };
+
+  if (!CLIENT_UPDATE_EMAIL_WEBHOOK_URL) {
+    return { ok: false, skipped: true, reason: "CLIENT_UPDATE_EMAIL_WEBHOOK_URL is not configured.", payload };
+  }
+
+  const headers = { "Content-Type": "application/json" };
+  if (CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET) {
+    headers["X-Client-Update-Email-Secret"] = CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET;
+  }
+
+  try {
+    const response = await fetch(CLIENT_UPDATE_EMAIL_WEBHOOK_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload)
+    });
+    const body = await response.text();
+    return { ok: response.ok, status: response.status, body: body.slice(0, 2000), payload };
+  } catch (error) {
+    return { ok: false, status: "network_error", error: String(error?.message || error), payload };
+  }
+}
+
+async function processCodexRunnerResult(payload = {}) {
+  const ticketId = String(payload.ticketId || payload.ticket_id || payload.sourceTicketId || "").trim();
+  const taskId = String(payload.taskId || payload.task_id || (ticketId ? `codex_${ticketId}` : "")).trim();
+  const resultStatus = String(payload.status || payload.result || "").trim().toLowerCase();
+  if (!ticketId || !taskId) {
+    return { ok: false, status: 400, error: "ticketId and taskId are required." };
+  }
+
+  const mergedStatuses = ["merged", "merge_complete", "merge-complete", "deployed", "sent_to_client", "client_review"];
+  if (mergedStatuses.includes(resultStatus)) {
+    return markWebHelperMergeComplete(ticketId, taskId, {
+      actor: "codex_runner",
+      message: payload.message || "Codex runner merged the testing branch and prepared client review.",
+      branch: payload.branch || payload.targetBranch || "",
+      commitSha: payload.commitSha || payload.commit_sha || "",
+      previewUrl: payload.previewUrl || payload.preview_url || "",
+      productionUrl: payload.productionUrl || payload.production_url || ""
+    });
+  }
+
+  const readyStatuses = ["ready_review", "ready-for-review", "success", "completed", "tests_passed"];
+  const blockedStatuses = ["blocked", "failed", "error", "needs_info"];
+  const nextTicketStatus = readyStatuses.includes(resultStatus)
+    ? "ready_review"
+    : blockedStatuses.includes(resultStatus)
+      ? "blocked"
+      : "in_progress";
+  const nextTaskStatus = nextTicketStatus === "ready_review" ? "ready_for_owner_review" : nextTicketStatus;
+  const taskUpdate = await updateCodexBuildTaskStatus(taskId, nextTaskStatus, {
+    type: "codex_runner_result",
+    actor: "codex_runner",
+    message: payload.message || (nextTicketStatus === "ready_review" ? "Codex runner completed work and tests; owner review is ready." : "Codex runner updated task status."),
+    data: {
+      branch: payload.branch || payload.targetBranch || "",
+      commitSha: payload.commitSha || payload.commit_sha || "",
+      previewUrl: payload.previewUrl || payload.preview_url || "",
+      tests: payload.tests || payload.testResults || ""
+    }
+  });
+  if (!taskUpdate.ok) {
+    return taskUpdate;
+  }
+
+  const ticketUpdate = await updateWebHelperRequestStatusInPostgres(ticketId, nextTicketStatus, {
+    actor: "codex_runner",
+    message: payload.message || (nextTicketStatus === "ready_review" ? "Codex build completed on testing branch and is ready for owner review." : "Codex runner reported the ticket needs attention.")
+  });
+
+  return { ok: ticketUpdate.ok, task: taskUpdate.task, ticket: ticketUpdate.request, status: nextTicketStatus };
+}
+
+async function requestCodexRedo(ticketId, instructions = "") {
+  const linkedTask = await findCodexBuildTaskForTicket(ticketId);
+  if (!linkedTask.ok) {
+    return linkedTask;
+  }
+
+  const task = linkedTask.task;
+  const redoEvent = await appendWebHelperRequestEventInPostgres(ticketId, {
+    type: "redo_requested",
+    status: "in_progress",
+    actor: "mission_control",
+    message: instructions ? `Owner requested Codex redo: ${instructions}` : "Owner requested Codex redo."
+  });
+  if (!redoEvent.ok) {
+    return redoEvent;
+  }
+
+  const payload = {
+    ...task.payload,
+    taskType: "web_helper_codex_redo",
+    taskId: task.id,
+    ticketId,
+    redoInstructions: instructions,
+    prompt: `${task.prompt}\n\nOwner redo instructions:\n${instructions || "Revise the prepared fix based on owner feedback and run verification again."}`
+  };
+  const relay = await relayCodexBuildTask({ ...task, payload });
+  await updateCodexBuildTaskStatus(task.id, relay.ok ? "redo_sent_to_runner" : "redo_queued", {
+    type: "codex_redo_requested",
+    actor: "mission_control",
+    message: relay.ok ? "Redo instructions sent to Codex runner." : "Redo instructions queued for Codex runner pickup.",
+    data: { relay }
+  });
+  const ticketUpdate = await updateWebHelperRequestStatusInPostgres(ticketId, "in_progress", {
+    actor: "mission_control",
+    message: relay.ok ? "Redo sent to Codex runner." : "Redo queued for Codex runner pickup."
+  });
+  return { ok: true, relay, ticket: ticketUpdate.request, task };
+}
+
+async function approveCodexMerge(ticketId) {
+  const linkedTask = await findCodexBuildTaskForTicket(ticketId);
+  if (!linkedTask.ok) {
+    return linkedTask;
+  }
+
+  const task = linkedTask.task;
+  await updateWebHelperRequestStatusInPostgres(ticketId, "approved_to_merge", {
+    actor: "mission_control",
+    message: "Owner approved the prepared testing-branch fix for merge."
+  });
+  await updateCodexBuildTaskStatus(task.id, "merge_approved", {
+    type: "owner_merge_approval",
+    actor: "mission_control",
+    message: "Owner approved merge to main.",
+    data: { targetBranch: task.targetBranch, baseBranch: task.baseBranch }
+  });
+
+  const relayPayload = {
+    ...task.payload,
+    taskType: "web_helper_codex_merge",
+    taskId: task.id,
+    ticketId,
+    mergeApproved: true
+  };
+  const relay = await relayCodexBuildTask({ ...task, payload: relayPayload });
+  await updateCodexBuildTaskStatus(task.id, relay.ok ? "merge_sent_to_runner" : "merge_queued", {
+    type: "merge_handoff",
+    actor: "mission_control",
+    message: relay.ok ? "Merge request sent to Codex runner." : "Merge approval queued for Codex runner pickup.",
+    data: { relay }
+  });
+
+  return { ok: true, task, relay };
+}
+
+async function markWebHelperMergeComplete(ticketId, taskId, options = {}) {
+  const ticketResult = await readWebHelperRequestByIdFromPostgres(ticketId);
+  if (!ticketResult.ok) {
+    return ticketResult;
+  }
+  const taskResult = await findCodexBuildTaskForTicket(ticketId);
+  const task = taskResult.task || { id: taskId || `codex_${ticketId}` };
+  await updateCodexBuildTaskStatus(task.id, "merged", {
+    type: "merge_complete",
+    actor: options.actor || "codex_runner",
+    message: options.message || "Testing branch merged into main.",
+    data: options
+  });
+  const ticketUpdate = await updateWebHelperRequestStatusInPostgres(ticketId, "approved_to_merge", {
+    actor: options.actor || "codex_runner",
+    message: "Merge completed. Waiting for client confirmation."
+  });
+  const email = await notifyClientUpdateReady(ticketUpdate.request || ticketResult.request, task, options);
+  await appendWebHelperRequestEventInPostgres(ticketId, {
+    type: email.ok ? "client_email_sent" : "client_email_queued",
+    status: "client_review",
+    actor: "mission_control",
+    message: email.ok ? "Client update confirmation email sent." : `Client email not sent automatically: ${email.reason || email.error || "email webhook unavailable"}.`
+  });
+
+  return { ok: true, ticket: ticketUpdate.request, task, email };
 }
 
 function parsePostgresJsonList(value) {
@@ -7716,6 +8074,11 @@ const server = http.createServer((request, response) => {
           return;
         }
 
+        const automation = await runWebHelperAutomationForTicket(stored.request).catch((error) => ({
+          ok: false,
+          error: String(error?.message || error)
+        }));
+
         sendJson(request, response, 201, {
           ok: true,
           routedTo: {
@@ -7725,7 +8088,8 @@ const server = http.createServer((request, response) => {
             websiteUrl: client.websiteUrl,
             repo: client.repo
           },
-          request: stored.request
+          request: automation.ticket || stored.request,
+          automation
         });
       })
       .catch((error) => {
@@ -7811,6 +8175,110 @@ const server = http.createServer((request, response) => {
       })
       .catch((error) => {
         sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/codex-build-tasks/result") {
+    const configuredSecret = CODEX_BUILD_WEBHOOK_SECRET || GHOST_WEB_HELPER_WEBHOOK_SECRET;
+    const providedSecret = request.headers["x-codex-build-secret"] || request.headers["x-ghost-webhook-secret"] || "";
+    if (configuredSecret && !timingSafeEqualText(providedSecret, configuredSecret)) {
+      sendJson(request, response, 401, { error: "Unauthorized Codex runner callback." });
+      return;
+    }
+
+    readJsonBody(request)
+      .then(async (payload) => {
+        const result = await processCodexRunnerResult(payload);
+        if (!result.ok) {
+          sendJson(request, response, result.status || 503, {
+            error: result.error || "Unable to process Codex runner result.",
+            detail: result.reason || result.detail || ""
+          });
+          return;
+        }
+
+        sendJson(request, response, 200, result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/web-helper-requests/owner-action") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const ticketId = String(payload.id || payload.ticketId || payload.requestId || "").trim();
+        const action = String(payload.action || "").trim().toLowerCase().replace(/-/g, "_");
+        const instructions = String(payload.instructions || payload.message || "").trim();
+        let result;
+
+        if (["approve_merge", "approve"].includes(action)) {
+          result = await approveCodexMerge(ticketId);
+        } else if (["redo", "redo_with_chat", "changes_requested"].includes(action)) {
+          result = await requestCodexRedo(ticketId, instructions);
+        } else if (["merge_complete", "merged"].includes(action)) {
+          result = await markWebHelperMergeComplete(ticketId, payload.taskId || payload.task_id, {
+            actor: "mission_control",
+            message: instructions || "Owner marked the merge complete and ready for client confirmation."
+          });
+        } else {
+          result = { ok: false, status: 400, error: "Unsupported owner action." };
+        }
+
+        if (!result.ok) {
+          sendJson(request, response, result.status || 503, {
+            error: result.error || "Unable to complete owner action.",
+            detail: result.reason || result.detail || ""
+          });
+          return;
+        }
+
+        sendJson(request, response, 200, result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/web-helper-requests/client-confirm") {
+    const ticketId = String(url.searchParams.get("ticketId") || "").trim();
+    const taskId = String(url.searchParams.get("taskId") || "").trim();
+    const token = String(url.searchParams.get("token") || "").trim();
+    const expectedToken = ticketId && taskId ? buildClientConfirmationToken(ticketId, taskId) : "";
+    if (!ticketId || !taskId || !token || !expectedToken || !timingSafeEqualText(token, expectedToken)) {
+      response.writeHead(401, { "Content-Type": "text/plain; charset=utf-8" });
+      response.end("Unable to confirm this update. The confirmation link is invalid.");
+      return;
+    }
+
+    updateWebHelperRequestStatusInPostgres(ticketId, "done", {
+      actor: "client",
+      message: "Client confirmed the website update is complete."
+    })
+      .then(async (updated) => {
+        if (!updated.ok) {
+          response.writeHead(updated.status || 503, { "Content-Type": "text/plain; charset=utf-8" });
+          response.end("Unable to confirm this update. Please contact support.");
+          return;
+        }
+        await appendWebHelperRequestEventInPostgres(ticketId, {
+          type: "client_confirmed",
+          status: "done",
+          actor: "client",
+          message: "Client clicked the update confirmation link."
+        });
+        response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        response.end("<!doctype html><title>Update confirmed</title><body style=\"font-family:system-ui;background:#050807;color:#f7fff6;padding:40px\"><h1>Update confirmed</h1><p>Thank you. Mission Control marked this website update complete.</p></body>");
+      })
+      .catch(() => {
+        response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+        response.end("Unable to confirm this update. Please contact support.");
       });
 
     return;
@@ -8147,6 +8615,8 @@ if (require.main === module) {
     dbRowToWebHelperRequest,
     buildCodexTaskPayload,
     buildCodexBuildPrompt,
-    appendWebHelperRequestEventInPostgres
+    appendWebHelperRequestEventInPostgres,
+    assessWebHelperRequest,
+    buildClientConfirmationToken
   };
 }

@@ -7434,7 +7434,9 @@ function renderWebHelperTicketActions(ticket) {
     { label: "Assign / Start", action: "start", status: "in_progress", tone: "secondary", hint: "Move manual helper work into active build." },
     { label: "Ready for Review", action: "review", status: "ready_review", tone: "secondary", hint: "Prepared work is ready for owner/client review." },
     { label: "Request Approval", action: "approval", status: "needs_approval", tone: "secondary", hint: "Move the prepared fix into owner approval." },
-    { label: "Approve Merge", action: "approve", status: "approved_to_merge", tone: "primary", hint: "Owner approves merge after testing and review." },
+    { label: "Approve Change", action: "approve-merge", tone: "primary", hint: "Owner approves merge after testing and review." },
+    { label: "Redo", action: "redo", tone: "secondary", hint: "Send this back through the Codex build loop." },
+    { label: "Redo with Chat", action: "redo-chat", tone: "secondary", hint: "Use the ticket note as owner feedback for Codex." },
     { label: "Complete / Archive", action: "done", status: "done", tone: "secondary", hint: "Close the ticket after merge, delivery, or archive." },
     { label: "Needs Info", action: "needs-info", status: "blocked", tone: "danger", hint: "Send back for credentials, copy, assets, or approval details." },
     { label: "Open Agent Chat", action: "chat", tone: "secondary", hint: "Load this ticket into Execution with full context." }
@@ -7737,6 +7739,66 @@ async function createWebHelperCodexBuild(ticketId) {
   } catch (error) {
     if (actionResponse) {
       actionResponse.textContent = `Unable to create Codex build task: ${String(error.message || error)}`;
+    }
+  }
+}
+
+async function handleWebHelperOwnerAction(ticketId, action) {
+  const noteInput = document.getElementById("webHelperTicketNoteInput");
+  const actionResponse = document.getElementById("webHelperTicketActionResponse");
+  const instructions = String(noteInput?.value || "").trim();
+  const normalizedAction = action === "approve-merge"
+    ? "approve_merge"
+    : action === "redo-chat"
+      ? "redo_with_chat"
+      : action;
+
+  if (action === "redo-chat" && !instructions) {
+    if (actionResponse) {
+      actionResponse.textContent = "Add redo instructions in the ticket note box first.";
+    }
+    noteInput?.focus();
+    return;
+  }
+
+  if (actionResponse) {
+    actionResponse.textContent = action === "approve-merge" ? "Approving merge handoff..." : "Sending redo request...";
+  }
+
+  try {
+    const response = await fetch(apiUrl("/mission/web-helper-requests/owner-action"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        id: ticketId,
+        action: normalizedAction,
+        instructions
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || `Owner action failed with ${response.status}`);
+    }
+
+    await loadWebHelpers("");
+    openWebHelperTicket(ticketId);
+    const refreshedResponse = document.getElementById("webHelperTicketActionResponse");
+    if (refreshedResponse) {
+      if (action === "approve-merge") {
+        refreshedResponse.textContent = payload.relay?.ok
+          ? "Merge approval sent to the Codex runner."
+          : "Merge approval queued for the Codex runner.";
+      } else {
+        refreshedResponse.textContent = payload.relay?.ok
+          ? "Redo instructions sent to the Codex runner."
+          : "Redo instructions queued for the Codex runner.";
+      }
+    }
+  } catch (error) {
+    if (actionResponse) {
+      actionResponse.textContent = `Unable to complete workflow action: ${String(error.message || error)}`;
     }
   }
 }
@@ -8560,6 +8622,11 @@ async function init() {
 
     if (actionButton.dataset.webHelperTicketAction === "codex-build") {
       createWebHelperCodexBuild(ticketId);
+      return;
+    }
+
+    if (["approve-merge", "redo", "redo-chat"].includes(actionButton.dataset.webHelperTicketAction)) {
+      handleWebHelperOwnerAction(ticketId, actionButton.dataset.webHelperTicketAction);
       return;
     }
 

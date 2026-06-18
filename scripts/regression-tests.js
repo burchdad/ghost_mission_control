@@ -9,7 +9,9 @@ const {
   buildClientRecord,
   normalizeWebHelperRequestPayload,
   dbRowToWebHelperRequest,
-  buildCodexTaskPayload
+  buildCodexTaskPayload,
+  assessWebHelperRequest,
+  buildClientConfirmationToken
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -146,6 +148,44 @@ function testCodexBuildPayloadUsesTicketAsPrompt() {
   assert.ok(payload.prompt.includes("npm run check && npm run build"));
 }
 
+function testWebHelperAutomationAssessment() {
+  const client = normalizeClient({
+    id: "gray-matters-tech",
+    clientName: "Gray Matters Tech",
+    websiteUrl: "https://www.graymatterstech.com",
+    repo: "burchdad/barbara_consulting"
+  });
+  const urgent = normalizeWebHelperRequestPayload(
+    {
+      summary: "Broken contact form",
+      details: "The contact form is throwing an error and leads are not submitting.",
+      page_url: "/contact"
+    },
+    client
+  );
+  const urgentAssessment = assessWebHelperRequest(urgent, client);
+  assert.strictEqual(urgentAssessment.priority, "high");
+  assert.strictEqual(urgentAssessment.risk, "owner_review");
+  assert.strictEqual(urgentAssessment.route, "codex_build");
+
+  const vague = normalizeWebHelperRequestPayload(
+    {
+      summary: "Fix it",
+      details: ""
+    },
+    client
+  );
+  const vagueAssessment = assessWebHelperRequest(vague, client);
+  assert.strictEqual(vagueAssessment.missingDetails, true);
+  assert.strictEqual(vagueAssessment.route, "blocked");
+}
+
+function testClientConfirmationTokenIsStable() {
+  const token = buildClientConfirmationToken("ticket-1", "task-1");
+  assert.strictEqual(token, buildClientConfirmationToken("ticket-1", "task-1"));
+  assert.notStrictEqual(token, buildClientConfirmationToken("ticket-1", "task-2"));
+}
+
 function testFinalPaymentCompletesWebBuildStage() {
   const client = buildClientRecord({
     clientName: "Done Build",
@@ -174,6 +214,8 @@ function testFinalPaymentCompletesWebBuildStage() {
   testDataHealthDetectsDuplicateIdentity,
   testWebHelperRequestEvents,
   testCodexBuildPayloadUsesTicketAsPrompt,
+  testWebHelperAutomationAssessment,
+  testClientConfirmationTokenIsStable,
   testFinalPaymentCompletesWebBuildStage
 ].forEach((test) => test());
 
