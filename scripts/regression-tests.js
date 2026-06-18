@@ -8,7 +8,8 @@ const {
   deriveLeadStage,
   buildClientRecord,
   normalizeWebHelperRequestPayload,
-  dbRowToWebHelperRequest
+  dbRowToWebHelperRequest,
+  buildCodexTaskPayload
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -112,6 +113,39 @@ function testWebHelperRequestEvents() {
   assert.strictEqual(row.events[0].status, "new");
 }
 
+function testCodexBuildPayloadUsesTicketAsPrompt() {
+  const client = normalizeClient({
+    id: "gray-matters-tech",
+    clientName: "Gray Matters Tech",
+    websiteUrl: "https://www.graymatterstech.com",
+    repo: "burchdad/barbara_consulting",
+    services: ["website-build", "web-helper-care"]
+  });
+  const request = normalizeWebHelperRequestPayload(
+    {
+      id: "ticket-123",
+      source: "client_admin_dashboard",
+      request_type: "layout_change",
+      summary: "Fix services card layout",
+      details: "Make the services cards fit on one row.",
+      page_url: "/services",
+      priority: "normal"
+    },
+    client
+  );
+  const payload = buildCodexTaskPayload(request, client, {
+    baseBranch: "main",
+    targetBranch: "testing/web-helper-ticket-123",
+    testCommand: "npm run check && npm run build"
+  });
+  assert.strictEqual(payload.repo, "burchdad/barbara_consulting");
+  assert.strictEqual(payload.targetBranch, "testing/web-helper-ticket-123");
+  assert.strictEqual(payload.approvalRequired, true);
+  assert.ok(payload.prompt.includes("Fix services card layout"));
+  assert.ok(payload.prompt.includes("Do not merge to main"));
+  assert.ok(payload.prompt.includes("npm run check && npm run build"));
+}
+
 function testFinalPaymentCompletesWebBuildStage() {
   const client = buildClientRecord({
     clientName: "Done Build",
@@ -139,6 +173,7 @@ function testFinalPaymentCompletesWebBuildStage() {
   testLeadStageMapping,
   testDataHealthDetectsDuplicateIdentity,
   testWebHelperRequestEvents,
+  testCodexBuildPayloadUsesTicketAsPrompt,
   testFinalPaymentCompletesWebBuildStage
 ].forEach((test) => test());
 

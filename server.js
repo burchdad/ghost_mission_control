@@ -54,6 +54,10 @@ const GHOST_WEB_HELPER_ALLOWED_SOURCES = String(process.env.GHOST_WEB_HELPER_ALL
   .filter(Boolean);
 const GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY = String(process.env.GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY || "testing_branch_only").trim();
 const GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED = String(process.env.GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED || "true").toLowerCase() !== "false";
+const CODEX_BUILD_WEBHOOK_URL = String(process.env.CODEX_BUILD_WEBHOOK_URL || "").trim();
+const CODEX_BUILD_WEBHOOK_SECRET = String(process.env.CODEX_BUILD_WEBHOOK_SECRET || "").trim();
+const CODEX_BUILD_DEFAULT_BASE_BRANCH = String(process.env.CODEX_BUILD_DEFAULT_BASE_BRANCH || "main").trim();
+const CODEX_BUILD_DEFAULT_TEST_COMMAND = String(process.env.CODEX_BUILD_DEFAULT_TEST_COMMAND || "npm run check && npm run build").trim();
 const runtimeClients = [];
 let runtimeClientsHydrated = false;
 let runtimeClientsRepoSyncedAt = 0;
@@ -67,6 +71,7 @@ let runtimeClientsDbAvailable = null;
 let clientStorePgPool = null;
 let clientStorePgInitPromise = null;
 let webHelperRequestPgInitPromise = null;
+let codexBuildTaskPgInitPromise = null;
 
 const CLIENT_PIPELINE_STAGES = [
   { id: "lead", label: "Lead / Prospect" },
@@ -1329,6 +1334,56 @@ async function ensureWebHelperRequestTable() {
   return webHelperRequestPgInitPromise;
 }
 
+async function ensureCodexBuildTaskTable() {
+  const pool = getClientStorePgPool();
+  if (!pool) {
+    return {
+      ok: false,
+      target: "postgres",
+      skipped: true,
+      reason: isClientStoreDatabaseEnabled() ? runtimeClientsDbLastError : "DATABASE_URL is not configured."
+    };
+  }
+
+  if (codexBuildTaskPgInitPromise) {
+    return codexBuildTaskPgInitPromise;
+  }
+
+  codexBuildTaskPgInitPromise = pool
+    .query(`
+      CREATE TABLE IF NOT EXISTS mission_codex_build_tasks (
+        id text PRIMARY KEY,
+        source_ticket_id text NOT NULL,
+        client_id text NOT NULL,
+        web_helper_id text NOT NULL DEFAULT '',
+        client_name text NOT NULL DEFAULT '',
+        repo text NOT NULL DEFAULT '',
+        base_branch text NOT NULL DEFAULT 'main',
+        target_branch text NOT NULL DEFAULT '',
+        title text NOT NULL DEFAULT '',
+        status text NOT NULL DEFAULT 'queued',
+        priority text NOT NULL DEFAULT 'normal',
+        approval_required boolean NOT NULL DEFAULT true,
+        prompt text NOT NULL DEFAULT '',
+        payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+        relay jsonb NOT NULL DEFAULT '{}'::jsonb,
+        events jsonb NOT NULL DEFAULT '[]'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS mission_codex_build_tasks_ticket_idx ON mission_codex_build_tasks (source_ticket_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS mission_codex_build_tasks_client_idx ON mission_codex_build_tasks (client_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS mission_codex_build_tasks_status_idx ON mission_codex_build_tasks (status, updated_at DESC);
+    `)
+    .then(() => ({ ok: true, target: "postgres", table: "mission_codex_build_tasks" }))
+    .catch((error) => {
+      codexBuildTaskPgInitPromise = null;
+      return { ok: false, target: "postgres", table: "mission_codex_build_tasks", error: String(error?.message || error) };
+    });
+
+  return codexBuildTaskPgInitPromise;
+}
+
 function normalizeWebhookSecret(value) {
   return String(value || "").trim();
 }
@@ -1617,6 +1672,311 @@ async function appendWebHelperRequestEventInPostgres(id, options = {}) {
     target: "postgres",
     table: "mission_web_helper_requests",
     request: dbRowToWebHelperRequest(result.rows[0])
+  };
+}
+
+async function readWebHelperRequestByIdFromPostgres(id) {
+  const init = await ensureWebHelperRequestTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) {
+    return { ok: false, status: 400, error: "Request id is required." };
+  }
+
+  const result = await getClientStorePgPool().query("SELECT * FROM mission_web_helper_requests WHERE id = $1 LIMIT 1", [normalizedId]);
+  if (!result.rows.length) {
+    return { ok: false, status: 404, error: "Web Helper request was not found in the request store." };
+  }
+
+  return {
+    ok: true,
+    target: "postgres",
+    table: "mission_web_helper_requests",
+    request: dbRowToWebHelperRequest(result.rows[0])
+  };
+}
+
+function dbRowToCodexBuildTask(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    sourceTicketId: row.source_ticket_id,
+    clientId: row.client_id,
+    webHelperId: row.web_helper_id,
+    clientName: row.client_name,
+    repo: row.repo,
+    baseBranch: row.base_branch,
+    targetBranch: row.target_branch,
+    title: row.title,
+    status: row.status,
+    priority: row.priority,
+    approvalRequired: Boolean(row.approval_required),
+    prompt: row.prompt,
+    payload: row.payload || {},
+    relay: row.relay || {},
+    events: parsePostgresJsonList(row.events),
+    createdAt: postgresTimestampToIso(row.created_at),
+    updatedAt: postgresTimestampToIso(row.updated_at)
+  };
+}
+
+function normalizeCodexBranchSlug(value) {
+  const slug = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 72);
+  return slug || "web-helper-update";
+}
+
+function buildCodexBuildPrompt(ticket, client, options = {}) {
+  const repo = normalizeGithubRepoFullName(client.repo || client.githubUrl) || String(client.repo || client.githubUrl || "").trim();
+  const branchPolicy = ticket.branchPolicy || GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY;
+  const targetBranch = options.targetBranch || `testing/web-helper-${normalizeCodexBranchSlug(ticket.id || ticket.title)}`;
+  const page = ticket.pageUrl || "sitewide";
+  const testCommand = options.testCommand || CODEX_BUILD_DEFAULT_TEST_COMMAND;
+
+  return [
+    `You are the Codex build agent for ${client.clientName}.`,
+    "",
+    "Goal:",
+    ticket.summary || ticket.title || "Resolve the client website update request.",
+    "",
+    "Client request:",
+    ticket.details || ticket.summary || "No expanded client details were captured. Inspect the site and make the smallest safe update.",
+    "",
+    "Context:",
+    `- Client: ${client.clientName}`,
+    `- Website: ${client.websiteUrl || client.vercelUrl || "not linked"}`,
+    `- Repo: ${repo || "not linked"}`,
+    `- Page or section: ${page}`,
+    `- Request type: ${ticket.requestType || ticket.type || "website_update"}`,
+    `- Priority: ${ticket.priority || "normal"}`,
+    `- Source ticket: ${ticket.id}`,
+    "",
+    "Required workflow:",
+    `1. Work from base branch ${options.baseBranch || CODEX_BUILD_DEFAULT_BASE_BRANCH}.`,
+    `2. Create/use branch ${targetBranch}.`,
+    "3. Make the smallest focused code/content change that satisfies the ticket.",
+    `4. Run verification: ${testCommand}.`,
+    "5. Do not merge to main and do not deploy production.",
+    "6. Leave a concise owner review note with changed files, tests run, preview/deployment status, and any remaining risk.",
+    "",
+    "Guardrails:",
+    `- Branch policy: ${branchPolicy}.`,
+    `- Owner approval required before merge: ${ticket.approvalRequired ? "yes" : "yes, always for Web Helper builds"}.`,
+    "- If credentials, paid services, DNS, forms, payments, or legal copy are needed, stop and request owner approval.",
+    "- Keep client data isolated to this repo and this ticket."
+  ].join("\n");
+}
+
+function buildCodexTaskPayload(ticket, client, options = {}) {
+  const repo = normalizeGithubRepoFullName(client.repo || client.githubUrl) || String(client.repo || client.githubUrl || "").trim();
+  const baseBranch = String(options.baseBranch || CODEX_BUILD_DEFAULT_BASE_BRANCH || "main").trim();
+  const targetBranch = String(options.targetBranch || `testing/web-helper-${normalizeCodexBranchSlug(ticket.id || ticket.title)}`).trim();
+  const prompt = buildCodexBuildPrompt(ticket, client, {
+    baseBranch,
+    targetBranch,
+    testCommand: options.testCommand
+  });
+
+  return {
+    source: "ghost_mission_control",
+    taskType: "web_helper_codex_build",
+    ticketId: ticket.id,
+    clientId: client.id,
+    clientName: client.clientName,
+    webHelperId: ticket.webHelperId || `${client.id}-web-helper`,
+    repo,
+    websiteUrl: client.websiteUrl || "",
+    baseBranch,
+    targetBranch,
+    branchPolicy: ticket.branchPolicy || GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY,
+    approvalRequired: true,
+    priority: ticket.priority || "normal",
+    requestType: ticket.requestType || ticket.type || "website_update",
+    pageUrl: ticket.pageUrl || "",
+    summary: ticket.summary || ticket.title || "",
+    details: ticket.details || "",
+    testCommand: options.testCommand || CODEX_BUILD_DEFAULT_TEST_COMMAND,
+    prompt
+  };
+}
+
+async function relayCodexBuildTask(task) {
+  if (!CODEX_BUILD_WEBHOOK_URL) {
+    return {
+      ok: false,
+      skipped: true,
+      status: "queued",
+      reason: "CODEX_BUILD_WEBHOOK_URL is not configured; task is persisted for manual/runner pickup."
+    };
+  }
+
+  const headers = {
+    "Content-Type": "application/json"
+  };
+  if (CODEX_BUILD_WEBHOOK_SECRET) {
+    headers["X-Codex-Build-Secret"] = CODEX_BUILD_WEBHOOK_SECRET;
+  }
+
+  try {
+    const response = await fetch(CODEX_BUILD_WEBHOOK_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(task.payload)
+    });
+    const body = await response.text();
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: body.slice(0, 2000)
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "network_error",
+      error: String(error?.message || error)
+    };
+  }
+}
+
+async function persistCodexBuildTask(task) {
+  const init = await ensureCodexBuildTaskTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  const result = await getClientStorePgPool().query(
+    `
+    INSERT INTO mission_codex_build_tasks (
+      id,
+      source_ticket_id,
+      client_id,
+      web_helper_id,
+      client_name,
+      repo,
+      base_branch,
+      target_branch,
+      title,
+      status,
+      priority,
+      approval_required,
+      prompt,
+      payload,
+      relay,
+      events,
+      created_at,
+      updated_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+      $11, $12, $13, $14::jsonb, $15::jsonb, $16::jsonb, now(), now()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      status = EXCLUDED.status,
+      relay = EXCLUDED.relay,
+      events = mission_codex_build_tasks.events || EXCLUDED.events,
+      updated_at = now()
+    RETURNING *;
+    `,
+    [
+      task.id,
+      task.sourceTicketId,
+      task.clientId,
+      task.webHelperId,
+      task.clientName,
+      task.repo,
+      task.baseBranch,
+      task.targetBranch,
+      task.title,
+      task.status,
+      task.priority,
+      task.approvalRequired,
+      task.prompt,
+      JSON.stringify(task.payload || {}),
+      JSON.stringify(task.relay || {}),
+      JSON.stringify(task.events || [])
+    ]
+  );
+
+  return { ok: true, target: "postgres", table: "mission_codex_build_tasks", task: dbRowToCodexBuildTask(result.rows[0]) };
+}
+
+async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) {
+  const ticketResult = await readWebHelperRequestByIdFromPostgres(ticketId);
+  if (!ticketResult.ok) {
+    return ticketResult;
+  }
+
+  const ticket = ticketResult.request;
+  const client = getAllClients().find((entry) => entry.id === ticket.clientId) || findClientForWebHelperTarget(ticket.clientId);
+  if (!client) {
+    return { ok: false, status: 404, error: "Unable to match Web Helper request to a Mission Control client." };
+  }
+
+  const payload = buildCodexTaskPayload(ticket, client, options);
+  const taskId = `codex_${ticket.id}`;
+  const queuedEvent = {
+    type: "codex_build_queued",
+    status: "codex_queued",
+    actor: "mission_control",
+    message: `Codex build task queued for ${payload.repo || client.clientName} on ${payload.targetBranch}.`,
+    at: new Date().toISOString()
+  };
+  const task = {
+    id: taskId,
+    sourceTicketId: ticket.id,
+    clientId: client.id,
+    webHelperId: payload.webHelperId,
+    clientName: client.clientName,
+    repo: payload.repo,
+    baseBranch: payload.baseBranch,
+    targetBranch: payload.targetBranch,
+    title: ticket.title || ticket.summary || "Web Helper Codex build",
+    status: "queued",
+    priority: payload.priority,
+    approvalRequired: true,
+    prompt: payload.prompt,
+    payload,
+    relay: {},
+    events: [queuedEvent]
+  };
+
+  const relay = await relayCodexBuildTask(task);
+  task.relay = relay;
+  task.status = relay.ok ? "sent_to_runner" : "queued";
+  task.events.push({
+    type: relay.ok ? "codex_build_relay_sent" : "codex_build_relay_pending",
+    status: task.status,
+    actor: "mission_control",
+    message: relay.ok
+      ? "Codex build payload sent to the configured runner webhook."
+      : relay.reason || relay.error || `Codex runner did not accept the handoff (${relay.status || "unknown"}).`,
+    at: new Date().toISOString()
+  });
+
+  const stored = await persistCodexBuildTask(task);
+  if (!stored.ok) {
+    return stored;
+  }
+
+  const updatedTicket = await updateWebHelperRequestStatusInPostgres(ticket.id, "codex_queued", {
+    actor: "mission_control",
+    message: `${stored.task.id} created. Branch ${stored.task.targetBranch}. Owner approval still required before merge.`
+  });
+
+  return {
+    ok: true,
+    task: stored.task,
+    ticket: updatedTicket.ok ? updatedTicket.request : ticket,
+    relay
   };
 }
 
@@ -7401,6 +7761,31 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/mission/web-helper-requests/codex-build") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const result = await createCodexBuildTaskFromWebHelperRequest(payload.id || payload.ticketId || payload.requestId, {
+          baseBranch: payload.baseBranch,
+          targetBranch: payload.targetBranch,
+          testCommand: payload.testCommand
+        });
+        if (!result.ok) {
+          sendJson(request, response, result.status || 503, {
+            error: result.error || "Unable to create Codex build task.",
+            detail: result.reason || result.detail || ""
+          });
+          return;
+        }
+
+        sendJson(request, response, 201, result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/mission/web-helpers/activate-all") {
     readJsonBody(request)
       .then(async (payload) => {
@@ -7730,6 +8115,8 @@ if (require.main === module) {
     buildClientRecord,
     normalizeWebHelperRequestPayload,
     dbRowToWebHelperRequest,
+    buildCodexTaskPayload,
+    buildCodexBuildPrompt,
     appendWebHelperRequestEventInPostgres
   };
 }

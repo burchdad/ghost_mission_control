@@ -7187,7 +7187,7 @@ const webHelperKanbanColumns = [
     id: "in_progress",
     label: "In Progress",
     hint: "Helper is preparing the requested change.",
-    match: ["in_progress", "in-progress", "running", "working"]
+    match: ["in_progress", "in-progress", "running", "working", "codex_queued", "codex-queued", "sent_to_runner"]
   },
   {
     id: "ready_review",
@@ -7407,6 +7407,7 @@ function renderWebHelperTicketStats(request, helper) {
 function renderWebHelperTicketActions(ticket) {
   const actions = [
     { label: "Open Agent Chat", action: "chat", tone: "secondary", hint: "Load this ticket into Execution with full context." },
+    { label: "Send to Codex Build", action: "codex-build", tone: "primary", hint: "Create the testing-branch build prompt for the Codex runner." },
     { label: "Acknowledge", action: "triage", status: "triage", tone: "secondary", hint: "Confirm this is real and ready for triage." },
     { label: "Approve Change", action: "approve", status: "approved", tone: "primary", hint: "Owner approves helper work on the testing branch." },
     { label: "Assign / Start", action: "start", status: "in_progress", tone: "secondary", hint: "Move the request into active helper work." },
@@ -7673,6 +7674,43 @@ async function updateWebHelperTicketStatus(ticketId, status) {
     }
     if (localTicket) {
       openWebHelperTicket(ticketId);
+    }
+  }
+}
+
+async function createWebHelperCodexBuild(ticketId) {
+  const actionResponse = document.getElementById("webHelperTicketActionResponse");
+  if (actionResponse) {
+    actionResponse.textContent = "Creating Codex build task...";
+  }
+
+  try {
+    const response = await fetch(apiUrl("/mission/web-helper-requests/codex-build"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        id: ticketId
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || `Codex build task failed with ${response.status}`);
+    }
+
+    await loadWebHelpers("");
+    const relayMessage = payload.relay?.ok
+      ? "sent to the configured Codex runner"
+      : "queued in Mission Control for Codex runner pickup";
+    openWebHelperTicket(ticketId);
+    const refreshedResponse = document.getElementById("webHelperTicketActionResponse");
+    if (refreshedResponse) {
+      refreshedResponse.textContent = `${payload.task?.id || "Codex build task"} ${relayMessage}. Branch: ${payload.task?.targetBranch || "testing branch"}.`;
+    }
+  } catch (error) {
+    if (actionResponse) {
+      actionResponse.textContent = `Unable to create Codex build task: ${String(error.message || error)}`;
     }
   }
 }
@@ -8490,6 +8528,11 @@ async function init() {
     const ticketId = actionButton.dataset.webHelperTicketId;
     if (actionButton.dataset.webHelperTicketAction === "chat") {
       openWebHelperAgentChat(ticketId);
+      return;
+    }
+
+    if (actionButton.dataset.webHelperTicketAction === "codex-build") {
+      createWebHelperCodexBuild(ticketId);
       return;
     }
 
