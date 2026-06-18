@@ -7172,21 +7172,9 @@ const webHelperKanbanColumns = [
     match: ["triage", "queued", "needs-triage"]
   },
   {
-    id: "needs_approval",
-    label: "Needs Approval",
-    hint: "Owner approval required before helper work.",
-    match: ["needs_approval", "needs-approval", "needs-review", "approval"]
-  },
-  {
-    id: "approved",
-    label: "Approved / Queue",
-    hint: "Ready for helper assignment on a testing branch.",
-    match: ["approved", "ready", "safe", "assigned"]
-  },
-  {
     id: "in_progress",
-    label: "In Progress",
-    hint: "Helper is preparing the requested change.",
+    label: "Codex Building",
+    hint: "Codex/helper is preparing the testing-branch change.",
     match: ["in_progress", "in-progress", "running", "working", "codex_queued", "codex-queued", "sent_to_runner"]
   },
   {
@@ -7194,6 +7182,18 @@ const webHelperKanbanColumns = [
     label: "Ready for Review",
     hint: "Changes are ready for owner/client review.",
     match: ["ready_review", "ready-for-review", "review", "changes_requested", "changes-requested"]
+  },
+  {
+    id: "needs_approval",
+    label: "Owner Approval",
+    hint: "Approve the prepared fix before merge or production deploy.",
+    match: ["needs_approval", "needs-approval", "needs-review", "approval", "owner_approval", "owner-approval"]
+  },
+  {
+    id: "approved",
+    label: "Approved to Merge",
+    hint: "Owner approved merge after testing/review.",
+    match: ["approved", "approved_to_merge", "approved-to-merge", "ready", "safe", "assigned"]
   },
   {
     id: "done",
@@ -7406,14 +7406,15 @@ function renderWebHelperTicketStats(request, helper) {
 
 function renderWebHelperTicketActions(ticket) {
   const actions = [
-    { label: "Open Agent Chat", action: "chat", tone: "secondary", hint: "Load this ticket into Execution with full context." },
     { label: "Send to Codex Build", action: "codex-build", tone: "primary", hint: "Create the testing-branch build prompt for the Codex runner." },
     { label: "Acknowledge", action: "triage", status: "triage", tone: "secondary", hint: "Confirm this is real and ready for triage." },
-    { label: "Approve Change", action: "approve", status: "approved", tone: "primary", hint: "Owner approves helper work on the testing branch." },
-    { label: "Assign / Start", action: "start", status: "in_progress", tone: "secondary", hint: "Move the request into active helper work." },
+    { label: "Assign / Start", action: "start", status: "in_progress", tone: "secondary", hint: "Move manual helper work into active build." },
     { label: "Ready for Review", action: "review", status: "ready_review", tone: "secondary", hint: "Prepared work is ready for owner/client review." },
+    { label: "Request Approval", action: "approval", status: "needs_approval", tone: "secondary", hint: "Move the prepared fix into owner approval." },
+    { label: "Approve Merge", action: "approve", status: "approved_to_merge", tone: "primary", hint: "Owner approves merge after testing and review." },
     { label: "Complete / Archive", action: "done", status: "done", tone: "secondary", hint: "Close the ticket after merge, delivery, or archive." },
-    { label: "Needs Info", action: "needs-info", status: "blocked", tone: "danger", hint: "Send back for credentials, copy, assets, or approval details." }
+    { label: "Needs Info", action: "needs-info", status: "blocked", tone: "danger", hint: "Send back for credentials, copy, assets, or approval details." },
+    { label: "Open Agent Chat", action: "chat", tone: "secondary", hint: "Load this ticket into Execution with full context." }
   ];
 
   return `<div class="web-helper-ticket-actions">
@@ -7631,9 +7632,11 @@ async function saveWebHelperTicketNote(ticketId) {
 async function updateWebHelperTicketStatus(ticketId, status) {
   const statusMessages = {
     triage: "Operator acknowledged the ticket and moved it into triage.",
-    approved: "Owner approved helper work on the configured testing branch.",
-    in_progress: "Helper work started under the configured branch policy.",
+    in_progress: "Helper work started under the configured testing-branch policy.",
     ready_review: "Helper marked the requested change ready for owner/client review.",
+    needs_approval: "Prepared fix is waiting for owner approval before merge or production deploy.",
+    approved_to_merge: "Owner approved the prepared fix for merge after testing/review.",
+    approved: "Owner approved the prepared fix for merge after testing/review.",
     blocked: "Ticket needs more information before helper work can continue.",
     done: "Ticket completed, merged, or archived."
   };
@@ -7800,12 +7803,12 @@ function renderWebHelpers(payload) {
       <strong>${requestsByColumn.new.length}</strong>
     </article>
     <article class="web-helper-stat">
-      <span>Needs Approval</span>
-      <strong>${summary.pendingApprovals}</strong>
+      <span>Owner Approval</span>
+      <strong>${requestsByColumn.needs_approval.length}</strong>
     </article>
     <article class="web-helper-stat">
       <span>In Motion</span>
-      <strong>${requestsByColumn.approved.length + requestsByColumn.in_progress.length + requestsByColumn.ready_review.length}</strong>
+      <strong>${requestsByColumn.in_progress.length + requestsByColumn.ready_review.length + requestsByColumn.needs_approval.length}</strong>
     </article>
   `;
 

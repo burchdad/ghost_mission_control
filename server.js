@@ -1967,9 +1967,12 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
     return stored;
   }
 
-  const updatedTicket = await updateWebHelperRequestStatusInPostgres(ticket.id, "codex_queued", {
+  const ticketStatus = relay.ok ? "sent_to_runner" : "codex_queued";
+  const updatedTicket = await updateWebHelperRequestStatusInPostgres(ticket.id, ticketStatus, {
     actor: "mission_control",
-    message: `${stored.task.id} created. Branch ${stored.task.targetBranch}. Owner approval still required before merge.`
+    message: relay.ok
+      ? `${stored.task.id} sent to Codex runner. Branch ${stored.task.targetBranch}. Owner approval still required before merge.`
+      : `${stored.task.id} created. Branch ${stored.task.targetBranch}. Waiting for Codex runner pickup; owner approval still required before merge.`
   });
 
   return {
