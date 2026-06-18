@@ -1927,6 +1927,8 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
 
   const payload = buildCodexTaskPayload(ticket, client, options);
   const taskId = `codex_${ticket.id}`;
+  payload.taskId = taskId;
+  payload.resultCallbackUrl = buildMissionControlUrl("/mission/codex-build-tasks/result");
   const queuedEvent = {
     type: "codex_build_queued",
     status: "codex_queued",
@@ -1952,6 +1954,11 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
     relay: {},
     events: [queuedEvent]
   };
+
+  const queued = await persistCodexBuildTask(task);
+  if (!queued.ok) {
+    return queued;
+  }
 
   const relay = await relayCodexBuildTask(task);
   task.relay = relay;
@@ -2126,10 +2133,20 @@ async function findCodexBuildTaskForTicket(ticketId) {
   return { ok: true, task: dbRowToCodexBuildTask(result.rows[0]) };
 }
 
-function buildClientConfirmationUrl(ticketId, taskId) {
+function buildMissionControlUrl(pathname) {
   const base = GHOST_MISSION_CONTROL_PUBLIC_URL
     ? (GHOST_MISSION_CONTROL_PUBLIC_URL.startsWith("http") ? GHOST_MISSION_CONTROL_PUBLIC_URL : `https://${GHOST_MISSION_CONTROL_PUBLIC_URL}`)
     : "";
+  if (!base) {
+    return "";
+  }
+
+  const normalizedPath = String(pathname || "");
+  return `${base.replace(/\/+$/, "")}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
+}
+
+function buildClientConfirmationUrl(ticketId, taskId) {
+  const base = buildMissionControlUrl("");
   if (!base) {
     return "";
   }
@@ -8172,6 +8189,72 @@ const server = http.createServer((request, response) => {
         }
 
         sendJson(request, response, 201, result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/codex-runner/intake") {
+    const configuredSecret = CODEX_BUILD_WEBHOOK_SECRET || GHOST_WEB_HELPER_WEBHOOK_SECRET;
+    const providedSecret = request.headers["x-codex-build-secret"] || request.headers["x-ghost-webhook-secret"] || "";
+    if (configuredSecret && !timingSafeEqualText(providedSecret, configuredSecret)) {
+      sendJson(request, response, 401, { error: "Unauthorized Codex runner intake." });
+      return;
+    }
+
+    readJsonBody(request)
+      .then(async (payload) => {
+        const ticketId = String(payload.ticketId || payload.ticket_id || payload.sourceTicketId || "").trim();
+        const taskId = String(payload.taskId || payload.task_id || (ticketId ? `codex_${ticketId}` : "")).trim();
+        const taskType = String(payload.taskType || payload.task_type || "web_helper_codex_build").trim();
+        if (!ticketId || !taskId) {
+          sendJson(request, response, 400, { error: "ticketId and taskId are required." });
+          return;
+        }
+
+        const isMerge = taskType.includes("merge");
+        const nextTaskStatus = isMerge ? "merge_intake_received" : "in_progress";
+        const nextTicketStatus = isMerge ? "approved_to_merge" : "in_progress";
+        const taskUpdate = await updateCodexBuildTaskStatus(taskId, nextTaskStatus, {
+          type: "codex_runner_intake",
+          actor: "codex_runner_intake",
+          message: isMerge
+            ? "Merge handoff accepted by the Codex runner intake."
+            : "Build handoff accepted by the Codex runner intake.",
+          data: {
+            taskType,
+            repo: payload.repo || "",
+            baseBranch: payload.baseBranch || "",
+            targetBranch: payload.targetBranch || "",
+            resultCallbackUrl: payload.resultCallbackUrl || buildMissionControlUrl("/mission/codex-build-tasks/result")
+          }
+        });
+        if (!taskUpdate.ok) {
+          sendJson(request, response, taskUpdate.status || 503, {
+            error: taskUpdate.error || "Unable to update Codex task from runner intake.",
+            detail: taskUpdate.reason || ""
+          });
+          return;
+        }
+
+        const ticketUpdate = await updateWebHelperRequestStatusInPostgres(ticketId, nextTicketStatus, {
+          actor: "codex_runner_intake",
+          message: isMerge
+            ? "Codex runner intake accepted the merge handoff."
+            : "Codex runner intake accepted the build handoff and moved the ticket into active build."
+        });
+
+        sendJson(request, response, 202, {
+          ok: true,
+          accepted: true,
+          taskType,
+          task: taskUpdate.task,
+          ticket: ticketUpdate.request,
+          resultCallbackUrl: payload.resultCallbackUrl || buildMissionControlUrl("/mission/codex-build-tasks/result")
+        });
       })
       .catch((error) => {
         sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });

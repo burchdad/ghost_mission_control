@@ -261,6 +261,20 @@ The client dashboard should include enough identity for Mission Control to match
 
 Send requests to `POST /mission/web-helper-requests` with the shared secret in `X-Ghost-Webhook-Secret`. Mission Control matches by client, site, or repo, stores the request, and shows it in the matching Web Helper queue.
 
+## Web Helper Codex Build Handoff
+
+Mission Control creates Codex build tasks from Web Helper tickets and relays them to a runner intake webhook.
+
+For the built-in Mission Control runner intake shim, set:
+
+```bash
+CODEX_BUILD_WEBHOOK_URL=https://<railway-domain>/mission/codex-runner/intake
+CODEX_BUILD_WEBHOOK_SECRET=<shared-secret>
+GHOST_MISSION_CONTROL_PUBLIC_URL=https://<railway-domain>
+```
+
+The intake webhook accepts `POST /mission/codex-runner/intake` with `X-Codex-Build-Secret`, marks the linked ticket as active, and returns the callback URL the runner should use after building. A dedicated external Codex runner can use the same payload contract and report results to `POST /mission/codex-build-tasks/result`.
+
 ## AI Provider Integration (OpenAI + Anthropic + OpenRouter)
 
 Mission Command now supports optional AI copilot guidance from OpenAI, Anthropic, and OpenRouter with automatic fallback.
