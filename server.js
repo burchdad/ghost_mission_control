@@ -63,8 +63,8 @@ const CLIENT_UPDATE_EMAIL_WEBHOOK_URL = String(process.env.CLIENT_UPDATE_EMAIL_W
 const CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET || "").trim();
 const GHOST_MISSION_CONTROL_PUBLIC_URL = String(process.env.GHOST_MISSION_CONTROL_PUBLIC_URL || process.env.RAILWAY_PUBLIC_DOMAIN || "").trim();
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
-const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || process.env.CLIENT_UPDATE_EMAIL_FROM || "Ghost Mission Control <onboarding@resend.dev>").trim();
-const RESEND_REPLY_TO_EMAIL = String(process.env.RESEND_REPLY_TO_EMAIL || process.env.SUPPORT_EMAIL || "").trim();
+const RESEND_FROM_EMAIL = stripWrappingQuotes(String(process.env.RESEND_FROM_EMAIL || process.env.CLIENT_UPDATE_EMAIL_FROM || "Ghost Mission Control <onboarding@resend.dev>").trim());
+const RESEND_REPLY_TO_EMAIL = stripWrappingQuotes(String(process.env.RESEND_REPLY_TO_EMAIL || process.env.SUPPORT_EMAIL || "").trim());
 const runtimeClients = [];
 let runtimeClientsHydrated = false;
 let runtimeClientsRepoSyncedAt = 0;
@@ -127,6 +127,15 @@ const MIME_TYPES = {
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon"
 };
+
+function stripWrappingQuotes(value) {
+  const text = String(value || "").trim();
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    return text.slice(1, -1).trim();
+  }
+
+  return text;
+}
 
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || "")
   .split(",")
