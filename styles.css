@@ -4960,7 +4960,7 @@ body[data-active-view="web-helpers"] .workspace-shell {
 }
 
 body[data-active-view="web-helpers"] .layout-grid {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.6rem;
 }
 
@@ -5101,7 +5101,7 @@ body[data-active-view="web-helpers"] .web-helper-ticket .exec-status {
 }
 
 body[data-active-view="web-helpers"] .side-column {
-  max-height: calc(100vh - 0.7rem);
+  display: none;
 }
 
 body[data-active-view="web-helpers"] .web-helper-requests {
@@ -5719,27 +5719,28 @@ body[data-active-view="web-helpers"] .web-helper-summary {
 
 body[data-active-view="web-helpers"] .web-helper-kanban {
   display: grid;
-  grid-template-columns: repeat(8, minmax(120px, 1fr));
-  gap: 0.4rem;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 0.6rem;
   overflow: visible;
 }
 
 body[data-active-view="web-helpers"] .web-helper-kanban-column {
-  min-height: calc(100vh - 178px);
-  padding: 0.42rem;
+  min-height: min(620px, calc(100vh - 190px));
+  padding: 0.56rem;
 }
 
 body[data-active-view="web-helpers"] .web-helper-kanban-head {
-  min-height: 42px;
-  padding-bottom: 0.3rem;
+  min-height: 54px;
+  padding-bottom: 0.42rem;
 }
 
 body[data-active-view="web-helpers"] .web-helper-kanban-head h3 {
-  font-size: 0.68rem;
+  font-size: 0.78rem;
 }
 
 body[data-active-view="web-helpers"] .web-helper-kanban-head p {
-  display: none;
+  display: block;
+  font-size: 0.6rem;
 }
 
 body[data-active-view="web-helpers"] .web-helper-ticket {
@@ -5790,7 +5791,7 @@ body[data-active-view="web-helpers"] .web-helper-ticket strong {
   display: -webkit-box;
   min-height: 2.2em;
   color: #f5fff1;
-  font-size: 0.64rem;
+  font-size: 0.72rem;
   line-height: 1.1;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -5960,7 +5961,7 @@ body[data-active-view="web-helpers"] .web-helper-ticket-modal-panel {
 
 @media (max-width: 1480px) {
   body[data-active-view="web-helpers"] .web-helper-kanban {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 
   body[data-active-view="web-helpers"] .web-helper-kanban-column {
