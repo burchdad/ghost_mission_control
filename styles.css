@@ -5717,6 +5717,24 @@ body[data-active-view="web-helpers"] .web-helper-summary {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+body[data-active-view="web-helpers"] #webHelperCards.web-helper-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: start;
+}
+
+body[data-active-view="web-helpers"] #webHelperCards > .web-helper-filter-status,
+body[data-active-view="web-helpers"] #webHelperCards > .web-helper-kanban {
+  grid-column: 1 / -1;
+}
+
+body[data-active-view="web-helpers"] #webHelperCards > .web-helper-filter-status {
+  min-height: 0;
+  height: auto;
+  margin-bottom: 0;
+}
+
 body[data-active-view="web-helpers"] .web-helper-kanban {
   display: grid;
   grid-template-columns: repeat(4, minmax(220px, 1fr));
