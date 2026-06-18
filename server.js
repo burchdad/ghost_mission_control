@@ -62,6 +62,9 @@ const WEB_HELPER_AUTOMATION_ENABLED = String(process.env.WEB_HELPER_AUTOMATION_E
 const CLIENT_UPDATE_EMAIL_WEBHOOK_URL = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_URL || "").trim();
 const CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET || "").trim();
 const GHOST_MISSION_CONTROL_PUBLIC_URL = String(process.env.GHOST_MISSION_CONTROL_PUBLIC_URL || process.env.RAILWAY_PUBLIC_DOMAIN || "").trim();
+const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
+const RESEND_FROM_EMAIL = String(process.env.RESEND_FROM_EMAIL || process.env.CLIENT_UPDATE_EMAIL_FROM || "Ghost Mission Control <onboarding@resend.dev>").trim();
+const RESEND_REPLY_TO_EMAIL = String(process.env.RESEND_REPLY_TO_EMAIL || process.env.SUPPORT_EMAIL || "").trim();
 const runtimeClients = [];
 let runtimeClientsHydrated = false;
 let runtimeClientsRepoSyncedAt = 0;
@@ -2163,24 +2166,156 @@ function buildClientConfirmationToken(ticketId, taskId) {
     .slice(0, 32);
 }
 
-async function notifyClientUpdateReady(ticket, task, options = {}) {
+function escapeEmailHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getTicketRequesterEmail(ticket) {
+  const payload = ticket?.payload || {};
+  return String(
+    ticket?.requesterEmail ||
+      payload.requesterEmail ||
+      payload.requester_email ||
+      payload.email ||
+      payload.requester?.email ||
+      ""
+  ).trim();
+}
+
+function buildClientUpdateEmailPayload(ticket, task, options = {}) {
   const client = getAllClients().find((entry) => entry.id === ticket.clientId) || {};
   const confirmationUrl = buildClientConfirmationUrl(ticket.id, task.id);
-  const payload = {
+  const to = String(client.businessEmail || getTicketRequesterEmail(ticket) || options.email || "").trim();
+  const clientName = client.clientName || ticket.clientName || "your website";
+  const summary = ticket.summary || ticket.title || "Website update completed";
+  const pageUrl = ticket.pageUrl || "";
+  const branch = task.targetBranch || options.branch || "";
+  const repo = task.repo || options.repo || "";
+  const previewUrl = options.previewUrl || options.productionUrl || client.websiteUrl || "";
+  const subject = `Website update ready for review: ${summary}`;
+  const safeClientName = escapeEmailHtml(clientName);
+  const safeSummary = escapeEmailHtml(summary);
+  const safePageUrl = escapeEmailHtml(pageUrl || "Sitewide");
+  const safeBranch = escapeEmailHtml(branch || "Testing branch");
+  const safeRepo = escapeEmailHtml(repo || "Client repository");
+  const safePreviewUrl = escapeEmailHtml(previewUrl || client.websiteUrl || "");
+  const safeConfirmationUrl = escapeEmailHtml(confirmationUrl);
+  const text = [
+    `Hi ${clientName},`,
+    "",
+    `Your website update is ready for review: ${summary}`,
+    pageUrl ? `Page or section: ${pageUrl}` : "",
+    previewUrl ? `Review link: ${previewUrl}` : "",
+    confirmationUrl ? `Confirm completion: ${confirmationUrl}` : "",
+    "",
+    "No changes were published without owner approval. Please review the update and confirm when everything looks good.",
+    "",
+    "Thank you,"
+  ].filter(Boolean).join("\n");
+  const html = `<!doctype html>
+    <html>
+      <body style="margin:0;background:#f5f7f5;color:#172118;font-family:Arial,sans-serif;">
+        <div style="max-width:640px;margin:0 auto;padding:32px 20px;">
+          <div style="background:#06100a;border:1px solid #244c2f;border-radius:10px;padding:28px;color:#f5fff5;">
+            <p style="margin:0 0 10px;color:#68f28a;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;">Website update ready</p>
+            <h1 style="margin:0 0 16px;font-size:26px;line-height:1.2;">${safeSummary}</h1>
+            <p style="margin:0 0 20px;color:#c6d6c6;line-height:1.6;">Hi ${safeClientName}, your requested website update is ready for review.</p>
+            <table style="width:100%;border-collapse:collapse;margin:0 0 22px;">
+              <tr><td style="padding:10px;border-top:1px solid #244c2f;color:#91a591;">Page</td><td style="padding:10px;border-top:1px solid #244c2f;">${safePageUrl}</td></tr>
+              <tr><td style="padding:10px;border-top:1px solid #244c2f;color:#91a591;">Branch</td><td style="padding:10px;border-top:1px solid #244c2f;">${safeBranch}</td></tr>
+              <tr><td style="padding:10px;border-top:1px solid #244c2f;color:#91a591;">Repo</td><td style="padding:10px;border-top:1px solid #244c2f;">${safeRepo}</td></tr>
+            </table>
+            ${safePreviewUrl ? `<p style="margin:0 0 18px;"><a href="${safePreviewUrl}" style="color:#68f28a;">Review the website update</a></p>` : ""}
+            ${safeConfirmationUrl ? `<p style="margin:0 0 18px;"><a href="${safeConfirmationUrl}" style="display:inline-block;background:#62f27d;color:#06100a;text-decoration:none;font-weight:700;padding:13px 18px;border-radius:8px;">Confirm update is complete</a></p>` : ""}
+            <p style="margin:20px 0 0;color:#91a591;font-size:13px;line-height:1.5;">No changes are published without owner approval. This confirmation only closes the support ticket after you review the update.</p>
+          </div>
+        </div>
+      </body>
+    </html>`;
+
+  return {
     source: "ghost_mission_control",
     type: "web_helper_update_ready",
     clientId: ticket.clientId,
-    clientName: client.clientName || ticket.clientName || "",
-    to: client.businessEmail || options.email || "",
+    clientName,
+    to,
+    subject,
+    text,
+    html,
     ticketId: ticket.id,
     taskId: task.id,
-    summary: ticket.summary || ticket.title || "Website update completed",
-    pageUrl: ticket.pageUrl || "",
-    branch: task.targetBranch || "",
-    repo: task.repo || "",
+    summary,
+    pageUrl,
+    branch,
+    repo,
     confirmationUrl,
+    previewUrl,
     message: "The requested website update has been merged and is ready for client review."
   };
+}
+
+async function sendClientUpdateEmailWithResend(payload) {
+  if (!RESEND_API_KEY) {
+    return { ok: false, skipped: true, reason: "RESEND_API_KEY is not configured.", payload };
+  }
+
+  if (!payload.to) {
+    return { ok: false, skipped: true, reason: "No client recipient email is available.", payload };
+  }
+
+  const email = {
+    from: RESEND_FROM_EMAIL,
+    to: [payload.to],
+    subject: payload.subject,
+    html: payload.html,
+    text: payload.text
+  };
+  if (RESEND_REPLY_TO_EMAIL) {
+    email.reply_to = RESEND_REPLY_TO_EMAIL;
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+        "Idempotency-Key": `web-helper-update-${payload.ticketId}-${payload.taskId}`
+      },
+      body: JSON.stringify(email)
+    });
+    const body = await response.text();
+    let parsed = null;
+    try {
+      parsed = body ? JSON.parse(body) : null;
+    } catch {
+      parsed = null;
+    }
+    return {
+      ok: response.ok,
+      provider: "resend",
+      status: response.status,
+      id: parsed?.id || "",
+      body: body.slice(0, 2000),
+      payload
+    };
+  } catch (error) {
+    return { ok: false, provider: "resend", status: "network_error", error: String(error?.message || error), payload };
+  }
+}
+
+async function notifyClientUpdateReady(ticket, task, options = {}) {
+  const payload = buildClientUpdateEmailPayload(ticket, task, options);
+
+  const resend = await sendClientUpdateEmailWithResend(payload);
+  if (resend.ok || RESEND_API_KEY || !CLIENT_UPDATE_EMAIL_WEBHOOK_URL) {
+    return resend;
+  }
 
   if (!CLIENT_UPDATE_EMAIL_WEBHOOK_URL) {
     return { ok: false, skipped: true, reason: "CLIENT_UPDATE_EMAIL_WEBHOOK_URL is not configured.", payload };
@@ -8700,6 +8835,7 @@ if (require.main === module) {
     buildCodexBuildPrompt,
     appendWebHelperRequestEventInPostgres,
     assessWebHelperRequest,
-    buildClientConfirmationToken
+    buildClientConfirmationToken,
+    buildClientUpdateEmailPayload
   };
 }

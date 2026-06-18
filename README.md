@@ -275,6 +275,20 @@ GHOST_MISSION_CONTROL_PUBLIC_URL=https://<railway-domain>
 
 The intake webhook accepts `POST /mission/codex-runner/intake` with `X-Codex-Build-Secret`, marks the linked ticket as active, and returns the callback URL the runner should use after building. A dedicated external Codex runner can use the same payload contract and report results to `POST /mission/codex-build-tasks/result`.
 
+## Client Update Email Delivery
+
+Mission Control can email clients after a Web Helper update is merged and ready for review. Resend is the preferred direct sender; the older `CLIENT_UPDATE_EMAIL_WEBHOOK_URL` remains available as a fallback for a separate email agent.
+
+Recommended Resend variables:
+
+```bash
+RESEND_API_KEY=<resend-api-key>
+RESEND_FROM_EMAIL="Ghost AI Solutions <updates@your-verified-domain.com>"
+RESEND_REPLY_TO_EMAIL=support@your-domain.com
+```
+
+For early testing before a sending domain is verified, Resend allows `Ghost Mission Control <onboarding@resend.dev>` as the from address. Production client emails should use a verified domain.
+
 ## AI Provider Integration (OpenAI + Anthropic + OpenRouter)
 
 Mission Command now supports optional AI copilot guidance from OpenAI, Anthropic, and OpenRouter with automatic fallback.

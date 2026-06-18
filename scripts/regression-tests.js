@@ -11,7 +11,8 @@ const {
   dbRowToWebHelperRequest,
   buildCodexTaskPayload,
   assessWebHelperRequest,
-  buildClientConfirmationToken
+  buildClientConfirmationToken,
+  buildClientUpdateEmailPayload
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -186,6 +187,33 @@ function testClientConfirmationTokenIsStable() {
   assert.notStrictEqual(token, buildClientConfirmationToken("ticket-1", "task-2"));
 }
 
+function testClientUpdateEmailUsesRequesterFallback() {
+  const client = normalizeClient({
+    id: "gray-matters-tech",
+    clientName: "Gray Matters Tech",
+    websiteUrl: "https://www.graymatterstech.com",
+    repo: "burchdad/barbara_consulting"
+  });
+  const request = normalizeWebHelperRequestPayload(
+    {
+      id: "ticket-email",
+      summary: "Update services copy",
+      details: "Tighten the services intro paragraph.",
+      requesterEmail: "time@graymatterstech.com"
+    },
+    client
+  );
+  const email = buildClientUpdateEmailPayload(request, {
+    id: "codex_ticket-email",
+    targetBranch: "testing/web-helper-ticket-email",
+    repo: "burchdad/barbara_consulting"
+  });
+  assert.strictEqual(email.to, "time@graymatterstech.com");
+  assert.ok(email.subject.includes("Update services copy"));
+  assert.ok(email.html.includes("Website update ready"));
+  assert.ok(email.html.includes("testing/web-helper-ticket-email"));
+}
+
 function testFinalPaymentCompletesWebBuildStage() {
   const client = buildClientRecord({
     clientName: "Done Build",
@@ -216,6 +244,7 @@ function testFinalPaymentCompletesWebBuildStage() {
   testCodexBuildPayloadUsesTicketAsPrompt,
   testWebHelperAutomationAssessment,
   testClientConfirmationTokenIsStable,
+  testClientUpdateEmailUsesRequesterFallback,
   testFinalPaymentCompletesWebBuildStage
 ].forEach((test) => test());
 
