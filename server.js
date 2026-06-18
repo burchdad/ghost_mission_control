@@ -3372,6 +3372,8 @@ function buildWebHelperRequests(site) {
       title: "Repair unreachable website pages",
       summary: `${failedPages.length} page checks are failing and should be triaged before client-facing reply.`,
       status: "needs-review",
+      source: "mission_control_monitoring",
+      operationalTask: true,
       approvalRequired: true,
       sla: "Same day"
     });
@@ -3384,6 +3386,8 @@ function buildWebHelperRequests(site) {
       title: "Investigate slow page performance",
       summary: `${slowPages.length} monitored pages are responding slowly and may need optimization.`,
       status: "queued",
+      source: "mission_control_monitoring",
+      operationalTask: true,
       approvalRequired: false,
       sla: "Next business day"
     });
@@ -3396,6 +3400,8 @@ function buildWebHelperRequests(site) {
       title: "Create reusable helper template",
       summary: "Site is stable. Helper is ready for client profile, scope rules, and repo connection.",
       status: "ready",
+      source: "mission_control_setup",
+      operationalTask: true,
       approvalRequired: false,
       sla: "Template setup"
     });
@@ -3497,6 +3503,8 @@ function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpe
           title: "Attach final custom domain",
           summary: "Client is running on a preview deployment. Purchase or connect the final domain before handoff.",
           status: "needs-review",
+          source: "mission_control_setup",
+          operationalTask: true,
           approvalRequired: true,
           sla: "Before launch"
         });
@@ -3509,6 +3517,8 @@ function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpe
           title: "Collect final client details",
           summary: "Client details are still pending. Confirm business information, service scope, and launch notes.",
           status: "needs-review",
+          source: "mission_control_setup",
+          operationalTask: true,
           approvalRequired: true,
           sla: "Before automation"
         });
@@ -3521,6 +3531,8 @@ function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpe
           title: "Create Web Helper memory",
           summary: "Live client site is ready for brand voice, repo map, scope rules, and update-history memory.",
           status: "ready",
+          source: "mission_control_setup",
+          operationalTask: true,
           approvalRequired: false,
           sla: "Template setup"
         });
@@ -3559,12 +3571,27 @@ function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpe
     });
 }
 
+function isOperationalWebHelperTask(request) {
+  if (request?.operationalTask || request?.operational_task || request?.payload?.operationalTask || request?.payload?.operational_task) {
+    return true;
+  }
+
+  const source = String(request?.source || request?.payload?.source || "").toLowerCase();
+  if (source.startsWith("mission_control_")) {
+    return true;
+  }
+
+  const type = String(request?.requestType || request?.type || request?.payload?.request_type || "").toLowerCase();
+  return ["template_setup", "domain_setup", "client_intake", "maintenance"].includes(type);
+}
+
 function summarizeWebHelpers(helpers) {
+  const supportRequests = helpers.flatMap((helper) => helper.requests || []).filter((request) => !isOperationalWebHelperTask(request));
   return {
     helperCount: helpers.length,
     activeCount: helpers.filter((helper) => helper.status === "active").length,
-    openRequests: helpers.reduce((sum, helper) => sum + Number(helper.openRequests || 0), 0),
-    pendingApprovals: helpers.reduce((sum, helper) => sum + Number(helper.pendingApprovals || 0), 0),
+    openRequests: supportRequests.length,
+    pendingApprovals: supportRequests.filter((request) => request.approvalRequired).length,
     templateReadyCount: helpers.filter((helper) =>
       (helper.requests || []).some((request) => request.type === "template_setup")
     ).length

@@ -2496,8 +2496,11 @@ function getAgentsBadgeMeta(agents) {
 }
 
 function getWebHelpersBadgeMeta(helpers) {
-  const pendingApprovals = (helpers || []).reduce((sum, helper) => sum + Number(helper.pendingApprovals || 0), 0);
-  const openRequests = (helpers || []).reduce((sum, helper) => sum + Number(helper.openRequests || 0), 0);
+  const supportRequests = (helpers || [])
+    .flatMap((helper) => helper.requests || [])
+    .filter((request) => !isWebHelperOperationalTask(request));
+  const pendingApprovals = supportRequests.filter((request) => request.approvalRequired).length;
+  const openRequests = supportRequests.length;
   const pausedCount = (helpers || []).filter((helper) => helper.status === "paused").length;
 
   if (pendingApprovals > 0) {
@@ -6990,7 +6993,7 @@ async function activateWebHelper(targetId, options = {}) {
 }
 
 function summarizeWebHelpersForUi(helpers) {
-  const openRequests = helpers.flatMap((helper) => helper.requests || []);
+  const openRequests = helpers.flatMap((helper) => helper.requests || []).filter((request) => !isWebHelperOperationalTask(request));
   return {
     helperCount: helpers.length,
     activeCount: helpers.filter((helper) => helper.status === "active").length,
@@ -7076,6 +7079,8 @@ function buildFallbackWebHelpersPayload(siteId = activeSiteId, reason = "") {
         type: "domain",
         status: "queued",
         sla: "owner review",
+        source: "mission_control_setup",
+        operationalTask: true,
         approvalRequired: true
       });
     }
@@ -7086,6 +7091,8 @@ function buildFallbackWebHelpersPayload(siteId = activeSiteId, reason = "") {
         type: "intake",
         status: "queued",
         sla: "before launch",
+        source: "mission_control_setup",
+        operationalTask: true,
         approvalRequired: true
       });
     }
@@ -7096,6 +7103,8 @@ function buildFallbackWebHelpersPayload(siteId = activeSiteId, reason = "") {
         type: "maintenance",
         status: "ready",
         sla: "monthly",
+        source: "mission_control_setup",
+        operationalTask: true,
         approvalRequired: false
       });
     }
@@ -7124,7 +7133,7 @@ function buildFallbackWebHelpersPayload(siteId = activeSiteId, reason = "") {
     };
   });
 
-  const openRequests = helpers.flatMap((helper) => helper.requests || []);
+  const openRequests = helpers.flatMap((helper) => helper.requests || []).filter((request) => !isWebHelperOperationalTask(request));
   return {
     generatedAt: new Date().toISOString(),
     source: "frontend-seeded-client-map",
@@ -7269,6 +7278,20 @@ function formatWebHelperDateForUi(value) {
 
 function getWebHelperTicketId(request) {
   return request.id || `${slugForUi(request.clientName)}-${slugForUi(request.title)}-${slugForUi(request.status)}`;
+}
+
+function isWebHelperOperationalTask(request) {
+  if (request?.operationalTask || request?.operational_task || request?.payload?.operationalTask || request?.payload?.operational_task) {
+    return true;
+  }
+
+  const source = String(request?.source || request?.payload?.source || "").toLowerCase();
+  if (source.startsWith("mission_control_")) {
+    return true;
+  }
+
+  const type = String(request?.requestType || request?.type || request?.payload?.request_type || "").toLowerCase();
+  return ["template_setup", "domain_setup", "client_intake", "maintenance"].includes(type);
 }
 
 function flattenWebHelperRequests(helpers) {
@@ -7768,9 +7791,10 @@ function renderWebHelpers(payload) {
 
   const helpers = payload?.helpers || [];
   const requests = flattenWebHelperRequests(helpers);
+  const supportRequests = requests.filter((request) => !isWebHelperOperationalTask(request));
   const filters = getWebHelperFilterState();
-  const visibleRequests = requests.filter((request) => webHelperTicketMatchesFilters(request, filters));
-  currentWebHelperTickets = requests;
+  const visibleRequests = supportRequests.filter((request) => webHelperTicketMatchesFilters(request, filters));
+  currentWebHelperTickets = supportRequests;
   const requestsByColumn = webHelperKanbanColumns.reduce((accumulator, column) => {
     accumulator[column.id] = [];
     return accumulator;
@@ -7875,10 +7899,10 @@ function renderWebHelpers(payload) {
 
   elements.webHelperCards.innerHTML = `
     <div class="web-helper-filter-status">
-      <span>${visibleRequests.length} of ${requests.length} tickets visible</span>
+      <span>${visibleRequests.length} of ${supportRequests.length} support tickets visible</span>
       ${filters.search || filters.status !== "all" || filters.priority !== "all" || filters.approval !== "all"
-        ? "<strong>Filtered triage view</strong>"
-        : "<strong>All tickets</strong>"}
+        ? "<strong>Filtered support view</strong>"
+        : "<strong>Support tickets only</strong>"}
     </div>
     <div class="web-helper-kanban">
       ${webHelperKanbanColumns.map((column) => {
