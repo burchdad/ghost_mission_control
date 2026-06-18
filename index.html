@@ -525,6 +525,24 @@
             </select>
           </label>
           <label>
+            <span>Relationship</span>
+            <select id="clientRelationshipInput" name="relationshipType">
+              <option value="client">Client</option>
+              <option value="partner">Partner</option>
+              <option value="internal">Internal / owned</option>
+              <option value="prospect">Prospect</option>
+            </select>
+          </label>
+          <label>
+            <span>Pricing Tier</span>
+            <select id="clientPricingTierInput" name="pricingTier">
+              <option value="standard">Standard</option>
+              <option value="partner">Partner pricing</option>
+              <option value="custom">Custom quote</option>
+              <option value="internal">Internal</option>
+            </select>
+          </label>
+          <label>
             <span>Website URL</span>
             <input id="clientWebsiteInput" name="websiteUrl" type="url" placeholder="https://example.com" />
           </label>

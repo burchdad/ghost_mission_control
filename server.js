@@ -1237,6 +1237,8 @@ async function ensureClientStoreTable() {
         lead_source text NOT NULL DEFAULT '',
         lead_source_detail text NOT NULL DEFAULT '',
         lead_stage text NOT NULL DEFAULT '',
+        relationship_type text NOT NULL DEFAULT 'client',
+        pricing_tier text NOT NULL DEFAULT 'standard',
         proposal_sent boolean NOT NULL DEFAULT false,
         deposit_invoice_sent boolean NOT NULL DEFAULT false,
         proposal_signed boolean NOT NULL DEFAULT false,
@@ -1256,6 +1258,8 @@ async function ensureClientStoreTable() {
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS lead_source text NOT NULL DEFAULT '';
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS lead_source_detail text NOT NULL DEFAULT '';
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS lead_stage text NOT NULL DEFAULT '';
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS relationship_type text NOT NULL DEFAULT 'client';
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS pricing_tier text NOT NULL DEFAULT 'standard';
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS proposal_sent boolean NOT NULL DEFAULT false;
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS deposit_invoice_sent boolean NOT NULL DEFAULT false;
       CREATE INDEX IF NOT EXISTS mission_clients_updated_at_idx ON mission_clients (updated_at DESC);
@@ -1671,6 +1675,8 @@ function dbRowToClient(row) {
     leadSource: row.lead_source,
     leadSourceDetail: row.lead_source_detail,
     leadStage: row.lead_stage,
+    relationshipType: row.relationship_type,
+    pricingTier: row.pricing_tier,
     proposalSent: row.proposal_sent,
     depositInvoiceSent: row.deposit_invoice_sent,
     proposalSigned: row.proposal_signed,
@@ -1719,6 +1725,8 @@ function clientToPostgresValues(client) {
     normalized.leadSource,
     normalized.leadSourceDetail,
     normalized.leadStage,
+    normalized.relationshipType,
+    normalized.pricingTier,
     Boolean(normalized.proposalSent),
     Boolean(normalized.depositInvoiceSent),
     Boolean(normalized.proposalSigned),
@@ -1771,6 +1779,8 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         lead_source,
         lead_source_detail,
         lead_stage,
+        relationship_type,
+        pricing_tier,
         proposal_sent,
         deposit_invoice_sent,
         proposal_signed,
@@ -1788,7 +1798,8 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33::timestamptz, $34::timestamptz
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+        $31, $32, $33, $34, $35::timestamptz, $36::timestamptz
       )
       ON CONFLICT (id) DO UPDATE SET
         client_name = EXCLUDED.client_name,
@@ -1810,6 +1821,8 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         lead_source = EXCLUDED.lead_source,
         lead_source_detail = EXCLUDED.lead_source_detail,
         lead_stage = EXCLUDED.lead_stage,
+        relationship_type = EXCLUDED.relationship_type,
+        pricing_tier = EXCLUDED.pricing_tier,
         proposal_sent = EXCLUDED.proposal_sent,
         deposit_invoice_sent = EXCLUDED.deposit_invoice_sent,
         proposal_signed = EXCLUDED.proposal_signed,
@@ -3502,6 +3515,23 @@ function normalizeLeadStage(value) {
   return LEAD_PIPELINE_STAGES.some((stage) => stage.id === mapped) ? mapped : "";
 }
 
+function normalizeClientRelationship(value) {
+  const relationship = String(value || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+  return ["client", "partner", "internal", "prospect"].includes(relationship) ? relationship : "client";
+}
+
+function normalizeClientPricingTier(value, relationshipType = "client") {
+  const tier = String(value || "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+  if (["standard", "partner", "custom", "internal"].includes(tier)) {
+    return tier;
+  }
+  const relationship = normalizeClientRelationship(relationshipType);
+  if (relationship === "partner" || relationship === "internal") {
+    return relationship;
+  }
+  return "standard";
+}
+
 function deriveLeadStage(client) {
   const explicit = normalizeLeadStage(client?.leadStage || client?.lead_stage);
   const stage = normalizeClientStage(client?.stage || client?.pipelineStage || client?.status);
@@ -3556,6 +3586,7 @@ function normalizeClient(client) {
   const websiteUrl = getClientWebsiteUrl(client.websiteUrl || client.website || client.rootUrl);
   const repo = String(client.repo || client.githubRepo || "").trim();
   const stage = normalizeClientStage(client.stage || client.pipelineStage || client.status);
+  const relationshipType = normalizeClientRelationship(client.relationshipType || client.relationship_type);
   const now = new Date().toISOString();
 
   return repairKnownClientIdentity({
@@ -3579,6 +3610,8 @@ function normalizeClient(client) {
     leadSource: normalizeLeadSource(client.leadSource || client.lead_source),
     leadSourceDetail: String(client.leadSourceDetail || client.lead_source_detail || client.leadSourceNote || "").trim(),
     leadStage: deriveLeadStage({ ...client, stage }),
+    relationshipType,
+    pricingTier: normalizeClientPricingTier(client.pricingTier || client.pricing_tier, relationshipType),
     proposalSent: normalizeBoolean(client.proposalSent),
     depositInvoiceSent: normalizeBoolean(client.depositInvoiceSent),
     proposalSigned: normalizeBoolean(client.proposalSigned),
@@ -3785,6 +3818,8 @@ function mergeClientRecords(existing, incoming) {
     leadSource: pick("leadSource"),
     leadSourceDetail: pick("leadSourceDetail"),
     leadStage: pick("leadStage") || deriveLeadStage(incoming) || deriveLeadStage(existing),
+    relationshipType: pick("relationshipType"),
+    pricingTier: pick("pricingTier"),
     proposalSent: pickBoolean("proposalSent"),
     depositInvoiceSent: pickBoolean("depositInvoiceSent"),
     proposalSigned: pickBoolean("proposalSigned"),

@@ -126,6 +126,8 @@ const elements = {
   clientLeadSourceInput: document.getElementById("clientLeadSourceInput"),
   clientLeadSourceDetailInput: document.getElementById("clientLeadSourceDetailInput"),
   clientLeadStageInput: document.getElementById("clientLeadStageInput"),
+  clientRelationshipInput: document.getElementById("clientRelationshipInput"),
+  clientPricingTierInput: document.getElementById("clientPricingTierInput"),
   clientWebsiteInput: document.getElementById("clientWebsiteInput"),
   clientRepoInput: document.getElementById("clientRepoInput"),
   clientRailwayInput: document.getElementById("clientRailwayInput"),
@@ -442,90 +444,162 @@ function getLeadStageLabel(stageId) {
   return leadDeskColumns.find((column) => column.id === stageId)?.label || "New Lead";
 }
 
+const clientRelationshipDefinitions = {
+  client: { label: "Client", pricingTier: "standard" },
+  partner: { label: "Partner", pricingTier: "partner" },
+  internal: { label: "Internal / owned", pricingTier: "internal" },
+  prospect: { label: "Prospect", pricingTier: "standard" }
+};
+
+function normalizeClientRelationship(value) {
+  const relationship = String(value || "").trim().toLowerCase();
+  return clientRelationshipDefinitions[relationship] ? relationship : "client";
+}
+
+function normalizeClientPricingTier(value, relationshipType = "client") {
+  const tier = String(value || "").trim().toLowerCase();
+  if (["standard", "partner", "custom", "internal"].includes(tier)) {
+    return tier;
+  }
+  return clientRelationshipDefinitions[normalizeClientRelationship(relationshipType)]?.pricingTier || "standard";
+}
+
+function getClientRelationshipLabel(client) {
+  return clientRelationshipDefinitions[normalizeClientRelationship(client?.relationshipType)]?.label || "Client";
+}
+
 const clientServiceDefinitions = {
   "website-build": {
     label: "Website Build",
     category: "Web",
     agreement: "Website build proposal agreement",
     system: "GitHub + Vercel",
-    pipeline: "web-delivery"
+    pipeline: "web-delivery",
+    pricing: {
+      client: "$1,500-$4,500 project",
+      partner: "Partner scope / rev share"
+    }
   },
   "web-helper-care": {
     label: "Web Helper Care",
     category: "Care",
     agreement: "Maintenance / Web Helper care contract",
     system: "Web Helper Agent",
-    pipeline: "web-care"
+    pipeline: "web-care",
+    pricing: {
+      client: "$149-$499/mo",
+      partner: "Partner care allocation"
+    }
   },
   "search-intelligence": {
     label: "SEO / AEO / GEO",
     category: "Growth",
     agreement: "SEO integration contract",
     system: "geo.ghostai.solutions",
-    pipeline: "seo-geo"
+    pipeline: "seo-geo",
+    pricing: {
+      client: "$500-$1,500/mo",
+      partner: "Partner growth allocation"
+    }
   },
   "local-service": {
     label: "Local Service Growth",
     category: "Growth",
     agreement: "Local SEO integration contract",
     system: "GBP + GEO + Web Helper",
-    pipeline: "seo-geo"
+    pipeline: "seo-geo",
+    pricing: {
+      client: "$350-$1,200/mo",
+      partner: "Partner local growth allocation"
+    }
   },
   "lead-funnel": {
     label: "Lead Funnel",
     category: "Growth",
     agreement: "Lead generation / funnel contract",
     system: "Ghost Lead Command + GhostCRM",
-    pipeline: "automations"
+    pipeline: "automations",
+    pricing: {
+      client: "$750-$2,500/mo",
+      partner: "Partner lead-share motion"
+    }
   },
   "software-tool": {
     label: "Software Tool",
     category: "Software",
     agreement: "Software build / automation contract",
     system: "Tool registry + deployment map",
-    pipeline: "automations"
+    pipeline: "automations",
+    pricing: {
+      client: "Custom project",
+      partner: "Partner build allocation"
+    }
   },
   "ai-automation": {
     label: "AI Automation",
     category: "Automation",
     agreement: "AI workflow / agent automation contract",
     system: "Lead Command + GhostCRM + Slack approvals",
-    pipeline: "automations"
+    pipeline: "automations",
+    pricing: {
+      client: "$500-$2,000/mo",
+      partner: "Partner automation allocation"
+    }
   },
   ecommerce: {
     label: "Ecommerce",
     category: "Commerce",
     agreement: "Ecommerce operations contract",
     system: "Storefront + payments",
-    pipeline: "commerce"
+    pipeline: "commerce",
+    pricing: {
+      client: "$500-$2,500/mo",
+      partner: "Partner store allocation"
+    }
   },
   "content-social": {
     label: "Content + Social",
     category: "Social",
     agreement: "Social/content management contract",
     system: "Content operator + social pages",
-    pipeline: "social"
+    pipeline: "social",
+    pricing: {
+      client: "$399-$1,500/mo",
+      partner: "Partner content allocation"
+    }
   },
   "paid-ads": {
     label: "Paid Ads",
     category: "Ads",
     agreement: "Ads management contract",
     system: "Meta Ads + Google Ads + reporting",
-    pipeline: "ads"
+    pipeline: "ads",
+    pricing: {
+      client: "10%-15% of ad spend",
+      partner: "Partner ad ops allocation"
+    }
   },
   "mobile-app": {
     label: "Mobile App",
     category: "Mobile",
     agreement: "Mobile app build contract",
     system: "App build queue + stores",
-    pipeline: "mobile-apps"
+    pipeline: "mobile-apps",
+    pricing: {
+      client: "Custom project",
+      partner: "Partner build allocation"
+    }
   },
   reporting: {
     label: "Client Reporting",
     category: "Reporting",
     agreement: "Reporting / analytics scope",
     system: "Mission Control + client reports",
-    pipeline: "web-care"
+    pipeline: "web-care",
+    pricing: {
+      client: "$99-$399/mo",
+      partner: "Included in partner ops"
+    }
   }
 };
 
@@ -1991,6 +2065,8 @@ function resetClientForm(mode = "client") {
   setFieldValue(elements.clientLeadSourceInput, defaults.leadSource);
   setFieldValue(elements.clientLeadSourceDetailInput, "");
   setFieldValue(elements.clientLeadStageInput, defaults.leadStage);
+  setFieldValue(elements.clientRelationshipInput, "client");
+  setFieldValue(elements.clientPricingTierInput, "standard");
   setClientServicePickerValues(defaults.services, defaults.plannedServices);
   if (elements.clientSubmitButton) {
     elements.clientSubmitButton.textContent = defaults.submitLabel;
@@ -2014,6 +2090,10 @@ function populateClientForm(client) {
   setFieldValue(elements.clientLeadSourceDetailInput, client.leadSourceDetail);
   ensureSelectOption(elements.clientLeadStageInput, deriveLeadStage(client));
   setFieldValue(elements.clientLeadStageInput, deriveLeadStage(client));
+  ensureSelectOption(elements.clientRelationshipInput, normalizeClientRelationship(client.relationshipType));
+  setFieldValue(elements.clientRelationshipInput, normalizeClientRelationship(client.relationshipType));
+  ensureSelectOption(elements.clientPricingTierInput, normalizeClientPricingTier(client.pricingTier, client.relationshipType));
+  setFieldValue(elements.clientPricingTierInput, normalizeClientPricingTier(client.pricingTier, client.relationshipType));
   setFieldValue(elements.clientWebsiteInput, client.websiteUrl);
   setFieldValue(elements.clientRepoInput, client.repo);
   setFieldValue(elements.clientRailwayInput, client.railwayUrl);
@@ -4329,7 +4409,6 @@ function normalizeRepoIdentityForUi(value) {
 function getClientIdentityKeysForUi(client) {
   return [
     client?.websiteUrl ? `site:${normalizeIdentityDomainForUi(client.websiteUrl)}` : "",
-    client?.vercelUrl ? `site:${normalizeIdentityDomainForUi(client.vercelUrl)}` : "",
     client?.repo || client?.githubUrl ? `repo:${normalizeRepoIdentityForUi(client.repo || client.githubUrl)}` : "",
     client?.clientName ? `name:${compactIdentityKey(client.clientName)}` : "",
     client?.id ? `id:${canonicalClientIdForUi(client.id)}` : ""
@@ -4371,6 +4450,8 @@ function mergeClientRecordsForUi(existing, incoming) {
     leadSource: pick("leadSource"),
     leadSourceDetail: pick("leadSourceDetail"),
     leadStage: pick("leadStage") || deriveLeadStage(incoming) || deriveLeadStage(existing),
+    relationshipType: pick("relationshipType"),
+    pricingTier: pick("pricingTier"),
     proposalSent: pickBoolean("proposalSent"),
     depositInvoiceSent: pickBoolean("depositInvoiceSent"),
     proposalSigned: pickBoolean("proposalSigned"),
@@ -4631,6 +4712,8 @@ function renderClientModalStats(client) {
     <div><span>Readiness</span><strong>${escapeHtml(`${readyChecks}/${totalChecks} ops checks`)}</strong></div>
     <div><span>Connections</span><strong>${escapeHtml(issueCount ? `${issueCount} gaps` : "Ready")}</strong></div>
     <div><span>Lead Source</span><strong>${escapeHtml(getLeadSourceLabel(client))}</strong></div>
+    <div><span>Relationship</span><strong>${escapeHtml(getClientRelationshipLabel(client))}</strong></div>
+    <div><span>Pricing</span><strong>${escapeHtml(normalizeClientPricingTier(client.pricingTier, client.relationshipType))}</strong></div>
     <div><span>Record</span><strong>${escapeHtml(`${client.source || "deployment-map"} / ${client.id || "no-id"}`)}</strong></div>
   </div>`;
 }
@@ -5113,11 +5196,120 @@ function getClientServiceBreakdown(client) {
       key: serviceKey,
       serviceState,
       serviceStateLabel,
+      priceLabel: getClientServicePriceLabel(client, definition),
       ...definition,
       ...deliveryMeta,
       agreementStatus
     };
   });
+}
+
+function getClientServicePriceLabel(client, definition) {
+  const relationshipType = normalizeClientRelationship(client?.relationshipType);
+  const pricingTier = normalizeClientPricingTier(client?.pricingTier, relationshipType);
+  if (pricingTier === "custom") {
+    return "Custom quote";
+  }
+  if (pricingTier === "internal") {
+    return "Internal allocation";
+  }
+  return definition?.pricing?.[pricingTier === "partner" || relationshipType === "partner" ? "partner" : "client"] || "Pricing TBD";
+}
+
+function getClientUpsellRecommendations(client) {
+  const active = new Set(client.services || []);
+  const planned = new Set(client.plannedServices || []);
+  const stage = getClientStage(client);
+  const relationshipType = normalizeClientRelationship(client.relationshipType);
+  const candidates = [];
+  const pushCandidate = (serviceKey, reason, timing = "Next outreach") => {
+    if (active.has(serviceKey)) {
+      return;
+    }
+    const definition = getClientServiceDefinition(serviceKey);
+    candidates.push({
+      serviceKey,
+      label: definition.label,
+      reason,
+      timing,
+      priceLabel: getClientServicePriceLabel(client, definition),
+      planned: planned.has(serviceKey),
+      relationshipType
+    });
+  };
+
+  if (["client-review", "final-payment", "launch-handoff", "completed-archived", "web-helper-care"].includes(stage)) {
+    pushCandidate("web-helper-care", "Protect the finished website with small approved updates, uptime checks, and request handling.", "After final payment");
+  }
+  if (client.websiteUrl && !client.googleBusinessUrl) {
+    pushCandidate("local-service", "Connect local authority signals and Google Business Profile work for search visibility.", "After launch");
+  }
+  if (client.websiteUrl) {
+    pushCandidate("search-intelligence", "Turn the website into a visibility engine with SEO, AEO, and GEO tracking.", "Growth follow-up");
+  }
+  if (!active.has("content-social") && (client.socialUrls?.length || ["web-helper-care", "growth-services", "completed-archived"].includes(stage))) {
+    pushCandidate("content-social", "Keep social/content touchpoints warm so the site has fresh proof and offer movement.", "Monthly growth");
+  }
+  if (!active.has("lead-funnel") && ["web-helper-care", "growth-services", "completed-archived"].includes(stage)) {
+    pushCandidate("lead-funnel", "Add lead capture, follow-up automation, and request routing after the website foundation is stable.", "Expansion");
+  }
+
+  return candidates.slice(0, 4);
+}
+
+function renderClientUpsellRecommendations(client) {
+  const recommendations = getClientUpsellRecommendations(client);
+  if (!recommendations.length) {
+    return `<div class="pipeline-empty">No obvious upsell recommendation yet.</div>`;
+  }
+
+  return `<div class="client-upsell-list">
+    ${recommendations.map((item) => `<article class="client-upsell-card">
+      <div>
+        <span class="eyebrow">${escapeHtml(item.timing)}</span>
+        <h4>${escapeHtml(item.label)}</h4>
+        <p>${escapeHtml(item.reason)}</p>
+      </div>
+      <div class="client-upsell-meta">
+        <span class="pill ${item.planned ? "tone-blue" : "tone-yellow"}">${escapeHtml(item.planned ? "planned" : "not mapped")}</span>
+        <strong>${escapeHtml(item.priceLabel)}</strong>
+        <button type="button" data-client-upsell-email="${escapeHtml(client.id)}" data-client-upsell-service="${escapeHtml(item.serviceKey)}">Draft Email</button>
+      </div>
+    </article>`).join("")}
+  </div>`;
+}
+
+function openUpsellEmailAgent(clientId, serviceKey) {
+  const client = getClientById(clientId);
+  if (!client) {
+    return;
+  }
+  const recommendation = getClientUpsellRecommendations(client).find((item) => item.serviceKey === serviceKey);
+  const definition = getClientServiceDefinition(serviceKey);
+  const serviceLabel = recommendation?.label || definition.label;
+  const prompt = [
+    `Draft a client-safe upsell email for ${client.clientName}.`,
+    `Relationship: ${getClientRelationshipLabel(client)}.`,
+    `Pricing tier: ${normalizeClientPricingTier(client.pricingTier, client.relationshipType)}.`,
+    `Current stage: ${getClientStageLabel(getClientStage(client))}.`,
+    `Current services: ${(client.services || []).map((service) => getClientServiceDefinition(service).label).join(", ") || "none mapped"}.`,
+    `Recommended service: ${serviceLabel}.`,
+    `Pricing lane: ${recommendation?.priceLabel || getClientServicePriceLabel(client, definition)}.`,
+    `Reason to pitch: ${recommendation?.reason || "Service expansion opportunity."}`,
+    `Contact context: ${client.contact || client.businessEmail || client.businessPhone || "contact pending"}.`,
+    "Write a concise email draft with a helpful tone, no pressure, and a clear next step. Do not send anything automatically."
+  ].join("\n");
+
+  closeClientDetail();
+  setActiveView("execution");
+  setFocusMode(true, "execution");
+  if (elements.executionCommandInput) {
+    elements.executionCommandInput.value = prompt;
+    elements.executionCommandInput.focus();
+  }
+  if (elements.executionCommandResponse) {
+    elements.executionCommandResponse.textContent = `Upsell email prompt loaded for ${client.clientName}.`;
+  }
 }
 
 function renderClientServiceBreakdown(client) {
@@ -5135,6 +5327,7 @@ function renderClientServiceBreakdown(client) {
               <span class="eyebrow">${escapeHtml(service.category)}</span>
               <h4>${escapeHtml(service.label)}</h4>
               <p>${escapeHtml(service.agreement)}</p>
+              <p>${escapeHtml(service.priceLabel)}</p>
             </div>
             <div class="client-service-meta">
               <span class="pill ${service.serviceState === "active" ? "tone-green" : "tone-blue"}">${escapeHtml(service.serviceStateLabel)}</span>
@@ -5194,6 +5387,10 @@ function openClientDetail(clientId) {
     <div class="client-detail-section">
       <h3>Ordered Services</h3>
       ${renderClientServiceBreakdown(client)}
+    </div>
+    <div class="client-detail-section">
+      <h3>Upsell Agent Prep</h3>
+      ${renderClientUpsellRecommendations(client)}
     </div>
     <div class="client-detail-section">
       <h3>Operator Handoff</h3>
@@ -5297,6 +5494,8 @@ function buildClientSavePayloadFromRecord(client, overrides = {}) {
     leadSource: client.leadSource || "",
     leadSourceDetail: client.leadSourceDetail || "",
     leadStage: deriveLeadStage(client),
+    relationshipType: normalizeClientRelationship(client.relationshipType),
+    pricingTier: normalizeClientPricingTier(client.pricingTier, client.relationshipType),
     socialUrls: client.socialUrls || [],
     proposalSent: Boolean(client.proposalSent),
     depositInvoiceSent: Boolean(client.depositInvoiceSent),
@@ -5511,6 +5710,8 @@ async function submitClientOnboarding(event) {
     leadSource: elements.clientLeadSourceInput?.value || "",
     leadSourceDetail: elements.clientLeadSourceDetailInput?.value || "",
     leadStage: elements.clientLeadStageInput?.value || "",
+    relationshipType: normalizeClientRelationship(elements.clientRelationshipInput?.value),
+    pricingTier: normalizeClientPricingTier(elements.clientPricingTierInput?.value, elements.clientRelationshipInput?.value),
     socialUrls: String(elements.clientSocialsInput?.value || "")
       .split(/\r?\n/)
       .map((url) => url.trim())
@@ -7205,16 +7406,20 @@ function renderWebHelperTicketStats(request, helper) {
 
 function renderWebHelperTicketActions(ticket) {
   const actions = [
-    { label: "Open Agent Chat", action: "chat", tone: "secondary" },
-    { label: "Acknowledge", action: "triage", status: "triage", tone: "secondary" },
-    { label: "Approve Change", action: "approve", status: "approved", tone: "primary" },
-    { label: "Start Work", action: "start", status: "in_progress", tone: "secondary" },
-    { label: "Ready for Review", action: "review", status: "ready_review", tone: "secondary" },
-    { label: "Block", action: "block", status: "blocked", tone: "danger" }
+    { label: "Open Agent Chat", action: "chat", tone: "secondary", hint: "Load this ticket into Execution with full context." },
+    { label: "Acknowledge", action: "triage", status: "triage", tone: "secondary", hint: "Confirm this is real and ready for triage." },
+    { label: "Approve Change", action: "approve", status: "approved", tone: "primary", hint: "Owner approves helper work on the testing branch." },
+    { label: "Assign / Start", action: "start", status: "in_progress", tone: "secondary", hint: "Move the request into active helper work." },
+    { label: "Ready for Review", action: "review", status: "ready_review", tone: "secondary", hint: "Prepared work is ready for owner/client review." },
+    { label: "Complete / Archive", action: "done", status: "done", tone: "secondary", hint: "Close the ticket after merge, delivery, or archive." },
+    { label: "Needs Info", action: "needs-info", status: "blocked", tone: "danger", hint: "Send back for credentials, copy, assets, or approval details." }
   ];
 
   return `<div class="web-helper-ticket-actions">
-    ${actions.map((item) => `<button class="${item.tone === "primary" ? "command-send" : item.tone === "danger" ? "danger-button" : "new-client-button secondary-button"}" type="button" data-web-helper-ticket-action="${escapeHtml(item.action)}" data-web-helper-ticket-id="${escapeHtml(getWebHelperTicketId(ticket))}" ${item.status ? `data-web-helper-ticket-status="${escapeHtml(item.status)}"` : ""}>${escapeHtml(item.label)}</button>`).join("")}
+    ${actions.map((item) => `<button class="${item.tone === "primary" ? "command-send" : item.tone === "danger" ? "danger-button" : "new-client-button secondary-button"}" type="button" title="${escapeHtml(item.hint)}" data-web-helper-ticket-action="${escapeHtml(item.action)}" data-web-helper-ticket-id="${escapeHtml(getWebHelperTicketId(ticket))}" ${item.status ? `data-web-helper-ticket-status="${escapeHtml(item.status)}"` : ""}>
+      <strong>${escapeHtml(item.label)}</strong>
+      <span>${escapeHtml(item.hint)}</span>
+    </button>`).join("")}
   </div>
   <p id="webHelperTicketActionResponse" class="command-response" aria-live="polite"></p>`;
 }
@@ -7428,7 +7633,7 @@ async function updateWebHelperTicketStatus(ticketId, status) {
     approved: "Owner approved helper work on the configured testing branch.",
     in_progress: "Helper work started under the configured branch policy.",
     ready_review: "Helper marked the requested change ready for owner/client review.",
-    blocked: "Ticket blocked pending credentials, assets, details, or manual intervention.",
+    blocked: "Ticket needs more information before helper work can continue.",
     done: "Ticket completed, merged, or archived."
   };
   const actionResponse = document.getElementById("webHelperTicketActionResponse");
@@ -8153,6 +8358,12 @@ async function init() {
     updateClientStage(clientId, stageId);
   });
   elements.clientDetailDrawer?.addEventListener("click", (event) => {
+    const upsellTarget = event.target.closest("[data-client-upsell-email][data-client-upsell-service]");
+    if (upsellTarget) {
+      openUpsellEmailAgent(upsellTarget.dataset.clientUpsellEmail, upsellTarget.dataset.clientUpsellService);
+      return;
+    }
+
     const editTarget = event.target.closest("[data-client-edit]");
     if (!editTarget) {
       return;
