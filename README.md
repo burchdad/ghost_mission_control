@@ -276,6 +276,8 @@ GHOST_MISSION_CONTROL_PUBLIC_URL=https://<railway-domain>
 CODEX_WORKER_COMMAND=<codex-or-wrapper-command>
 CODEX_WORKER_ARGS=["exec","--dangerously-bypass-approvals-and-sandbox"]
 CODEX_WORKER_VERIFICATION_MODE=external
+CODEX_EXTERNAL_VERIFICATION_POLL_INTERVAL_MS=30000
+CODEX_EXTERNAL_VERIFICATION_MAX_ATTEMPTS=20
 ```
 
 The intake webhook accepts `POST /mission/codex-runner/intake` with `X-Codex-Build-Secret`, marks the linked ticket as active, and returns the callback URL the runner should use after building. A dedicated external Codex runner can use the same payload contract and report results to `POST /mission/codex-build-tasks/result`.
@@ -284,7 +286,7 @@ The built-in runner intake creates the configured testing branch in the target G
 
 Mission Control also exposes `POST /mission/codex-runner/work` for the next worker layer. The worker clones the target branch, writes a prompt file, runs `CODEX_WORKER_COMMAND` with `CODEX_WORKER_ARGS`, commits and pushes any source changes, then reports back to `/mission/codex-build-tasks/result`. Codex receives the ticket prompt as the `codex exec` positional prompt argument; the legacy `["exec","--prompt-file","{PROMPT_PATH}"]` form is auto-normalized for the Codex CLI. Railway does not allow Codex's nested bubblewrap sandbox, so the Docker worker should use `--dangerously-bypass-approvals-and-sandbox` inside the already-isolated Railway container. Use `{PROMPT_PATH}`, `{REPO_DIR}`, `{TICKET_ID}`, `{TASK_ID}`, and `{BRANCH}` placeholders inside custom `CODEX_WORKER_ARGS`. Set `CODEX_WORKER_AUTORUN=true` only when the deployed environment can safely run the configured worker command during intake. Set `GITHUB_TOKEN` with contents write access to the client repos.
 
-By default, `CODEX_WORKER_VERIFICATION_MODE=external` keeps heavy verification out of Railway. In this mode the worker pushes the testing branch, stores the commit SHA, and leaves the ticket in active build while GitHub/Vercel checks run. Mission Control can then poll `POST /mission/codex-build-tasks/checks` with `X-Codex-Build-Secret` and `{ "ticketId": "...", "taskId": "..." }`; passing checks move the ticket to owner review, failing checks block the ticket, and pending checks keep it in progress. Use `local` only for lightweight repos where the Railway worker can safely run `CODEX_BUILD_DEFAULT_TEST_COMMAND`; use `none` only for temporary manual testing.
+By default, `CODEX_WORKER_VERIFICATION_MODE=external` keeps heavy verification out of Railway. In this mode the worker pushes the testing branch, stores the commit SHA, and leaves the ticket in active build while GitHub/Vercel checks run. Mission Control automatically watches the commit checks at `CODEX_EXTERNAL_VERIFICATION_POLL_INTERVAL_MS` until `CODEX_EXTERNAL_VERIFICATION_MAX_ATTEMPTS`; passing checks move the ticket to owner review, failing checks block the ticket, and pending checks keep it in progress. You can also manually poll `POST /mission/codex-build-tasks/checks` with `X-Codex-Build-Secret` and `{ "ticketId": "...", "taskId": "..." }`. Use `local` only for lightweight repos where the Railway worker can safely run `CODEX_BUILD_DEFAULT_TEST_COMMAND`; use `none` only for temporary manual testing.
 
 When `CODEX_WORKER_COMMAND=codex`, the worker performs a non-interactive `codex login --with-api-key` using `OPENAI_API_KEY` before running `codex exec`.
 

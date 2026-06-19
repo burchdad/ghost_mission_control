@@ -66,6 +66,8 @@ const CODEX_WORKER_AUTORUN = String(process.env.CODEX_WORKER_AUTORUN || "false")
 const CODEX_WORKER_TIMEOUT_MS = Number(process.env.CODEX_WORKER_TIMEOUT_MS || 600000);
 const CODEX_WORKER_ROOT = String(process.env.CODEX_WORKER_ROOT || path.join(os.tmpdir(), "ghost-codex-worker")).trim();
 const CODEX_WORKER_VERIFICATION_MODE = String(process.env.CODEX_WORKER_VERIFICATION_MODE || "external").trim().toLowerCase();
+const CODEX_EXTERNAL_VERIFICATION_POLL_INTERVAL_MS = Number(process.env.CODEX_EXTERNAL_VERIFICATION_POLL_INTERVAL_MS || 30000);
+const CODEX_EXTERNAL_VERIFICATION_MAX_ATTEMPTS = Number(process.env.CODEX_EXTERNAL_VERIFICATION_MAX_ATTEMPTS || 20);
 const WEB_HELPER_AUTOMATION_ENABLED = String(process.env.WEB_HELPER_AUTOMATION_ENABLED || "true").toLowerCase() !== "false";
 const WEB_HELPER_AUTOMATION_START_DELAY_MS = Number(process.env.WEB_HELPER_AUTOMATION_START_DELAY_MS || 8000);
 const WEB_HELPER_TRIAGE_TO_CODEX_DELAY_MS = Number(process.env.WEB_HELPER_TRIAGE_TO_CODEX_DELAY_MS || 8000);
@@ -2006,15 +2008,26 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
   const relayBody = parseCodexRelayBody(relay);
   const relayRunner = relayBody?.runner || null;
   const relayRunnerReady = relayRunner?.result?.status === "ready_review" || relayRunner?.result?.status === "success";
+  const relayRunnerExternalVerification = relayRunner?.result?.status === "external_verification";
   const relayRunnerBlocked = relayRunner && (relayRunner.ok === false || relayRunner.blocked);
   task.relay = relay;
-  task.status = relayRunnerReady ? "ready_for_owner_review" : relayRunnerBlocked ? "blocked" : relay.ok ? "sent_to_runner" : "queued";
+  task.status = relayRunnerReady
+    ? "ready_for_owner_review"
+    : relayRunnerExternalVerification
+      ? "external_verification"
+      : relayRunnerBlocked
+        ? "blocked"
+        : relay.ok
+          ? "sent_to_runner"
+          : "queued";
   task.events.push({
     type: relay.ok ? "codex_build_relay_sent" : "codex_build_relay_pending",
     status: task.status,
     actor: "mission_control",
     message: relayRunnerReady
       ? `Codex worker committed and pushed ${relayRunner.result?.commitSha || "a testing branch update"}.`
+      : relayRunnerExternalVerification
+        ? `Codex worker pushed ${relayRunner.result?.commitSha || relayRunner.result?.targetBranch || payload.targetBranch || "the testing branch"} and is waiting for external GitHub/Vercel checks.`
       : relayRunnerBlocked
         ? `Codex runner accepted the handoff but could not complete the build: ${relayRunner.error || relayRunner.reason || "unknown error"}.`
         : relayRunner?.ok
@@ -2030,11 +2043,21 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
     return stored;
   }
 
-  const ticketStatus = relayRunnerReady ? "ready_review" : relayRunnerBlocked ? "blocked" : relay.ok ? "sent_to_runner" : "codex_queued";
+  const ticketStatus = relayRunnerReady
+    ? "ready_review"
+    : relayRunnerExternalVerification
+      ? "external_verification"
+      : relayRunnerBlocked
+        ? "blocked"
+        : relay.ok
+          ? "sent_to_runner"
+          : "codex_queued";
   const updatedTicket = await updateWebHelperRequestStatusInPostgres(ticket.id, ticketStatus, {
     actor: "mission_control",
     message: relayRunnerReady
       ? `${stored.task.id} committed and pushed the testing-branch update for owner review.`
+      : relayRunnerExternalVerification
+        ? `${stored.task.id} pushed ${stored.task.targetBranch}. Waiting for external GitHub/Vercel verification before owner review.`
       : relayRunnerBlocked
         ? `${stored.task.id} could not complete the Codex worker build: ${relayRunner.error || relayRunner.reason || "unknown error"}.`
         : relayRunner?.ok
@@ -2043,6 +2066,16 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
           ? `${stored.task.id} sent to Codex runner. Branch ${stored.task.targetBranch}. Owner approval still required before merge.`
       : `${stored.task.id} created. Branch ${stored.task.targetBranch}. Waiting for Codex runner pickup; owner approval still required before merge.`
   });
+
+  if (relayRunnerExternalVerification) {
+    scheduleCodexExternalVerificationWatcher({
+      ticketId: ticket.id,
+      taskId: stored.task.id,
+      branch: stored.task.targetBranch,
+      targetBranch: stored.task.targetBranch,
+      commitSha: relayRunner.result?.commitSha || relayRunner.result?.commit_sha || ""
+    });
+  }
 
   return {
     ok: true,
@@ -2132,6 +2165,7 @@ async function runWebHelperAutomationForTicket(ticket, options = {}) {
 }
 
 const scheduledWebHelperAutomations = new Set();
+const scheduledCodexVerificationChecks = new Set();
 
 function scheduleWebHelperAutomation(ticket, options = {}) {
   if (!WEB_HELPER_AUTOMATION_ENABLED || !ticket?.id) {
@@ -2159,6 +2193,60 @@ function scheduleWebHelperAutomation(ticket, options = {}) {
   }, Math.max(0, delayMs));
 
   return { ok: true, scheduled: true, delayMs };
+}
+
+function scheduleCodexExternalVerificationWatcher(payload = {}, options = {}) {
+  const ticketId = String(payload.ticketId || payload.ticket_id || payload.sourceTicketId || "").trim();
+  const taskId = String(payload.taskId || payload.task_id || (ticketId ? `codex_${ticketId}` : "")).trim();
+  if (!ticketId || !taskId) {
+    return { ok: false, scheduled: false, reason: "ticketId and taskId are required for external verification watcher." };
+  }
+
+  const key = `${ticketId}:${taskId}`;
+  if (scheduledCodexVerificationChecks.has(key)) {
+    return { ok: true, scheduled: false, reason: "External verification watcher is already scheduled." };
+  }
+
+  scheduledCodexVerificationChecks.add(key);
+  const intervalMs = Math.max(5000, Number(options.intervalMs ?? CODEX_EXTERNAL_VERIFICATION_POLL_INTERVAL_MS));
+  const maxAttempts = Math.max(1, Number(options.maxAttempts ?? CODEX_EXTERNAL_VERIFICATION_MAX_ATTEMPTS));
+  const checkPayload = {
+    ticketId,
+    taskId,
+    branch: payload.branch || payload.targetBranch || "",
+    targetBranch: payload.targetBranch || payload.branch || "",
+    commitSha: payload.commitSha || payload.commit_sha || "",
+    silentPending: true
+  };
+
+  const poll = async (attempt = 1) => {
+    try {
+      const result = await checkCodexBuildExternalVerification(checkPayload);
+      if (!result.pending) {
+        scheduledCodexVerificationChecks.delete(key);
+        return;
+      }
+
+      if (attempt >= maxAttempts) {
+        await appendWebHelperRequestEventInPostgres(ticketId, {
+          type: "external_verification_timeout",
+          status: "in_progress",
+          actor: "mission_control",
+          message: "External GitHub/Vercel verification is still pending after the watcher timeout. Run the verification check again once GitHub/Vercel checks complete."
+        }).catch(() => {});
+        scheduledCodexVerificationChecks.delete(key);
+        return;
+      }
+
+      setTimeout(() => poll(attempt + 1), intervalMs);
+    } catch (error) {
+      console.error("[codex-verification] External verification watcher failed.", error);
+      scheduledCodexVerificationChecks.delete(key);
+    }
+  };
+
+  setTimeout(() => poll(1), intervalMs);
+  return { ok: true, scheduled: true, intervalMs, maxAttempts };
 }
 
 async function updateCodexBuildTaskStatus(taskId, status, event = {}) {
@@ -2477,11 +2565,14 @@ async function processCodexRunnerResult(payload = {}) {
 
   const readyStatuses = ["ready_review", "ready-for-review", "success", "completed", "tests_passed"];
   const blockedStatuses = ["blocked", "failed", "error", "needs_info"];
+  const externalVerificationStatuses = ["external_verification", "waiting_external_verification", "external-verification"];
   const nextTicketStatus = readyStatuses.includes(resultStatus)
     ? "ready_review"
     : blockedStatuses.includes(resultStatus)
       ? "blocked"
-      : "in_progress";
+      : externalVerificationStatuses.includes(resultStatus)
+        ? "external_verification"
+        : "in_progress";
   const nextTaskStatus = nextTicketStatus === "ready_review" ? "ready_for_owner_review" : nextTicketStatus;
   const taskUpdate = await updateCodexBuildTaskStatus(taskId, nextTaskStatus, {
     type: "codex_runner_result",
@@ -2503,6 +2594,10 @@ async function processCodexRunnerResult(payload = {}) {
     actor: "codex_runner",
     message: payload.message || (nextTicketStatus === "ready_review" ? "Codex build completed on testing branch and is ready for owner review." : "Codex runner reported the ticket needs attention.")
   });
+
+  if (resultStatus === "external_verification") {
+    scheduleCodexExternalVerificationWatcher(payload);
+  }
 
   return { ok: ticketUpdate.ok, task: taskUpdate.task, ticket: ticketUpdate.request, status: nextTicketStatus };
 }
@@ -2546,6 +2641,10 @@ async function checkCodexBuildExternalVerification(payload = {}) {
       message: "External GitHub/Vercel verification passed; the ticket is ready for owner review."
     });
     return { ok: ready.ok, verification, result: ready };
+  }
+
+  if (payload.silentPending) {
+    return { ok: true, pending: true, verification };
   }
 
   const taskUpdate = await updateCodexBuildTaskStatus(task.id, "external_verification", {
