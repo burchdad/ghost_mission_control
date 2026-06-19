@@ -22,7 +22,9 @@ const {
   appendCodexPromptArg,
   isCodexWorkerCommand,
   summarizeGithubVerification,
-  buildWebHelperProvisionEnvBundle
+  buildWebHelperProvisionEnvBundle,
+  buildClientSupportUrl,
+  buildClientSupportToken
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -315,7 +317,24 @@ function testWebHelperProvisionEnvBundle() {
   assert.strictEqual(bundle.values.GHOST_CLIENT_ID, "gray-matters-tech");
   assert.strictEqual(bundle.values.GHOST_REPO, "burchdad/barbara_consulting");
   assert.strictEqual(bundle.values.GHOST_MISSION_CONTROL_WEBHOOK_URL, "https://ghostmissioncontrol-production.up.railway.app/mission/web-helper-requests");
+  assert.ok(bundle.values.GHOST_SUPPORT_URL.includes("/mission/web-helper-support?clientId=gray-matters-tech"));
   assert.strictEqual(bundle.values.GHOST_MISSION_CONTROL_WEBHOOK_SECRET, "<owner-managed shared intake secret>");
+}
+
+function testClientSupportUrlUsesSignedClientLink() {
+  const client = buildClientRecord({
+    id: "gray-matters-tech",
+    clientName: "Gray Matters Tech",
+    websiteUrl: "https://www.graymatterstech.com",
+    repo: "burchdad/barbara_consulting",
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care"]
+  });
+  const token = buildClientSupportToken(client.id);
+  const url = buildClientSupportUrl(client, { headers: { host: "missioncontrol.ghostai.solutions" } });
+  assert.ok(url.startsWith("https://missioncontrol.ghostai.solutions/mission/web-helper-support"));
+  assert.ok(url.includes(`clientId=${encodeURIComponent(client.id)}`));
+  assert.ok(url.includes(`token=${encodeURIComponent(token)}`));
 }
 
 function testGithubVerificationSummary() {
@@ -355,6 +374,7 @@ function testGithubVerificationSummary() {
   testWorkerArgsParsingSupportsJsonAndQuotes,
   testFinalPaymentCompletesWebBuildStage,
   testWebHelperProvisionEnvBundle,
+  testClientSupportUrlUsesSignedClientLink,
   testGithubVerificationSummary
 ].forEach((test) => test());
 

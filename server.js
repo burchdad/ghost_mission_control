@@ -2376,6 +2376,28 @@ function buildClientConfirmationToken(ticketId, taskId) {
     .slice(0, 32);
 }
 
+function buildClientSupportToken(clientId) {
+  return crypto
+    .createHash("sha256")
+    .update(`client-support:${canonicalClientId(clientId)}:${GHOST_WEB_HELPER_WEBHOOK_SECRET || CODEX_BUILD_WEBHOOK_SECRET}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+function buildClientSupportUrl(client, request = null) {
+  const host = request?.headers?.host || "";
+  const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
+  const base = host
+    ? `${protocol}://${host}`
+    : buildMissionControlUrl("");
+  if (!base || !client?.id) {
+    return "";
+  }
+
+  const token = buildClientSupportToken(client.id);
+  return `${base.replace(/\/+$/, "")}/mission/web-helper-support?clientId=${encodeURIComponent(client.id)}&token=${encodeURIComponent(token)}`;
+}
+
 function escapeEmailHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -2383,6 +2405,81 @@ function escapeEmailHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function renderClientSupportForm(client, supportUrl, message = "") {
+  const safeClientName = escapeEmailHtml(client.clientName || "Website Support");
+  const safeSite = escapeEmailHtml(client.websiteUrl || "");
+  const safeSupportUrl = escapeEmailHtml(supportUrl);
+  const safeMessage = message ? `<div class="notice">${escapeEmailHtml(message)}</div>` : "";
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${safeClientName} Support</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #050706; color: #f7fff6; }
+    main { width: min(760px, calc(100vw - 32px)); margin: 32px auto; border: 1px solid rgba(105,255,143,.22); border-radius: 16px; background: #080d09; padding: 28px; box-shadow: 0 24px 80px rgba(0,0,0,.38); }
+    h1 { margin: 0; font-size: clamp(2rem, 5vw, 3.6rem); letter-spacing: 0; }
+    p { color: #aebaaa; line-height: 1.55; }
+    form { display: grid; gap: 16px; margin-top: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    label { display: grid; gap: 7px; color: #b9c7b5; font-size: .82rem; text-transform: uppercase; letter-spacing: .1em; }
+    input, select, textarea { width: 100%; box-sizing: border-box; border: 1px solid rgba(255,255,255,.18); border-radius: 8px; background: #020403; color: #fff; padding: 12px; font: inherit; }
+    textarea { min-height: 150px; resize: vertical; }
+    button { border: 0; border-radius: 8px; background: #ef0015; color: #fff; padding: 14px 18px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; cursor: pointer; }
+    .notice { border: 1px solid rgba(105,255,143,.35); background: rgba(105,255,143,.08); color: #dfffe3; padding: 12px; border-radius: 8px; margin: 18px 0 0; }
+    .small { font-size: .86rem; color: #8e998b; }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } main { padding: 22px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="small">Website Support</span>
+    <h1>${safeClientName}</h1>
+    <p>${safeSite ? `Submit a website update or support request for ${safeSite}.` : "Submit a website update or support request."} Changes are reviewed before they are published.</p>
+    ${safeMessage}
+    <form method="post" action="${safeSupportUrl}">
+      <div class="grid">
+        <label>Requester Name<input name="requesterName" autocomplete="name" required /></label>
+        <label>Requester Email<input name="requesterEmail" type="email" autocomplete="email" required /></label>
+      </div>
+      <div class="grid">
+        <label>Page or Section<input name="pageUrl" placeholder="/services, homepage hero, contact form..." required /></label>
+        <label>Request Type
+          <select name="requestType">
+            <option value="text_update">Text update</option>
+            <option value="image_update">Image update</option>
+            <option value="bug">Bug or broken link</option>
+            <option value="layout_change">Layout change</option>
+            <option value="feature_request">Feature request</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid">
+        <label>Priority
+          <select name="priority">
+            <option value="normal">Normal</option>
+            <option value="low">Low</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </label>
+        <label>Short Summary<input name="summary" maxlength="140" required /></label>
+      </div>
+      <label>Details<textarea name="details" placeholder="Describe what should change, where it appears, and any exact copy/assets to use." required></textarea></label>
+      <button type="submit">Send Support Request</button>
+      <p class="small">This creates a support ticket only. Website changes require owner review and approval before publishing.</p>
+    </form>
+  </main>
+</body>
+</html>`;
+}
+
+function renderClientSupportSuccess(client, ticket) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Support Request Sent</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#050706;color:#f7fff6;font-family:Inter,system-ui,sans-serif}main{width:min(680px,calc(100vw - 32px));border:1px solid rgba(105,255,143,.25);border-radius:16px;background:#080d09;padding:30px}h1{font-size:clamp(2rem,5vw,3.4rem);margin:0}p{color:#aebaaa;line-height:1.55}.ticket{color:#69ff8f;font-weight:800}</style></head><body><main><h1>Request Sent</h1><p>Your support request for ${escapeEmailHtml(client.clientName)} was sent to Ghost Mission Control for review.</p><p>Ticket: <span class="ticket">${escapeEmailHtml(ticket.id || "")}</span></p><p>You can close this page.</p></main></body></html>`;
 }
 
 function getTicketRequesterEmail(ticket) {
@@ -4759,12 +4856,14 @@ function buildWebHelperProvisionEnvBundle(client, request = null) {
   const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
   const webhookBase = host ? `${protocol}://${host}` : (GHOST_MISSION_CONTROL_PUBLIC_URL || "").replace(/\/$/, "");
   const webhookUrl = `${webhookBase.replace(/\/$/, "")}/mission/web-helper-requests`;
+  const supportUrl = buildClientSupportUrl(client, request);
   const values = {
     GHOST_CLIENT_ID: client.id,
     GHOST_CLIENT_NAME: client.clientName,
     GHOST_SITE_URL: client.websiteUrl,
     GHOST_REPO: normalizeGithubRepoFullName(client.repo || client.githubUrl) || client.repo || "",
     GHOST_WEB_HELPER_ID: webHelperId,
+    GHOST_SUPPORT_URL: supportUrl,
     GHOST_WEB_HELPER_APPROVAL_REQUIRED: String(GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED),
     GHOST_WEB_HELPER_BRANCH_POLICY: GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY,
     GHOST_MISSION_CONTROL_WEBHOOK_URL: webhookUrl,
@@ -4774,6 +4873,7 @@ function buildWebHelperProvisionEnvBundle(client, request = null) {
   return {
     webHelperId,
     webhookUrl,
+    supportUrl,
     secretManagedByOwner: true,
     values,
     vercel: {
@@ -6967,6 +7067,16 @@ function sendHead(request, response, statusCode, headers = {}) {
   response.end();
 }
 
+function sendHtml(request, response, statusCode, html) {
+  response.writeHead(
+    statusCode,
+    getDefaultHeaders(request, {
+      "Content-Type": "text/html; charset=utf-8"
+    })
+  );
+  response.end(html);
+}
+
 function readJsonBody(request, maxBytes = 1_000_000) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -6985,6 +7095,27 @@ function readJsonBody(request, maxBytes = 1_000_000) {
       } catch {
         reject(new Error("Invalid JSON payload"));
       }
+    });
+
+    request.on("error", reject);
+  });
+}
+
+function readFormBody(request, maxBytes = 1_000_000) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+
+    request.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > maxBytes) {
+        reject(new Error("Request body too large"));
+        request.destroy();
+      }
+    });
+
+    request.on("end", () => {
+      const params = new URLSearchParams(body);
+      resolve(Object.fromEntries(params.entries()));
     });
 
     request.on("error", reject);
@@ -9060,6 +9191,72 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (url.pathname === "/mission/web-helper-support" && (request.method === "GET" || request.method === "POST")) {
+    const clientId = canonicalClientId(url.searchParams.get("clientId") || "");
+    const token = String(url.searchParams.get("token") || "").trim();
+    const expectedToken = clientId ? buildClientSupportToken(clientId) : "";
+    if (!clientId || !token || !expectedToken || !timingSafeEqualText(token, expectedToken)) {
+      sendHtml(request, response, 403, "<!doctype html><title>Support link invalid</title><body style=\"font-family:system-ui;background:#050706;color:#f7fff6;padding:40px\"><h1>Support link invalid</h1><p>Please request a fresh support link.</p></body>");
+      return;
+    }
+
+    syncClientStore(true)
+      .then(async () => {
+        const client = getAllClients().find((entry) => canonicalClientId(entry.id) === clientId);
+        if (!client) {
+          sendHtml(request, response, 404, "<!doctype html><title>Client not found</title><body style=\"font-family:system-ui;background:#050706;color:#f7fff6;padding:40px\"><h1>Client not found</h1><p>This support link is not connected to an active client record.</p></body>");
+          return;
+        }
+
+        const supportUrl = buildClientSupportUrl(client, request);
+        if (request.method === "GET") {
+          sendHtml(request, response, 200, renderClientSupportForm(client, supportUrl));
+          return;
+        }
+
+        const form = await readFormBody(request);
+        const payload = {
+          clientId: client.id,
+          webHelperId: `${client.id}-web-helper`,
+          client: client.clientName,
+          site: client.websiteUrl,
+          repo: client.repo,
+          source: "public_client_support_link",
+          request_type: form.requestType || "website_update",
+          page_url: form.pageUrl || "",
+          summary: form.summary || "",
+          details: form.details || "",
+          priority: form.priority || "normal",
+          attachments: [],
+          branch_policy: GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY,
+          approval_required: GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED,
+          requester: {
+            name: form.requesterName || "",
+            email: form.requesterEmail || ""
+          }
+        };
+
+        if (!payload.summary || !payload.details) {
+          sendHtml(request, response, 400, renderClientSupportForm(client, supportUrl, "Summary and details are required."));
+          return;
+        }
+
+        const record = normalizeWebHelperRequestPayload(payload, client);
+        const stored = await persistWebHelperRequestToPostgres(record);
+        if (!stored.ok) {
+          sendHtml(request, response, 503, renderClientSupportForm(client, supportUrl, "Mission Control could not save the request. Please try again shortly."));
+          return;
+        }
+
+        scheduleWebHelperAutomation(stored.request);
+        sendHtml(request, response, 201, renderClientSupportSuccess(client, stored.request));
+      })
+      .catch((error) => {
+        sendHtml(request, response, 500, `<!doctype html><title>Support unavailable</title><body style="font-family:system-ui;background:#050706;color:#f7fff6;padding:40px"><h1>Support unavailable</h1><p>${escapeEmailHtml(String(error?.message || error || "Unable to process support request."))}</p></body>`);
+      });
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/mission/clients") {
     readJsonBody(request)
       .then(async (payload) => {
@@ -10042,6 +10239,8 @@ if (require.main === module) {
     appendCodexPromptArg,
     isCodexWorkerCommand,
     summarizeGithubVerification,
-    buildWebHelperProvisionEnvBundle
+    buildWebHelperProvisionEnvBundle,
+    buildClientSupportUrl,
+    buildClientSupportToken
   };
 }
