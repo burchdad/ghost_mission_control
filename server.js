@@ -1425,7 +1425,7 @@ async function ensureCodexBuildTaskTable() {
 }
 
 function normalizeWebhookSecret(value) {
-  return String(value || "").trim();
+  return stripWrappingQuotes(String(value || "").trim());
 }
 
 function timingSafeEqualText(left, right) {
@@ -1451,6 +1451,25 @@ function verifyWebHelperWebhookSecret(request) {
   }
 
   return { ok: true };
+}
+
+function webhookSecretDiagnostics(providedSecret = "") {
+  const configured = normalizeWebhookSecret(GHOST_WEB_HELPER_WEBHOOK_SECRET);
+  const provided = normalizeWebhookSecret(providedSecret);
+  const fingerprint = (value) => value
+    ? crypto.createHash("sha256").update(value).digest("hex").slice(0, 12)
+    : "";
+
+  return {
+    build: "web-helper-secret-diagnostics-v1",
+    configured: Boolean(configured),
+    configuredLength: configured.length,
+    configuredFingerprint: fingerprint(configured),
+    provided: Boolean(provided),
+    providedLength: provided.length,
+    providedFingerprint: fingerprint(provided),
+    matches: Boolean(provided && configured && timingSafeEqualText(provided, configured))
+  };
 }
 
 function normalizeWebHelperRequestPayload(payload, client) {
@@ -9121,6 +9140,12 @@ const server = http.createServer((request, response) => {
       .catch((error) => {
         sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
       });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/web-helper-secret-diagnostics") {
+    const providedSecret = request.headers["x-ghost-webhook-secret"] || request.headers["x-webhook-secret"] || "";
+    sendJson(request, response, 200, webhookSecretDiagnostics(providedSecret));
     return;
   }
 
