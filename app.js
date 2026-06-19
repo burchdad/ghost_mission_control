@@ -1,6 +1,9 @@
 let missionData = { websites: [] };
 let draftedAgentBuilds = [];
 let currentRecommendedAgents = [];
+let webHelperPollTimer = null;
+let webHelperTicketStageMemory = new Map();
+let webHelperToastHost = null;
 const configuredApiBase = normalizeApiBase(window.GHOST_API_BASE_URL);
 const API_BASE_URL = configuredApiBase && !configuredApiBase.includes("__GHOST_API_BASE_URL__") ? configuredApiBase : "";
 const toneClass = {
@@ -6958,6 +6961,18 @@ async function loadWebHelpers(siteId = activeSiteId) {
   }
 }
 
+function startWebHelperPolling() {
+  if (webHelperPollTimer) {
+    return;
+  }
+
+  webHelperPollTimer = setInterval(() => {
+    if (activeView === "web-helpers") {
+      loadWebHelpers("");
+    }
+  }, 7000);
+}
+
 async function activateWebHelper(targetId, options = {}) {
   if (!targetId) {
     elements.commandResponse.textContent = "No helper target found for activation.";
@@ -7184,7 +7199,7 @@ const webHelperKanbanColumns = [
     id: "in_progress",
     label: "Codex Building",
     hint: "Codex/helper is preparing the testing-branch change.",
-    match: ["in_progress", "in-progress", "running", "working", "codex_queued", "codex-queued", "sent_to_runner"]
+    match: ["in_progress", "in-progress", "running", "working", "codex_queued", "codex-queued", "sent_to_runner", "external_verification", "sent-to-runner"]
   },
   {
     id: "ready_review",
@@ -7234,6 +7249,86 @@ function getWebHelperTicketColumn(request) {
   }
 
   return request.approvalRequired && status !== "new" ? "needs_approval" : "triage";
+}
+
+function getWebHelperColumnLabel(columnId) {
+  return webHelperKanbanColumns.find((column) => column.id === columnId)?.label || "Updated";
+}
+
+function getWebHelperToastMessage(ticket, previousColumn, nextColumn) {
+  const title = ticket.title || ticket.summary || "Website support ticket";
+  const client = ticket.clientName || "Client";
+  if (!previousColumn) {
+    return {
+      title: "New Web Helper Intake",
+      body: `${client}: ${title}`
+    };
+  }
+
+  if (nextColumn === "in_progress") {
+    return {
+      title: "Codex Build Started",
+      body: `${client}: ${title}`
+    };
+  }
+
+  if (nextColumn === "ready_review") {
+    return {
+      title: "Ready for Your Review",
+      body: `${client}: ${title}`
+    };
+  }
+
+  if (nextColumn === "blocked") {
+    return {
+      title: "Web Helper Needs Attention",
+      body: `${client}: ${title}`
+    };
+  }
+
+  return {
+    title: `Moved to ${getWebHelperColumnLabel(nextColumn)}`,
+    body: `${client}: ${title}`
+  };
+}
+
+function showWebHelperToast(title, body) {
+  if (!webHelperToastHost) {
+    webHelperToastHost = document.createElement("div");
+    webHelperToastHost.className = "web-helper-toast-host";
+    webHelperToastHost.setAttribute("aria-live", "polite");
+    document.body.appendChild(webHelperToastHost);
+  }
+
+  const toast = document.createElement("button");
+  toast.type = "button";
+  toast.className = "web-helper-toast";
+  toast.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(body)}</span>`;
+  toast.addEventListener("click", () => {
+    setActiveView("web-helpers");
+    setFocusMode(true, "web-helpers");
+    toast.remove();
+  });
+  webHelperToastHost.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 8500);
+}
+
+function notifyWebHelperTicketChanges(tickets) {
+  const nextMemory = new Map();
+  const hadMemory = webHelperTicketStageMemory.size > 0;
+  tickets.forEach((ticket) => {
+    const id = getWebHelperTicketId(ticket);
+    const column = getWebHelperTicketColumn(ticket);
+    nextMemory.set(id, column);
+    const previousColumn = webHelperTicketStageMemory.get(id);
+    if (!hadMemory || previousColumn === column) {
+      return;
+    }
+
+    const message = getWebHelperToastMessage(ticket, previousColumn, column);
+    showWebHelperToast(message.title, message.body);
+  });
+  webHelperTicketStageMemory = nextMemory;
 }
 
 function getPriorityTone(priority) {
@@ -7856,6 +7951,7 @@ function renderWebHelpers(payload) {
   const supportRequests = requests.filter((request) => !isWebHelperOperationalTask(request));
   const filters = getWebHelperFilterState();
   const visibleRequests = supportRequests.filter((request) => webHelperTicketMatchesFilters(request, filters));
+  notifyWebHelperTicketChanges(supportRequests);
   currentWebHelperTickets = supportRequests;
   const requestsByColumn = webHelperKanbanColumns.reduce((accumulator, column) => {
     accumulator[column.id] = [];
@@ -8769,6 +8865,8 @@ async function init() {
     elements.siteSelect.value = nextSite.id || "";
     renderSite(nextSite.id);
   }, 60_000);
+
+  startWebHelperPolling();
 }
 
 init();

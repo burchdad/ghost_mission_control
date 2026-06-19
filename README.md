@@ -224,6 +224,8 @@ GHOST_WEB_HELPER_WEBHOOK_SECRET=<shared-secret>
 GHOST_WEB_HELPER_ALLOWED_SOURCES=client_admin_dashboard
 GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY=testing_branch_only
 GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED=true
+WEB_HELPER_AUTOMATION_START_DELAY_MS=8000
+WEB_HELPER_TRIAGE_TO_CODEX_DELAY_MS=8000
 ```
 
 Recommended variables on each client website/admin dashboard:
@@ -259,7 +261,7 @@ The client dashboard should include enough identity for Mission Control to match
 }
 ```
 
-Send requests to `POST /mission/web-helper-requests` with the shared secret in `X-Ghost-Webhook-Secret`. Mission Control matches by client, site, or repo, stores the request, and shows it in the matching Web Helper queue.
+Send requests to `POST /mission/web-helper-requests` with the shared secret in `X-Ghost-Webhook-Secret`. Mission Control matches by client, site, or repo, stores the request, and shows it in the matching Web Helper queue. The intake endpoint acknowledges the saved ticket immediately, then starts automation after `WEB_HELPER_AUTOMATION_START_DELAY_MS`. After triage, it waits `WEB_HELPER_TRIAGE_TO_CODEX_DELAY_MS` before creating the Codex build task so the board visibly moves through New Intake -> Needs Triage -> Codex Building.
 
 ## Web Helper Codex Build Handoff
 

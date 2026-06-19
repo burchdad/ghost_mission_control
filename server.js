@@ -67,6 +67,8 @@ const CODEX_WORKER_TIMEOUT_MS = Number(process.env.CODEX_WORKER_TIMEOUT_MS || 60
 const CODEX_WORKER_ROOT = String(process.env.CODEX_WORKER_ROOT || path.join(os.tmpdir(), "ghost-codex-worker")).trim();
 const CODEX_WORKER_VERIFICATION_MODE = String(process.env.CODEX_WORKER_VERIFICATION_MODE || "external").trim().toLowerCase();
 const WEB_HELPER_AUTOMATION_ENABLED = String(process.env.WEB_HELPER_AUTOMATION_ENABLED || "true").toLowerCase() !== "false";
+const WEB_HELPER_AUTOMATION_START_DELAY_MS = Number(process.env.WEB_HELPER_AUTOMATION_START_DELAY_MS || 8000);
+const WEB_HELPER_TRIAGE_TO_CODEX_DELAY_MS = Number(process.env.WEB_HELPER_TRIAGE_TO_CODEX_DELAY_MS || 8000);
 const CLIENT_UPDATE_EMAIL_WEBHOOK_URL = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_URL || "").trim();
 const CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET || "").trim();
 const GHOST_MISSION_CONTROL_PUBLIC_URL = String(process.env.GHOST_MISSION_CONTROL_PUBLIC_URL || process.env.RAILWAY_PUBLIC_DOMAIN || "").trim();
@@ -2050,6 +2052,11 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
   };
 }
 
+function sleep(ms) {
+  const delay = Number(ms || 0);
+  return delay > 0 ? new Promise((resolve) => setTimeout(resolve, delay)) : Promise.resolve();
+}
+
 function assessWebHelperRequest(ticket, client = {}) {
   const text = `${ticket.title || ""} ${ticket.summary || ""} ${ticket.details || ""} ${ticket.pageUrl || ""}`.toLowerCase();
   const urgentTerms = ["urgent", "down", "offline", "broken", "error", "payment", "checkout", "form", "lead", "security"];
@@ -2116,8 +2123,42 @@ async function runWebHelperAutomationForTicket(ticket, options = {}) {
     return { ok: true, assessment, ticket: triaged.request, codex: null };
   }
 
+  if (!options.immediateCodexBuild) {
+    await sleep(options.triageToCodexDelayMs ?? WEB_HELPER_TRIAGE_TO_CODEX_DELAY_MS);
+  }
+
   const codex = await createCodexBuildTaskFromWebHelperRequest(ticket.id);
   return { ok: codex.ok, assessment, ticket: codex.ticket || triaged.request, codex };
+}
+
+const scheduledWebHelperAutomations = new Set();
+
+function scheduleWebHelperAutomation(ticket, options = {}) {
+  if (!WEB_HELPER_AUTOMATION_ENABLED || !ticket?.id) {
+    return { ok: true, scheduled: false, reason: "Web Helper automation is disabled or ticket is missing." };
+  }
+
+  if (scheduledWebHelperAutomations.has(ticket.id)) {
+    return { ok: true, scheduled: false, reason: "Automation is already scheduled for this ticket." };
+  }
+
+  scheduledWebHelperAutomations.add(ticket.id);
+  const delayMs = Number(options.delayMs ?? WEB_HELPER_AUTOMATION_START_DELAY_MS);
+  setTimeout(async () => {
+    try {
+      await runWebHelperAutomationForTicket(ticket, options);
+    } catch (error) {
+      console.error("[web-helper] Scheduled automation failed.", error);
+      await updateWebHelperRequestStatusInPostgres(ticket.id, "blocked", {
+        actor: "web_helper_agent",
+        message: `Automation failed before Codex handoff: ${String(error?.message || error || "unknown error")}`
+      }).catch(() => {});
+    } finally {
+      scheduledWebHelperAutomations.delete(ticket.id);
+    }
+  }, Math.max(0, delayMs));
+
+  return { ok: true, scheduled: true, delayMs };
 }
 
 async function updateCodexBuildTaskStatus(taskId, status, event = {}) {
@@ -9052,10 +9093,7 @@ const server = http.createServer((request, response) => {
           return;
         }
 
-        const automation = await runWebHelperAutomationForTicket(stored.request).catch((error) => ({
-          ok: false,
-          error: String(error?.message || error)
-        }));
+        const automation = scheduleWebHelperAutomation(stored.request);
 
         sendJson(request, response, 201, {
           ok: true,
@@ -9066,7 +9104,7 @@ const server = http.createServer((request, response) => {
             websiteUrl: client.websiteUrl,
             repo: client.repo
           },
-          request: automation.ticket || stored.request,
+          request: stored.request,
           automation
         });
       })

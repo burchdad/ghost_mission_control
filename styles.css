@@ -265,6 +265,46 @@ border: 1px solid rgba(125, 166, 188, 0.4);
   cursor: pointer;
 }
 
+.web-helper-toast-host {
+position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 90;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.web-helper-toast {
+display: grid;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid rgba(95, 255, 139, 0.48);
+  border-left: 5px solid var(--green);
+  border-radius: 8px;
+  background: rgba(6, 22, 13, 0.96);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.42);
+  color: var(--text);
+  padding: 14px 16px;
+  text-align: left;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.web-helper-toast strong {
+color: var(--green);
+  font-family: var(--font-display);
+  font-size: 0.86rem;
+  text-transform: uppercase;
+}
+
+.web-helper-toast span {
+color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .command-palette {
 position: fixed;
   inset: 0;
