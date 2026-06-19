@@ -2883,11 +2883,42 @@ padding: 0.62rem;
   font-size: 0.72rem;
 }
 
+.service-client-card-status {
+  overflow-wrap: anywhere;
+}
+
 .service-client-card-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.45rem;
+}
+
+.service-client-card-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.32rem;
+}
+
+.service-client-card-actions button {
+  min-width: 0;
+  border: 1px solid rgba(124, 255, 155, 0.28);
+  border-radius: 6px;
+  background: rgba(12, 35, 20, 0.74);
+  color: #f0faed;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1.1;
+  padding: 0.36rem;
+}
+
+.service-client-card-actions button:hover,
+.service-client-card-actions button:focus-visible {
+  border-color: rgba(124, 255, 155, 0.8);
+  background: rgba(29, 82, 42, 0.76);
+  outline: none;
 }
 
 .service-catalog-details {

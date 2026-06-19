@@ -3417,6 +3417,7 @@ function buildClientResponseRecord(client) {
   return {
     ...client,
     webHelperActivation: getWebHelperActivationSummary(client.id),
+    supportUrl: buildClientSupportUrl(client),
     actions: getClientDerivedActions(client)
   };
 }
@@ -3726,7 +3727,14 @@ async function fetchGitHubApiJson(apiUrl, purpose = "web-helper") {
   });
 
   if (!response.ok) {
-    throw new Error(`GitHub API request failed (${response.status})`);
+    let detail = "";
+    try {
+      const payload = await response.json();
+      detail = payload?.message ? `: ${payload.message}` : "";
+    } catch {
+      detail = "";
+    }
+    throw new Error(`GitHub API request failed (${response.status})${detail}`);
   }
 
   return response.json();
@@ -4834,6 +4842,7 @@ function summarizeWebHelperActivation(activation) {
     learnedAt: activation.createdAt,
     updatedAt: activation.updatedAt,
     repoStatus: activation.knowledge.repoStatus,
+    repoError: activation.knowledge.repoError || "",
     siteStatus: activation.knowledge.siteStatus,
     framework: activation.knowledge.framework,
     routeCount: activation.knowledge.pageRoutes.length,
@@ -5229,6 +5238,36 @@ function isWebHelperHandoffAutomationCandidate(client) {
   );
 }
 
+function isWebHelperActivationReadyForCare(activation) {
+  return Boolean(
+    activation &&
+    activation.status === "active" &&
+    activation.knowledge?.repoStatus !== "learn-failed" &&
+    Number(activation.memoryDocuments?.length || 0) > 0
+  );
+}
+
+async function completeWebHelperHandoffIfReady(client, activation, note = "") {
+  if (normalizeClientStage(client?.stage) !== "launch-handoff" || !isWebHelperActivationReadyForCare(activation)) {
+    return null;
+  }
+
+  const completedClient = buildClientRecord({
+    ...client,
+    stage: "completed-archived",
+    finalPaymentPaid: true,
+    notes: [
+      client.notes,
+      note || "Web Helper memory is active; moved from handoff into completed/post-build care."
+    ].filter(Boolean).join("\n"),
+    updatedAt: new Date().toISOString()
+  });
+  const savedClient = upsertRuntimeClient(completedClient);
+  persistRuntimeClients();
+  await persistClientMutationFallback(await persistRuntimeClientToPostgres(savedClient || completedClient));
+  return savedClient || completedClient;
+}
+
 async function runWebHelperHandoffAutomation(options = {}) {
   hydrateWebHelperActivations();
   const clients = getAllClients().filter(isWebHelperHandoffAutomationCandidate);
@@ -5236,11 +5275,16 @@ async function runWebHelperHandoffAutomation(options = {}) {
   const existing = [];
   const skipped = [];
   const failed = [];
+  const completed = [];
 
   for (const client of clients) {
-    const activation = getWebHelperActivationSummary(client.id);
+    const activation = webHelperActivations.get(client.id);
     if (activation && !options.refreshExisting) {
-      existing.push({ clientId: client.id, clientName: client.clientName, activation });
+      const completedClient = await completeWebHelperHandoffIfReady(client, activation);
+      if (completedClient) {
+        completed.push({ clientId: completedClient.id, clientName: completedClient.clientName });
+      }
+      existing.push({ clientId: client.id, clientName: client.clientName, activation: summarizeWebHelperActivation(activation) });
       continue;
     }
 
@@ -5268,6 +5312,10 @@ async function runWebHelperHandoffAutomation(options = {}) {
         webHelperId: result.envBundle.webHelperId,
         activation: summarizeWebHelperActivation(result.activation)
       });
+      const completedClient = await completeWebHelperHandoffIfReady(result.client, result.activation);
+      if (completedClient) {
+        completed.push({ clientId: completedClient.id, clientName: completedClient.clientName });
+      }
     } catch (error) {
       failed.push({
         clientId: client.id,
@@ -5282,10 +5330,12 @@ async function runWebHelperHandoffAutomation(options = {}) {
     targetCount: clients.length,
     provisionedCount: provisioned.length,
     existingCount: existing.length,
+    completedCount: completed.length,
     skippedCount: skipped.length,
     failedCount: failed.length,
     provisioned,
     existing,
+    completed,
     skipped,
     failed
   };
@@ -5303,10 +5353,12 @@ async function maybeRunWebHelperHandoffAutomation(options = {}) {
       targetCount: 0,
       provisionedCount: 0,
       existingCount: 0,
+      completedCount: 0,
       skippedCount: 0,
       failedCount: 0,
       provisioned: [],
       existing: [],
+      completed: [],
       skipped: [],
       failed: []
     };
@@ -9878,6 +9930,58 @@ const server = http.createServer((request, response) => {
             message: `${provisioned.client.clientName} Web Helper is provisioned. Apply the env bundle to the client host, then run a smoke test.`
           }
         }));
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/clients/test-web-helper-ticket") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        await syncClientStore(true);
+        const clientId = canonicalClientId(payload.id || payload.clientId);
+        const client = getAllClients().find((entry) => canonicalClientId(entry.id) === clientId);
+        if (!client) {
+          sendJson(request, response, 404, { error: "Client not found" });
+          return;
+        }
+
+        const record = normalizeWebHelperRequestPayload({
+          id: `whr_test_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`,
+          clientId: client.id,
+          webHelperId: `${client.id}-web-helper`,
+          client: client.clientName,
+          site: client.websiteUrl,
+          repo: client.repo,
+          source: "mission_control_test",
+          request_type: payload.requestType || "test_ticket",
+          page_url: payload.pageUrl || "/",
+          summary: payload.summary || `Test Web Helper ticket for ${client.clientName}`,
+          details: payload.details || "Mission Control generated this test ticket to verify Web Helper intake, triage, and automation routing.",
+          priority: payload.priority || "low",
+          attachments: [],
+          branch_policy: GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY,
+          approval_required: true,
+          status: "new"
+        }, client);
+        const stored = await persistWebHelperRequestToPostgres(record);
+        if (!stored.ok) {
+          sendJson(request, response, 503, {
+            error: "Unable to persist Web Helper test ticket.",
+            detail: stored.error || stored.reason || "Postgres request store unavailable."
+          });
+          return;
+        }
+
+        const automation = scheduleWebHelperAutomation(stored.request);
+        sendJson(request, response, 201, {
+          ok: true,
+          ticket: stored.request,
+          automation,
+          message: `${client.clientName} test ticket was created and queued for Web Helper automation.`
+        });
       })
       .catch((error) => {
         sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
