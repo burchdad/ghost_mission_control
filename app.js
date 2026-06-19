@@ -5267,6 +5267,11 @@ function getWebHelperCareLifecycleStage(client) {
   const activation = client?.webHelperActivation || client?.activation || null;
   const hasActivation = Boolean(activation?.id || activation?.learnedAt || activation?.status);
   const memoryBuilt = hasActivation && Number(activation.memoryDocumentCount || 0) > 0 && activation.repoStatus !== "learn-failed";
+  const serviceActive = client?.services?.includes("web-helper-care");
+
+  if (serviceActive && ["web-helper-care", "growth-services"].includes(stage)) {
+    return "active-care";
+  }
 
   if (!hasActivation) {
     return "handoff";
