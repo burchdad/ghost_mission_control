@@ -137,10 +137,17 @@ function stripWrappingQuotes(value) {
   return text;
 }
 
-const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || "")
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://missioncontrol.ghostai.solutions",
+  "https://ghostmissioncontrol-production.up.railway.app"
+];
+const ALLOWED_ORIGINS = Array.from(new Set([
+  ...DEFAULT_ALLOWED_ORIGINS,
+  ...String(process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
-  .filter(Boolean);
+  .filter(Boolean)
+]));
 
 const monitoringCache = {
   generatedAt: 0,
@@ -5917,6 +5924,7 @@ function getDefaultHeaders(request, extra = {}) {
     "Access-Control-Allow-Methods": "GET,POST,HEAD,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
+    "Vary": "Origin",
     ...extra
   };
 
@@ -7885,7 +7893,7 @@ function serveStatic(request, requestPath, response, headOnly = false) {
       return;
     }
 
-    response.writeHead(200, headers);
+    response.writeHead(200, getDefaultHeaders(request, headers));
     response.end(content);
   });
 }
