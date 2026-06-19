@@ -2474,6 +2474,16 @@ async function approveCodexMerge(ticketId) {
   return { ok: true, task, relay };
 }
 
+function hasWebHelperEvent(events, type, status = "") {
+  const normalizedType = String(type || "").trim();
+  const normalizedStatus = String(status || "").trim();
+  return (Array.isArray(events) ? events : []).some((event) => {
+    const eventTypeMatches = normalizedType ? String(event.type || "").trim() === normalizedType : true;
+    const eventStatusMatches = normalizedStatus ? String(event.status || "").trim() === normalizedStatus : true;
+    return eventTypeMatches && eventStatusMatches;
+  });
+}
+
 async function markWebHelperMergeComplete(ticketId, taskId, options = {}) {
   const ticketResult = await readWebHelperRequestByIdFromPostgres(ticketId);
   if (!ticketResult.ok) {
@@ -2481,25 +2491,54 @@ async function markWebHelperMergeComplete(ticketId, taskId, options = {}) {
   }
   const taskResult = await findCodexBuildTaskForTicket(ticketId);
   const task = taskResult.task || { id: taskId || `codex_${ticketId}` };
-  await updateCodexBuildTaskStatus(task.id, "merged", {
-    type: "merge_complete",
-    actor: options.actor || "codex_runner",
-    message: options.message || "Testing branch merged into main.",
-    data: options
-  });
-  const ticketUpdate = await updateWebHelperRequestStatusInPostgres(ticketId, "approved_to_merge", {
-    actor: options.actor || "codex_runner",
-    message: "Merge completed. Waiting for client confirmation."
-  });
-  const email = await notifyClientUpdateReady(ticketUpdate.request || ticketResult.request, task, options);
-  await appendWebHelperRequestEventInPostgres(ticketId, {
-    type: email.ok ? "client_email_sent" : "client_email_queued",
-    status: "client_review",
-    actor: "mission_control",
-    message: email.ok ? "Client update confirmation email sent." : `Client email not sent automatically: ${email.reason || email.error || "email webhook unavailable"}.`
-  });
+  const ticket = ticketResult.request;
+  const ticketEvents = ticket.events || [];
+  const taskEvents = task.events || [];
+  const mergeAlreadyRecorded =
+    task.status === "merged" ||
+    hasWebHelperEvent(taskEvents, "merge_complete") ||
+    hasWebHelperEvent(ticketEvents, "status_change", "approved_to_merge");
+  const emailAlreadySent = hasWebHelperEvent(ticketEvents, "client_email_sent", "client_review");
+  const emailAlreadyQueued = hasWebHelperEvent(ticketEvents, "client_email_queued", "client_review");
 
-  return { ok: true, ticket: ticketUpdate.request, task, email };
+  if (emailAlreadySent) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "Client update email was already sent for this ticket.",
+      ticket,
+      task,
+      email: { ok: true, skipped: true, reason: "Client update email already sent." }
+    };
+  }
+
+  if (!mergeAlreadyRecorded) {
+    await updateCodexBuildTaskStatus(task.id, "merged", {
+      type: "merge_complete",
+      actor: options.actor || "codex_runner",
+      message: options.message || "Testing branch merged into main.",
+      data: options
+    });
+  }
+
+  const ticketUpdate = mergeAlreadyRecorded
+    ? { ok: true, request: ticket }
+    : await updateWebHelperRequestStatusInPostgres(ticketId, "approved_to_merge", {
+        actor: options.actor || "codex_runner",
+        message: "Merge completed. Waiting for client confirmation."
+      });
+  const updatedTicket = ticketUpdate.request || ticket;
+  const email = await notifyClientUpdateReady(updatedTicket, task, options);
+  if (email.ok || !emailAlreadyQueued) {
+    await appendWebHelperRequestEventInPostgres(ticketId, {
+      type: email.ok ? "client_email_sent" : "client_email_queued",
+      status: "client_review",
+      actor: "mission_control",
+      message: email.ok ? "Client update confirmation email sent." : `Client email not sent automatically: ${email.reason || email.error || "email webhook unavailable"}.`
+    });
+  }
+
+  return { ok: true, ticket: updatedTicket, task, email, dedupedMerge: mergeAlreadyRecorded };
 }
 
 function parsePostgresJsonList(value) {
@@ -8845,6 +8884,7 @@ if (require.main === module) {
     appendWebHelperRequestEventInPostgres,
     assessWebHelperRequest,
     buildClientConfirmationToken,
-    buildClientUpdateEmailPayload
+    buildClientUpdateEmailPayload,
+    hasWebHelperEvent
   };
 }

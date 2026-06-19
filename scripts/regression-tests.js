@@ -12,7 +12,8 @@ const {
   buildCodexTaskPayload,
   assessWebHelperRequest,
   buildClientConfirmationToken,
-  buildClientUpdateEmailPayload
+  buildClientUpdateEmailPayload,
+  hasWebHelperEvent
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -214,6 +215,16 @@ function testClientUpdateEmailUsesRequesterFallback() {
   assert.ok(email.html.includes("testing/web-helper-ticket-email"));
 }
 
+function testWebHelperEventDeduplicationMatcher() {
+  const events = [
+    { type: "status_change", status: "approved_to_merge", message: "Merge completed." },
+    { type: "client_email_sent", status: "client_review", message: "Email sent." }
+  ];
+  assert.strictEqual(hasWebHelperEvent(events, "status_change", "approved_to_merge"), true);
+  assert.strictEqual(hasWebHelperEvent(events, "client_email_sent", "client_review"), true);
+  assert.strictEqual(hasWebHelperEvent(events, "client_email_queued", "client_review"), false);
+}
+
 function testFinalPaymentCompletesWebBuildStage() {
   const client = buildClientRecord({
     clientName: "Done Build",
@@ -245,6 +256,7 @@ function testFinalPaymentCompletesWebBuildStage() {
   testWebHelperAutomationAssessment,
   testClientConfirmationTokenIsStable,
   testClientUpdateEmailUsesRequesterFallback,
+  testWebHelperEventDeduplicationMatcher,
   testFinalPaymentCompletesWebBuildStage
 ].forEach((test) => test());
 
