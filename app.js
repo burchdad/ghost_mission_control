@@ -4330,9 +4330,15 @@ async function loadClients() {
 
     liveClients = mergeClientPayloadWithSeed(await response.json());
     renderClients(liveClients);
+    if (elements.serviceCards && (activeView === "services" || liveServiceCatalog)) {
+      renderServices(liveServiceCatalog);
+    }
   } catch (error) {
     liveClients = buildClientPayloadFallback(String(error.message || error));
     renderClients(liveClients);
+    if (elements.serviceCards && (activeView === "services" || liveServiceCatalog)) {
+      renderServices(liveServiceCatalog);
+    }
   }
 
   if (liveOnboarding) {
@@ -6769,7 +6775,7 @@ function getServicePipelineStatus(client, pipeline, serviceKey, serviceState = "
       return client.partnershipSigned ? "strategy" : "approval";
     }
     if (pipeline.id === "web-care") {
-      return "handoff";
+      return getWebHelperCareLifecycleStage(client);
     }
     if (pipeline.id === "social" || pipeline.id === "ads") {
       return "candidate";
@@ -6786,13 +6792,7 @@ function getServicePipelineStatus(client, pipeline, serviceKey, serviceState = "
   }
 
   if (pipeline.id === "web-care") {
-    if (stage === "web-helper-care") {
-      return hasCoreConnectionGap ? "memory" : "active-care";
-    }
-    if (stage === "growth-services") {
-      return "reporting";
-    }
-    return "handoff";
+    return getWebHelperCareLifecycleStage(client);
   }
 
   if (pipeline.id === "seo-geo") {
@@ -8506,7 +8506,7 @@ async function init() {
   renderSite(initialSite.id);
   renderCommandPlan();
   loadCommandMemory();
-  loadClients();
+  await loadClients();
   loadOnboarding();
   loadServices();
   if (initialSite.id && initialSite.id !== "no-site") {
