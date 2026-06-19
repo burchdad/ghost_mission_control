@@ -5176,6 +5176,9 @@ async function provisionWebHelperForClient(client, options = {}) {
   currentPlanned.delete("web-helper-care");
 
   const targetStage = options.stage || client.stage || "completed-archived";
+  const provisionNote = options.note === false
+    ? ""
+    : options.note || `Web Helper provisioned by Mission Control on ${new Date().toISOString()}.`;
   const provisionedClient = buildClientRecord({
     ...client,
     stage: targetStage,
@@ -5187,7 +5190,7 @@ async function provisionWebHelperForClient(client, options = {}) {
     clientDetailsPending: Boolean(client.clientDetailsPending),
     notes: [
       client.notes,
-      options.note || `Web Helper provisioned by Mission Control on ${new Date().toISOString()}.`
+      provisionNote
     ].filter(Boolean).join("\n"),
     source: "runtime",
     updatedAt: new Date().toISOString()
@@ -9917,7 +9920,7 @@ const server = http.createServer((request, response) => {
           refresh: Boolean(payload.refresh),
           finalPaymentPaid: payload.finalPaymentPaid ?? client.finalPaymentPaid ?? true,
           stage: targetStage === "lead" || targetStage === "website-build" ? "completed-archived" : targetStage,
-          note: payload.note || "Web Helper provisioned from client pipeline.",
+          note: payload.note === false ? false : payload.note || "Web Helper provisioned from client pipeline.",
           command: payload.command || "Provision Web Helper from client pipeline"
         });
 

@@ -5746,12 +5746,40 @@ async function provisionClientWebHelper(clientId) {
   }
 }
 
-async function refreshClientWebHelperMemory(clientId) {
+function setServiceActionButtonState(button, label, disabled = true) {
+  if (!button) {
+    return;
+  }
+  if (!button.dataset.originalLabel) {
+    button.dataset.originalLabel = button.textContent;
+  }
+  button.textContent = label;
+  button.disabled = disabled;
+}
+
+function restoreServiceActionButtonState(button) {
+  if (!button) {
+    return;
+  }
+  button.textContent = button.dataset.originalLabel || button.textContent;
+  button.disabled = false;
+}
+
+function setServiceCardMessage(clientId, message) {
+  const target = elements.servicesPanel?.querySelector(`[data-service-card-message="${CSS.escape(clientId)}"]`);
+  if (target) {
+    target.textContent = message;
+  }
+}
+
+async function refreshClientWebHelperMemory(clientId, button = null) {
   const client = getClientById(clientId);
   if (!client) {
     return;
   }
 
+  setServiceActionButtonState(button, "Refreshing...");
+  setServiceCardMessage(clientId, "Refreshing helper memory...");
   renderOpsActions(elements.serviceActions, [`Refreshing Web Helper memory for ${client.clientName}...`], "Service actions will appear here.");
   try {
     const result = await postClientMutation("/mission/clients/provision-web-helper", {
@@ -5759,19 +5787,27 @@ async function refreshClientWebHelperMemory(clientId) {
       finalPaymentPaid: true,
       refresh: true,
       command: "Refresh Web Helper memory from service pipeline",
-      note: "Refreshed Web Helper memory from the service pipeline card."
+      note: false
     });
     const provisioned = result.provisioned || {};
+    const activation = provisioned.activation || {};
+    const statusMessage = activation.repoError
+      ? `Repo memory issue: ${activation.repoError}`
+      : `${activation.agentName || client.clientName} memory refreshed | ${activation.memoryDocumentCount || 0} docs`;
     renderOpsActions(elements.serviceActions, [
       provisioned.message || `${client.clientName} Web Helper memory refreshed.`,
-      provisioned.activation?.repoError ? `Repo memory issue: ${provisioned.activation.repoError}` : `Memory docs: ${provisioned.activation?.memoryDocumentCount || "updated"}`
+      statusMessage
     ], "Service actions will appear here.");
     liveClients = mergeClientPayloadWithSeed(result);
     renderClients(liveClients);
     renderServices(liveServiceCatalog);
     loadWebHelpers("");
   } catch (error) {
-    renderOpsActions(elements.serviceActions, [`${client.clientName} memory refresh failed: ${String(error.message || error)}`], "Service actions will appear here.");
+    const message = `${client.clientName} memory refresh failed: ${String(error.message || error)}`;
+    setServiceCardMessage(clientId, message);
+    renderOpsActions(elements.serviceActions, [message], "Service actions will appear here.");
+  } finally {
+    restoreServiceActionButtonState(button);
   }
 }
 
@@ -5785,12 +5821,14 @@ function openClientSupportLink(clientId) {
   window.open(supportUrl, "_blank", "noopener,noreferrer");
 }
 
-async function sendClientWebHelperTestTicket(clientId) {
+async function sendClientWebHelperTestTicket(clientId, button = null) {
   const client = getClientById(clientId);
   if (!client) {
     return;
   }
 
+  setServiceActionButtonState(button, "Sending...");
+  setServiceCardMessage(clientId, "Sending test ticket...");
   renderOpsActions(elements.serviceActions, [`Sending test Web Helper ticket for ${client.clientName}...`], "Service actions will appear here.");
   try {
     const result = await postClientMutation("/mission/clients/test-web-helper-ticket", {
@@ -5804,9 +5842,14 @@ async function sendClientWebHelperTestTicket(clientId) {
       result.message || `${client.clientName} test ticket queued.`,
       `Ticket: ${result.ticket?.id || "created"}`
     ], "Service actions will appear here.");
+    setServiceCardMessage(clientId, `Test ticket queued: ${result.ticket?.id || "created"}`);
     loadWebHelpers("");
   } catch (error) {
-    renderOpsActions(elements.serviceActions, [`${client.clientName} test ticket failed: ${String(error.message || error)}`], "Service actions will appear here.");
+    const message = `${client.clientName} test ticket failed: ${String(error.message || error)}`;
+    setServiceCardMessage(clientId, message);
+    renderOpsActions(elements.serviceActions, [message], "Service actions will appear here.");
+  } finally {
+    restoreServiceActionButtonState(button);
   }
 }
 
@@ -6981,7 +7024,7 @@ function renderServiceClientCard(card) {
       <span>${card.issueCount}</span>
     </div>
     <p>${escapeHtml(card.serviceLabel)}</p>
-    ${webHelperStatus ? `<p class="service-client-card-status">${escapeHtml(webHelperStatus)}</p>` : ""}
+    <p class="service-client-card-status" data-service-card-message="${escapeHtml(card.client.id)}">${escapeHtml(webHelperStatus)}</p>
     <div class="service-client-card-meta">
       <span class="pill ${card.serviceState === "planned" ? "tone-blue" : "tone-green"}">${escapeHtml(card.serviceState === "planned" ? "planned" : "active")}</span>
       <span class="pill ${getAgreementTone(card.agreementStatus)}">${escapeHtml(card.agreementStatus)}</span>
@@ -8838,7 +8881,7 @@ async function init() {
     if (refreshMemoryTarget) {
       event.preventDefault();
       event.stopPropagation();
-      refreshClientWebHelperMemory(refreshMemoryTarget.dataset.serviceRefreshMemory);
+      refreshClientWebHelperMemory(refreshMemoryTarget.dataset.serviceRefreshMemory, refreshMemoryTarget);
       return;
     }
 
@@ -8854,7 +8897,7 @@ async function init() {
     if (testTicketTarget) {
       event.preventDefault();
       event.stopPropagation();
-      sendClientWebHelperTestTicket(testTicketTarget.dataset.serviceTestTicket);
+      sendClientWebHelperTestTicket(testTicketTarget.dataset.serviceTestTicket, testTicketTarget);
       return;
     }
 
