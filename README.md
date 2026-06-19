@@ -272,7 +272,7 @@ CODEX_BUILD_WEBHOOK_URL=https://<railway-domain>/mission/codex-runner/intake
 CODEX_BUILD_WEBHOOK_SECRET=<shared-secret>
 GHOST_MISSION_CONTROL_PUBLIC_URL=https://<railway-domain>
 CODEX_WORKER_COMMAND=<codex-or-wrapper-command>
-CODEX_WORKER_ARGS=["exec","--sandbox","workspace-write","--ask-for-approval","never"]
+CODEX_WORKER_ARGS=["exec","--sandbox","workspace-write"]
 ```
 
 The intake webhook accepts `POST /mission/codex-runner/intake` with `X-Codex-Build-Secret`, marks the linked ticket as active, and returns the callback URL the runner should use after building. A dedicated external Codex runner can use the same payload contract and report results to `POST /mission/codex-build-tasks/result`.

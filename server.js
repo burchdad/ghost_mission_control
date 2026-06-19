@@ -3444,10 +3444,14 @@ function normalizeCodexWorkerArgs(command, args = []) {
       index += 1;
       continue;
     }
+    if (arg === "--ask-for-approval") {
+      index += 1;
+      continue;
+    }
     normalized.push(arg);
   }
 
-  return normalized.length ? normalized : ["exec", "--sandbox", "workspace-write", "--ask-for-approval", "never"];
+  return normalized.length ? normalized : ["exec", "--sandbox", "workspace-write"];
 }
 
 function runExecFile(command, args = [], options = {}) {
