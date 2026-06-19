@@ -49,6 +49,8 @@ const DATABASE_URL = String(process.env.DATABASE_URL || process.env.POSTGRES_URL
 const DATABASE_SSL = String(process.env.DATABASE_SSL || "auto").toLowerCase();
 const WEB_HELPER_AUTO_ACTIVATE = parseBool(process.env.WEB_HELPER_AUTO_ACTIVATE, true);
 const WEB_HELPER_HANDOFF_STAGE = "launch-handoff";
+const WEB_HELPER_SITE_CRAWL_MAX_PAGES = Math.max(1, Number(process.env.WEB_HELPER_SITE_CRAWL_MAX_PAGES || 12));
+const WEB_HELPER_SITE_CRAWL_MAX_LINKS_PER_PAGE = Math.max(1, Number(process.env.WEB_HELPER_SITE_CRAWL_MAX_LINKS_PER_PAGE || 60));
 const GHOST_WEB_HELPER_WEBHOOK_SECRET = stripWrappingQuotes(String(
   process.env.GHOST_WEB_HELPER_WEBHOOK_SECRET ||
   process.env.GHOST_MISSION_CONTROL_WEBHOOK_SECRET ||
@@ -644,6 +646,202 @@ async function fetchText(url) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function stripHtmlTags(value) {
+  return String(value || "").replace(/<[^>]*>/g, " ");
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
+function compactText(value, limit = 180) {
+  const text = decodeHtmlEntities(stripHtmlTags(value)).replace(/\s+/g, " ").trim();
+  return text.length > limit ? `${text.slice(0, limit - 1).trim()}...` : text;
+}
+
+function extractHtmlMatches(html, regex, limit = 20) {
+  const matches = [];
+  for (const match of String(html || "").matchAll(regex)) {
+    const value = compactText(match[1] || match[2] || match[0] || "");
+    if (value && !matches.includes(value)) {
+      matches.push(value);
+    }
+    if (matches.length >= limit) {
+      break;
+    }
+  }
+  return matches;
+}
+
+function resolveSameOriginUrl(rawUrl, baseUrl) {
+  try {
+    const resolved = new URL(String(rawUrl || ""), baseUrl);
+    const base = new URL(baseUrl);
+    if (resolved.origin !== base.origin || !["http:", "https:"].includes(resolved.protocol)) {
+      return "";
+    }
+    resolved.hash = "";
+    return resolved.toString().replace(/\/$/, resolved.pathname === "/" ? "/" : "");
+  } catch {
+    return "";
+  }
+}
+
+function extractSameOriginLinks(html, pageUrl, rootUrl) {
+  const links = [];
+  for (const match of String(html || "").matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi)) {
+    const href = String(match[1] || "").trim();
+    if (!href || /^(mailto:|tel:|sms:|javascript:)/i.test(href)) {
+      continue;
+    }
+    const resolved = resolveSameOriginUrl(href, pageUrl || rootUrl);
+    if (resolved && !links.includes(resolved)) {
+      links.push(resolved);
+    }
+    if (links.length >= WEB_HELPER_SITE_CRAWL_MAX_LINKS_PER_PAGE) {
+      break;
+    }
+  }
+  return links;
+}
+
+function summarizePageHtml(url, html, statusCode, latencyMs) {
+  const title = compactText(String(html || "").match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "", 120);
+  const metaDescription = compactText(String(html || "").match(/<meta\b[^>]*name=["']description["'][^>]*content=["']([^"']*)["'][^>]*>/i)?.[1] || "", 220);
+  const headings = extractHtmlMatches(html, /<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/gi, 12);
+  const forms = [...String(html || "").matchAll(/<form\b[^>]*>/gi)].slice(0, 8).map((match) => {
+    const tag = match[0] || "";
+    const action = tag.match(/\baction=["']([^"']*)["']/i)?.[1] || "";
+    const method = tag.match(/\bmethod=["']([^"']*)["']/i)?.[1] || "get";
+    return `${method.toUpperCase()} ${action || "same page"}`;
+  });
+  const images = [...String(html || "").matchAll(/<img\b[^>]*>/gi)]
+    .slice(0, 12)
+    .map((match) => compactText((match[0] || "").match(/\balt=["']([^"']*)["']/i)?.[1] || "image without alt", 80))
+    .filter(Boolean);
+
+  return {
+    url,
+    statusCode,
+    latencyMs,
+    title,
+    metaDescription,
+    headings,
+    forms,
+    images
+  };
+}
+
+async function fetchHtmlForMemory(url) {
+  const start = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "GhostMissionControl/1.0 (+web-helper-memory)"
+      }
+    });
+    const contentType = response.headers.get("content-type") || "";
+    const html = contentType.includes("text/html") || contentType.includes("application/xhtml")
+      ? await response.text()
+      : "";
+    return {
+      ok: response.ok && Boolean(html),
+      statusCode: response.status,
+      latencyMs: Date.now() - start,
+      html,
+      error: response.ok ? "" : `HTTP ${response.status}`
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      statusCode: 0,
+      latencyMs: Date.now() - start,
+      html: "",
+      error: String(error?.message || error || "request failed")
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function crawlClientWebsiteForMemory(client) {
+  const rootUrl = ensureHttpsUrl(client.websiteUrl || client.vercelUrl || "");
+  if (!rootUrl) {
+    return {
+      status: "not-configured",
+      rootUrl: "",
+      crawledAt: new Date().toISOString(),
+      pages: [],
+      failedPages: [],
+      discoveredUrls: []
+    };
+  }
+
+  const site = {
+    id: client.id || normalizeIdentityDomain(rootUrl),
+    rootUrl,
+    pages: [{ label: "Homepage", url: rootUrl }],
+    autoDiscoverPages: true
+  };
+  const sitemapPages = await discoverSitePages(site);
+  const queue = uniq([rootUrl, ...sitemapPages.map((page) => page.url)]).slice(0, WEB_HELPER_SITE_CRAWL_MAX_PAGES);
+  const seen = new Set();
+  const pages = [];
+  const failedPages = [];
+  const discoveredUrls = new Set(queue);
+
+  while (queue.length && pages.length + failedPages.length < WEB_HELPER_SITE_CRAWL_MAX_PAGES) {
+    const url = queue.shift();
+    if (!url || seen.has(url)) {
+      continue;
+    }
+    seen.add(url);
+    const result = await fetchHtmlForMemory(url);
+    if (!result.ok) {
+      failedPages.push({
+        url,
+        statusCode: result.statusCode,
+        latencyMs: result.latencyMs,
+        error: result.error || "Unable to read page HTML"
+      });
+      continue;
+    }
+
+    pages.push(summarizePageHtml(url, result.html, result.statusCode, result.latencyMs));
+    const links = extractSameOriginLinks(result.html, url, rootUrl);
+    for (const link of links) {
+      if (discoveredUrls.size >= WEB_HELPER_SITE_CRAWL_MAX_PAGES * 2) {
+        break;
+      }
+      discoveredUrls.add(link);
+      if (!seen.has(link) && queue.length + pages.length + failedPages.length < WEB_HELPER_SITE_CRAWL_MAX_PAGES) {
+        queue.push(link);
+      }
+    }
+  }
+
+  return {
+    status: pages.length ? "learned" : "no-pages-learned",
+    rootUrl,
+    crawledAt: new Date().toISOString(),
+    pages,
+    failedPages,
+    discoveredUrls: [...discoveredUrls].slice(0, WEB_HELPER_SITE_CRAWL_MAX_PAGES * 2)
+  };
 }
 
 function parseSitemapsFromRobots(robotsText) {
@@ -4354,7 +4552,7 @@ function inferFramework(packageJson, paths) {
   return "Unknown web framework";
 }
 
-function inferBuildKnowledge(client, blueprint) {
+function inferBuildKnowledge(client, blueprint, siteKnowledge = null) {
   const paths = blueprint?.paths || [];
   const packageJson = blueprint?.packageJson || {};
   const dependencies = {
@@ -4413,6 +4611,8 @@ function inferBuildKnowledge(client, blueprint) {
   return {
     repo: blueprint?.repo || normalizeGithubRepoFullName(client.repo || client.githubUrl),
     repoStatus: blueprint ? "learned" : "not-indexed",
+    siteStatus: siteKnowledge?.status || "not-crawled",
+    siteKnowledge: siteKnowledge || null,
     lastRepoUpdate: blueprint?.pushedAt || blueprint?.updatedAt || "",
     framework: inferFramework(packageJson, paths),
     language: paths.includes("tsconfig.json") ? "TypeScript" : "JavaScript",
@@ -4420,7 +4620,13 @@ function inferBuildKnowledge(client, blueprint) {
     scripts,
     dependencies: dependencyNames.slice(0, 24),
     envKeys,
-    pageRoutes: pageRoutes.slice(0, 24),
+    pageRoutes: uniq([...pageRoutes, ...((siteKnowledge?.pages || []).map((page) => {
+      try {
+        return new URL(page.url).pathname || "/";
+      } catch {
+        return "";
+      }
+    }))]).slice(0, 32),
     apiRoutes: apiRoutes.slice(0, 32),
     componentFiles: pickMatching(paths, (filePath) => /^(src\/)?components\/.+\.tsx$/.test(filePath), 24),
     libFiles: pickMatching(paths, (filePath) => /^(src\/)?lib\/.+\.(ts|tsx|js)$/.test(filePath) || /^src\/content\/.+\.(ts|tsx|js)$/.test(filePath), 28),
@@ -4438,7 +4644,7 @@ function inferBuildKnowledge(client, blueprint) {
     standardChecks: [
       scripts.build ? "npm run build" : "",
       scripts.lint ? "npm run lint" : "",
-      "Check homepage, shop, contact, admin login, product APIs, contact form, newsletter, and order/admin flows after relevant changes."
+      "Check homepage, discovered public pages, forms, links, images, admin login, product APIs, contact form, newsletter, and order/admin flows after relevant changes."
     ].filter(Boolean)
   };
 }
@@ -4494,6 +4700,22 @@ function buildWebHelperMemoryDocuments(client, knowledge, activationMeta) {
   const apiLines = knowledge.apiRoutes.length ? knowledge.apiRoutes.map((route) => `- ${route}`) : ["- No API routes learned yet."];
   const safeFiles = knowledge.safeEditFiles.length ? knowledge.safeEditFiles.map((filePath) => `- ${filePath}`) : ["- Confirm repo map before editing."];
   const protectedFiles = knowledge.protectedFiles.length ? knowledge.protectedFiles.map((filePath) => `- ${filePath}`) : ["- Treat backend, auth, data, payment, and deployment files as approval-gated."];
+  const siteKnowledge = knowledge.siteKnowledge || {};
+  const livePageLines = (siteKnowledge.pages || []).length
+    ? siteKnowledge.pages.flatMap((page) => [
+      `## ${page.title || page.url}`,
+      `- URL: ${page.url}`,
+      `- Status: ${page.statusCode || "unknown"} in ${page.latencyMs || 0}ms`,
+      page.metaDescription ? `- Meta: ${page.metaDescription}` : "",
+      page.headings?.length ? `- Headings: ${page.headings.join(" | ")}` : "",
+      page.forms?.length ? `- Forms: ${page.forms.join(" | ")}` : "",
+      page.images?.length ? `- Image alts: ${page.images.join(" | ")}` : "",
+      ""
+    ])
+    : ["No live public pages were crawled yet."];
+  const failedLivePageLines = (siteKnowledge.failedPages || []).length
+    ? siteKnowledge.failedPages.map((page) => `- ${page.url}: ${page.error || page.statusCode || "failed"}`)
+    : ["- No crawl failures recorded."];
 
   return [
     buildMemoryDocument("Client Profile", "client-profile.md", [
@@ -4534,6 +4756,20 @@ function buildWebHelperMemoryDocuments(client, knowledge, activationMeta) {
       "",
       "## API Routes",
       ...apiLines
+    ]),
+    buildMemoryDocument("Live Site Map", "live-site-map.md", [
+      `# ${client.clientName} Live Site Map`,
+      "",
+      `Root URL: ${siteKnowledge.rootUrl || client.websiteUrl || "not linked"}`,
+      `Crawl status: ${siteKnowledge.status || "not-crawled"}`,
+      `Crawled at: ${siteKnowledge.crawledAt || "not crawled"}`,
+      `Pages learned: ${(siteKnowledge.pages || []).length}`,
+      `Discovered URLs: ${(siteKnowledge.discoveredUrls || []).length}`,
+      "",
+      "# Public Page Inventory",
+      ...livePageLines,
+      "# Crawl Failures",
+      ...failedLivePageLines
     ]),
     buildMemoryDocument("Scope Rules", "scope-rules.md", [
       `# ${client.clientName} Scope Rules`,
@@ -4593,9 +4829,12 @@ function summarizeWebHelperActivation(activation) {
     learnedAt: activation.createdAt,
     updatedAt: activation.updatedAt,
     repoStatus: activation.knowledge.repoStatus,
+    siteStatus: activation.knowledge.siteStatus,
     framework: activation.knowledge.framework,
     routeCount: activation.knowledge.pageRoutes.length,
     apiRouteCount: activation.knowledge.apiRoutes.length,
+    livePageCount: activation.knowledge.siteKnowledge?.pages?.length || 0,
+    crawlFailureCount: activation.knowledge.siteKnowledge?.failedPages?.length || 0,
     integrationCount: activation.knowledge.integrations.length,
     memoryDocumentCount: activation.memoryDocuments.length,
     knownGapCount: activation.knownGaps.length,
@@ -4769,6 +5008,7 @@ async function buildWebHelperKnowledgePack(client, options = {}) {
   const repoFullName = normalizeGithubRepoFullName(client.repo || client.githubUrl);
   let blueprint = null;
   let repoError = "";
+  let siteKnowledge = null;
 
   if (repoFullName) {
     try {
@@ -4778,7 +5018,23 @@ async function buildWebHelperKnowledgePack(client, options = {}) {
     }
   }
 
-  const knowledge = inferBuildKnowledge(client, blueprint);
+  try {
+    siteKnowledge = await crawlClientWebsiteForMemory(client);
+  } catch (error) {
+    siteKnowledge = {
+      status: "crawl-failed",
+      rootUrl: ensureHttpsUrl(client.websiteUrl || client.vercelUrl || ""),
+      crawledAt: new Date().toISOString(),
+      pages: [],
+      failedPages: [{
+        url: client.websiteUrl || client.vercelUrl || "",
+        error: String(error?.message || error || "Unable to crawl website")
+      }],
+      discoveredUrls: []
+    };
+  }
+
+  const knowledge = inferBuildKnowledge(client, blueprint, siteKnowledge);
   if (repoError) {
     knowledge.repoStatus = "learn-failed";
     knowledge.repoError = repoError;
@@ -10331,6 +10587,8 @@ if (require.main === module) {
     buildWebHelperProvisionEnvBundle,
     buildClientSupportUrl,
     buildClientSupportToken,
-    isWebHelperHandoffAutomationCandidate
+    isWebHelperHandoffAutomationCandidate,
+    summarizePageHtml,
+    extractSameOriginLinks
   };
 }

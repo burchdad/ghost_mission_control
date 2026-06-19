@@ -7301,8 +7301,10 @@ function renderWebHelperKnowledge(helper) {
   return `<div class="web-helper-knowledge">
     <div><span>Knowledge</span><strong>${escapeHtml(activation.framework || "Learned")}</strong></div>
     <div><span>Routes</span><strong>${escapeHtml(String(activation.routeCount || 0))}</strong></div>
+    <div><span>Live Pages</span><strong>${escapeHtml(String(activation.livePageCount || 0))}</strong></div>
     <div><span>APIs</span><strong>${escapeHtml(String(activation.apiRouteCount || 0))}</strong></div>
     <div><span>Memory</span><strong>${escapeHtml(String(activation.memoryDocumentCount || 0))} docs</strong></div>
+    ${activation.crawlFailureCount ? `<p>${escapeHtml(`${activation.crawlFailureCount} live page crawl issue(s) need review.`)}</p>` : ""}
     <p>${escapeHtml((activation.nextActions || [])[0] || "Knowledge pack ready for owner-reviewed updates.")}</p>
   </div>`;
 }

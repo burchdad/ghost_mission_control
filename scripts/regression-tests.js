@@ -25,7 +25,9 @@ const {
   buildWebHelperProvisionEnvBundle,
   buildClientSupportUrl,
   buildClientSupportToken,
-  isWebHelperHandoffAutomationCandidate
+  isWebHelperHandoffAutomationCandidate,
+  summarizePageHtml,
+  extractSameOriginLinks
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -351,6 +353,34 @@ function testWebHelperHandoffAutomationCandidate() {
   assert.strictEqual(isWebHelperHandoffAutomationCandidate(completedBuildOnly), false);
 }
 
+function testLiveSiteMemoryHtmlSummary() {
+  const html = `
+    <html>
+      <head>
+        <title>Example Site</title>
+        <meta name="description" content="A client website for testing memory." />
+      </head>
+      <body>
+        <h1>Hero Headline</h1>
+        <h2>Services</h2>
+        <form method="post" action="/contact"></form>
+        <img src="/hero.jpg" alt="Team portrait" />
+        <a href="/services">Services</a>
+        <a href="https://external.example.com/">External</a>
+      </body>
+    </html>
+  `;
+  const summary = summarizePageHtml("https://example.com/", html, 200, 42);
+  assert.strictEqual(summary.title, "Example Site");
+  assert.ok(summary.metaDescription.includes("client website"));
+  assert.ok(summary.headings.includes("Hero Headline"));
+  assert.ok(summary.forms.includes("POST /contact"));
+  assert.ok(summary.images.includes("Team portrait"));
+
+  const links = extractSameOriginLinks(html, "https://example.com/", "https://example.com/");
+  assert.deepStrictEqual(links, ["https://example.com/services"]);
+}
+
 function testClientSupportUrlUsesSignedClientLink() {
   const client = buildClientRecord({
     id: "gray-matters-tech",
@@ -405,6 +435,7 @@ function testGithubVerificationSummary() {
   testFinalPaymentMovesWebBuildToHandoff,
   testWebHelperProvisionEnvBundle,
   testWebHelperHandoffAutomationCandidate,
+  testLiveSiteMemoryHtmlSummary,
   testClientSupportUrlUsesSignedClientLink,
   testGithubVerificationSummary
 ].forEach((test) => test());
