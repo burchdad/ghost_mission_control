@@ -279,15 +279,15 @@ function testWorkerArgsParsingSupportsJsonAndQuotes() {
   assert.strictEqual(isCodexWorkerCommand("node"), false);
 }
 
-function testFinalPaymentCompletesWebBuildStage() {
+function testFinalPaymentMovesWebBuildToHandoff() {
   const client = buildClientRecord({
     clientName: "Done Build",
-    stage: "launch-handoff",
+    stage: "final-payment",
     depositPaid: true,
     finalPaymentPaid: true,
     services: ["website-build"]
   });
-  assert.strictEqual(client.stage, "completed-archived");
+  assert.strictEqual(client.stage, "launch-handoff");
 
   const careClient = buildClientRecord({
     clientName: "Care Build",
@@ -372,7 +372,7 @@ function testGithubVerificationSummary() {
   testCodexRunnerWorkOrderIncludesBranchAndPrompt,
   testCodexWorkerPromptCarriesTicketContext,
   testWorkerArgsParsingSupportsJsonAndQuotes,
-  testFinalPaymentCompletesWebBuildStage,
+  testFinalPaymentMovesWebBuildToHandoff,
   testWebHelperProvisionEnvBundle,
   testClientSupportUrlUsesSignedClientLink,
   testGithubVerificationSummary

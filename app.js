@@ -612,13 +612,11 @@ const servicePipelineDefinitions = [
     label: "Web Helper Care",
     description: "Live site maintenance, approved changes, health checks, and client request handling.",
     system: "Web Helper Agents",
-    serviceKeys: ["web-helper-care", "reporting"],
+    serviceKeys: ["web-helper-care"],
     stages: [
       { id: "handoff", label: "Handoff" },
-      { id: "memory", label: "Memory" },
-      { id: "active-care", label: "Active Care" },
-      { id: "request-queue", label: "Requests" },
-      { id: "reporting", label: "Reporting" }
+      { id: "memory-build", label: "Memory Build" },
+      { id: "active-care", label: "Active Care" }
     ]
   },
   {
@@ -5161,7 +5159,7 @@ function getClientServiceDeliveryMeta(client, serviceKey, definition, pipeline) 
   const hasRepo = Boolean(client.repo || client.githubUrl);
   const hasVercel = Boolean(client.vercelUrl);
   const hasWebsite = Boolean(client.websiteUrl);
-  const isLaunched = ["web-helper-care", "growth-services", "paused-archived"].includes(stage);
+  const isLaunched = ["web-helper-care", "growth-services", "paused-archived", "completed-archived"].includes(stage);
   const isPaidOrLaunched = Boolean(client.finalPaymentPaid || isLaunched);
 
   if (serviceKey === "website-build") {
@@ -5174,9 +5172,11 @@ function getClientServiceDeliveryMeta(client, serviceKey, definition, pipeline) 
   }
 
   if (serviceKey === "web-helper-care") {
+    const lifecycleStage = getWebHelperCareLifecycleStage(client);
+    const lifecycleLabel = lifecycleStage === "active-care" ? "Care active" : lifecycleStage === "memory-build" ? "Building memory" : "Handoff queued";
     return {
-      pipelineLabel: isLaunched ? "Care active" : pipeline?.label || "Web Care",
-      pipelineTone: isLaunched ? "tone-green" : "tone-yellow",
+      pipelineLabel: lifecycleLabel,
+      pipelineTone: lifecycleStage === "active-care" ? "tone-green" : lifecycleStage === "memory-build" ? "tone-blue" : "tone-yellow",
       systemLabel: hasWebsite ? "Helper can monitor site" : "Website URL needed",
       systemTone: hasWebsite ? "tone-green" : "tone-yellow"
     };
@@ -5197,7 +5197,15 @@ function getClientServiceBreakdown(client) {
     serviceStateLabel: "Active service"
   }));
   const activeSet = new Set(activeServices.map((entry) => entry.serviceKey));
-  const plannedServices = [...new Set(client.plannedServices || [])]
+  const inferredPlannedServices = [...new Set(client.plannedServices || [])];
+  if (
+    !activeSet.has("web-helper-care") &&
+    !inferredPlannedServices.includes("web-helper-care") &&
+    shouldSurfaceWebHelperCareHandoff(client)
+  ) {
+    inferredPlannedServices.push("web-helper-care");
+  }
+  const plannedServices = inferredPlannedServices
     .filter((serviceKey) => !activeSet.has(serviceKey))
     .map((serviceKey) => ({
       serviceKey,
@@ -5220,6 +5228,29 @@ function getClientServiceBreakdown(client) {
       agreementStatus
     };
   });
+}
+
+function shouldSurfaceWebHelperCareHandoff(client) {
+  const stage = getClientStage(client);
+  const hasBuildSignals = Boolean(client.websiteUrl || client.repo || client.githubUrl || client.vercelUrl);
+  return hasBuildSignals && ["final-payment", "launch-handoff", "completed-archived"].includes(stage);
+}
+
+function getWebHelperCareLifecycleStage(client) {
+  const stage = getClientStage(client);
+  const activation = client?.webHelperActivation || client?.activation || null;
+  const hasActivation = Boolean(activation?.id || activation?.learnedAt || activation?.status);
+  const memoryBuilt = hasActivation && Number(activation.memoryDocumentCount || 0) > 0 && activation.repoStatus !== "learn-failed";
+
+  if (!hasActivation || ["final-payment", "launch-handoff"].includes(stage)) {
+    return "handoff";
+  }
+
+  if (memoryBuilt) {
+    return "active-care";
+  }
+
+  return "memory-build";
 }
 
 function getClientServicePriceLabel(client, definition) {
@@ -5819,10 +5850,10 @@ async function submitClientOnboarding(event) {
   }
   if (
     payload.finalPaymentPaid &&
-    ["final-payment", "launch-handoff"].includes(payload.stage) &&
+    payload.stage === "final-payment" &&
     !payload.partnershipSigned
   ) {
-    payload.stage = "completed-archived";
+    payload.stage = "launch-handoff";
   }
   payload.leadStage = payload.leadStage || deriveLeadStage(payload);
 
@@ -6691,7 +6722,9 @@ function getServiceActions(actions) {
 
   return [
     `Review ${selectedPipeline.label} mapped clients and contract status.`,
-    `Confirm ${selectedPipeline.system} access, approvals, and reporting handoff.`,
+    selectedPipeline.id === "web-care"
+      ? "Confirm helper provisioning, repo memory, support link, and care activation."
+      : `Confirm ${selectedPipeline.system} access, approvals, and reporting handoff.`,
     `Move stalled ${selectedPipeline.label} clients into the next service stage.`
   ];
 }

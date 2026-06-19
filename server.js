@@ -3206,10 +3206,15 @@ function buildClientResponsePayload(storageWrite, status = 200, extra = {}) {
     pipelineStages: CLIENT_PIPELINE_STAGES,
     dataHealth: getClientDataHealth(clients),
     storage: getClientStorageStatus(storageWrite),
-    clients: clients.map((entry) => ({
-      ...entry,
-      actions: getClientDerivedActions(entry)
-    }))
+    clients: clients.map(buildClientResponseRecord)
+  };
+}
+
+function buildClientResponseRecord(client) {
+  return {
+    ...client,
+    webHelperActivation: getWebHelperActivationSummary(client.id),
+    actions: getClientDerivedActions(client)
   };
 }
 
@@ -5829,11 +5834,11 @@ function buildClientRecord(input) {
 
   if (
     normalized.finalPaymentPaid &&
-    ["final-payment", "launch-handoff"].includes(normalized.stage) &&
+    normalized.stage === "final-payment" &&
     !normalized.partnershipSigned
   ) {
-    normalized.stage = "completed-archived";
-    normalized.status = "completed-archived";
+    normalized.stage = "launch-handoff";
+    normalized.status = "launch-handoff";
   }
 
   return normalized;
@@ -9149,10 +9154,7 @@ const server = http.createServer((request, response) => {
           summary: summarizeClients(clients),
           pipelineStages: CLIENT_PIPELINE_STAGES,
           dataHealth: getClientDataHealth(clients),
-          clients: clients.map((client) => ({
-            ...client,
-            actions: getClientDerivedActions(client)
-          })),
+          clients: clients.map(buildClientResponseRecord),
           storage: getClientStorageStatus(storageRead),
           actions: [
             "Onboard one real client and connect website, repo, plan, and services.",
@@ -9319,10 +9321,7 @@ const server = http.createServer((request, response) => {
           pipelineStages: CLIENT_PIPELINE_STAGES,
           dataHealth: getClientDataHealth(clients),
           storage: getClientStorageStatus(storageWrite),
-          clients: clients.map((entry) => ({
-            ...entry,
-            actions: getClientDerivedActions(entry)
-          }))
+          clients: clients.map(buildClientResponseRecord)
         });
       })
       .catch((error) => {
