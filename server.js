@@ -3454,6 +3454,17 @@ function normalizeCodexWorkerArgs(command, args = []) {
   return normalized.length ? normalized : ["exec", "--sandbox", "workspace-write"];
 }
 
+function appendCodexPromptArg(command, args = [], prompt = "") {
+  const commandName = path.basename(String(command || "")).toLowerCase();
+  const normalizedArgs = Array.isArray(args) ? args : [];
+  if (!commandName.startsWith("codex")) {
+    return normalizedArgs;
+  }
+
+  const hasExplicitPrompt = normalizedArgs.includes("-") || normalizedArgs.some((arg) => String(arg || "").includes("Mission Control runner context:"));
+  return hasExplicitPrompt ? normalizedArgs : [...normalizedArgs, String(prompt || "")];
+}
+
 function runExecFile(command, args = [], options = {}) {
   return new Promise((resolve) => {
     const child = execFile(command, args, {
@@ -3630,17 +3641,17 @@ async function runCodexBuildWorker(payload = {}) {
       CODEX_WORKER_SUMMARY: String(payload.summary || ""),
       CODEX_WORKER_DETAILS: String(payload.details || "")
     };
-    const workerArgs = normalizeCodexWorkerArgs(CODEX_WORKER_COMMAND, materializeWorkerArgs(parseWorkerArgs(CODEX_WORKER_ARGS), {
+    const workerArgs = appendCodexPromptArg(CODEX_WORKER_COMMAND, normalizeCodexWorkerArgs(CODEX_WORKER_COMMAND, materializeWorkerArgs(parseWorkerArgs(CODEX_WORKER_ARGS), {
       PROMPT_PATH: promptPath,
       REPO_DIR: repoDir,
       TICKET_ID: ticketId,
       TASK_ID: taskId,
       BRANCH: targetBranch
-    }));
+    })), workerPrompt);
     const worker = await runExecFile(CODEX_WORKER_COMMAND, workerArgs, {
       cwd: repoDir,
       env: workerEnv,
-      input: workerArgs.length ? "" : workerPrompt,
+      input: "",
       timeout: CODEX_WORKER_TIMEOUT_MS
     });
     if (!worker.ok) {
@@ -9454,6 +9465,7 @@ if (require.main === module) {
     buildCodexWorkerPrompt,
     parseWorkerArgs,
     materializeWorkerArgs,
-    normalizeCodexWorkerArgs
+    normalizeCodexWorkerArgs,
+    appendCodexPromptArg
   };
 }
