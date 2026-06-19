@@ -6975,12 +6975,25 @@ const liveDeploymentMap = {
     finalDomainPurchased: true,
     notes: "Dealership CRM property that is currently paused."
   },
+  "quick-contact-card": {
+    provider: "Vercel",
+    url: "https://www.stephenburch.app",
+    status: "Live custom domain",
+    clientName: "Stephen Burch",
+    canonicalRepo: "quick-contact-card",
+    stage: "web-helper-care",
+    services: ["website-build", "web-helper-care"],
+    plannedServices: ["search-intelligence"],
+    finalDomainPurchased: true,
+    notes: "Personal digital business card."
+  },
   "i-need-to-make-a-quick": {
     provider: "Vercel",
     url: "https://www.stephenburch.app",
     status: "Live custom domain",
     clientName: "Stephen Burch",
-    canonicalRepo: "i-need-to-make-a-quick",
+    canonicalRepo: "quick-contact-card",
+    aliases: ["quick-contact-card"],
     stage: "web-helper-care",
     services: ["website-build", "web-helper-care"],
     plannedServices: ["search-intelligence"],
