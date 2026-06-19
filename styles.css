@@ -1845,7 +1845,35 @@ button.client-board-note:focus-visible {
   font-size: 0.78rem;
 }
 
-.client-board-note > span {
+.client-board-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.client-board-actions button {
+  border: 1px solid rgba(124, 255, 155, 0.38);
+  border-radius: 6px;
+  background: rgba(124, 255, 155, 0.14);
+  color: #d7ffdf;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 0.35rem 0.65rem;
+}
+
+.client-board-actions button:hover,
+.client-board-actions button:focus-visible {
+  border-color: rgba(124, 255, 155, 0.68);
+  background: rgba(124, 255, 155, 0.22);
+  outline: none;
+}
+
+.client-board-note > span,
+.client-board-actions span {
   flex: 0 0 auto;
   border: 1px solid rgba(124, 255, 155, 0.34);
   border-radius: 999px;

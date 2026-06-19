@@ -24,7 +24,8 @@ const {
   summarizeGithubVerification,
   buildWebHelperProvisionEnvBundle,
   buildClientSupportUrl,
-  buildClientSupportToken
+  buildClientSupportToken,
+  isWebHelperHandoffAutomationCandidate
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -321,6 +322,35 @@ function testWebHelperProvisionEnvBundle() {
   assert.strictEqual(bundle.values.GHOST_MISSION_CONTROL_WEBHOOK_SECRET, "<owner-managed shared intake secret>");
 }
 
+function testWebHelperHandoffAutomationCandidate() {
+  const handoffClient = buildClientRecord({
+    clientName: "Handoff Ready",
+    stage: "launch-handoff",
+    websiteUrl: "https://handoff.example.com",
+    repo: "owner/handoff",
+    services: ["website-build"]
+  });
+  assert.strictEqual(isWebHelperHandoffAutomationCandidate(handoffClient), true);
+
+  const completedCareClient = buildClientRecord({
+    clientName: "Completed Care",
+    stage: "completed-archived",
+    websiteUrl: "https://care.example.com",
+    repo: "owner/care",
+    services: ["website-build", "web-helper-care"]
+  });
+  assert.strictEqual(isWebHelperHandoffAutomationCandidate(completedCareClient), true);
+
+  const completedBuildOnly = buildClientRecord({
+    clientName: "Build Only",
+    stage: "completed-archived",
+    websiteUrl: "https://build.example.com",
+    repo: "owner/build",
+    services: ["website-build"]
+  });
+  assert.strictEqual(isWebHelperHandoffAutomationCandidate(completedBuildOnly), false);
+}
+
 function testClientSupportUrlUsesSignedClientLink() {
   const client = buildClientRecord({
     id: "gray-matters-tech",
@@ -374,6 +404,7 @@ function testGithubVerificationSummary() {
   testWorkerArgsParsingSupportsJsonAndQuotes,
   testFinalPaymentMovesWebBuildToHandoff,
   testWebHelperProvisionEnvBundle,
+  testWebHelperHandoffAutomationCandidate,
   testClientSupportUrlUsesSignedClientLink,
   testGithubVerificationSummary
 ].forEach((test) => test());

@@ -4951,12 +4951,83 @@ function shouldAutoProvisionWebHelper(client) {
   }
 
   const services = new Set([...(client.services || []), ...(client.plannedServices || [])]);
-  if (!services.has("web-helper-care")) {
+  if (!services.has("web-helper-care") && stage !== "launch-handoff") {
     return false;
   }
 
   hydrateWebHelperActivations();
   return !webHelperActivations.has(client.id);
+}
+
+function isWebHelperHandoffAutomationCandidate(client) {
+  const stage = normalizeClientStage(client?.stage);
+  const services = new Set([...(client?.services || []), ...(client?.plannedServices || [])]);
+  return (
+    stage === "launch-handoff" ||
+    (stage === "completed-archived" && services.has("web-helper-care") && !getWebHelperActivationSummary(client.id))
+  );
+}
+
+async function runWebHelperHandoffAutomation(options = {}) {
+  hydrateWebHelperActivations();
+  const clients = getAllClients().filter(isWebHelperHandoffAutomationCandidate);
+  const provisioned = [];
+  const existing = [];
+  const skipped = [];
+  const failed = [];
+
+  for (const client of clients) {
+    const activation = getWebHelperActivationSummary(client.id);
+    if (activation && !options.refreshExisting) {
+      existing.push({ clientId: client.id, clientName: client.clientName, activation });
+      continue;
+    }
+
+    if (!client.websiteUrl || !client.repo) {
+      skipped.push({
+        clientId: client.id,
+        clientName: client.clientName,
+        reason: "Website URL and GitHub repo are required before Web Helper automation."
+      });
+      continue;
+    }
+
+    try {
+      const result = await provisionWebHelperForClient(client, {
+        request: options.request,
+        refresh: Boolean(options.refreshExisting),
+        finalPaymentPaid: true,
+        stage: normalizeClientStage(client.stage) === "completed-archived" ? "completed-archived" : "launch-handoff",
+        note: "Web Helper handoff automation provisioned helper memory.",
+        command: "Run Web Helper handoff automation"
+      });
+      provisioned.push({
+        clientId: result.client.id,
+        clientName: result.client.clientName,
+        webHelperId: result.envBundle.webHelperId,
+        activation: summarizeWebHelperActivation(result.activation)
+      });
+    } catch (error) {
+      failed.push({
+        clientId: client.id,
+        clientName: client.clientName,
+        error: String(error?.message || error || "Web Helper automation failed")
+      });
+    }
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    targetCount: clients.length,
+    provisionedCount: provisioned.length,
+    existingCount: existing.length,
+    skippedCount: skipped.length,
+    failedCount: failed.length,
+    provisioned,
+    existing,
+    skipped,
+    failed
+  };
 }
 
 function getCurrentWebsiteWebHelperClients() {
@@ -9483,6 +9554,25 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/mission/clients/run-web-helper-handoff-automation") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        await syncClientStore(true);
+        const automation = await runWebHelperHandoffAutomation({
+          request,
+          refreshExisting: Boolean(payload.refreshExisting)
+        });
+        sendJson(request, response, 200, buildClientResponsePayload({ ok: true, target: "web-helper-handoff-automation" }, 200, {
+          automation,
+          message: `Web Helper handoff automation checked ${automation.targetCount} client(s), provisioned ${automation.provisionedCount}, found ${automation.existingCount} already active, skipped ${automation.skippedCount}, failed ${automation.failedCount}.`
+        }));
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/mission/web-helpers") {
     const forceRefresh = url.searchParams.get("refresh") === "true";
     const requestedSiteId = url.searchParams.get("siteId") || "";
@@ -10240,6 +10330,7 @@ if (require.main === module) {
     summarizeGithubVerification,
     buildWebHelperProvisionEnvBundle,
     buildClientSupportUrl,
-    buildClientSupportToken
+    buildClientSupportToken,
+    isWebHelperHandoffAutomationCandidate
   };
 }

@@ -5242,7 +5242,7 @@ function getWebHelperCareLifecycleStage(client) {
   const hasActivation = Boolean(activation?.id || activation?.learnedAt || activation?.status);
   const memoryBuilt = hasActivation && Number(activation.memoryDocumentCount || 0) > 0 && activation.repoStatus !== "learn-failed";
 
-  if (!hasActivation || ["final-payment", "launch-handoff"].includes(stage)) {
+  if (!hasActivation) {
     return "handoff";
   }
 
@@ -5507,7 +5507,10 @@ function renderClients(payload) {
             <h3>Client Detail Mode</h3>
             <p>Click any client card to open links, handoff state, connection gaps, services, and operator notes in a centered command modal.</p>
           </div>
-          <span>${filteredClients.length} visible</span>
+          <div class="client-board-actions">
+            <button type="button" data-run-web-helper-handoff>Run Handoff Automation</button>
+            <span>${filteredClients.length} visible</span>
+          </div>
         </div>`
       : `<article class="ops-card">
         <h3>No clients match the filters</h3>
@@ -5734,6 +5737,30 @@ async function provisionClientWebHelper(clientId) {
     if (target) {
       target.textContent = String(error.message || error);
     }
+  }
+}
+
+async function runWebHelperHandoffAutomation() {
+  const confirmed = window.confirm("Run Web Helper handoff automation for eligible clients? This provisions missing helpers and builds memory packs where client website and repo details are ready.");
+  if (!confirmed) {
+    return;
+  }
+
+  renderOpsActions(elements.clientActions, ["Running Web Helper handoff automation..."], "Client actions will appear here.");
+  try {
+    const result = await postClientMutation("/mission/clients/run-web-helper-handoff-automation", {});
+    const automation = result.automation || {};
+    const messages = [
+      result.message || "Web Helper handoff automation completed.",
+      ...(automation.provisioned || []).map((entry) => `${entry.clientName}: helper provisioned and memory activated.`),
+      ...(automation.existing || []).map((entry) => `${entry.clientName}: helper already active.`),
+      ...(automation.skipped || []).map((entry) => `${entry.clientName}: skipped - ${entry.reason}`),
+      ...(automation.failed || []).map((entry) => `${entry.clientName}: failed - ${entry.error}`)
+    ];
+    renderOpsActions(elements.clientActions, messages, "Client actions will appear here.");
+    loadWebHelpers("");
+  } catch (error) {
+    renderOpsActions(elements.clientActions, [`Web Helper handoff automation failed: ${String(error.message || error)}`], "Client actions will appear here.");
   }
 }
 
@@ -8568,6 +8595,11 @@ async function init() {
   elements.clientSearchInput?.addEventListener("input", () => renderClients(liveClients));
   elements.clientStageFilter?.addEventListener("change", () => renderClients(liveClients));
   elements.clientIssueFilter?.addEventListener("change", () => renderClients(liveClients));
+  elements.clientCards?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-run-web-helper-handoff]")) {
+      runWebHelperHandoffAutomation();
+    }
+  });
   elements.webHelperSearchInput?.addEventListener("input", () => renderWebHelpers({ helpers: liveWebHelpers, summary: summarizeWebHelpersForUi(liveWebHelpers) }));
   elements.webHelperStatusFilter?.addEventListener("change", () => renderWebHelpers({ helpers: liveWebHelpers, summary: summarizeWebHelpersForUi(liveWebHelpers) }));
   elements.webHelperPriorityFilter?.addEventListener("change", () => renderWebHelpers({ helpers: liveWebHelpers, summary: summarizeWebHelpersForUi(liveWebHelpers) }));
