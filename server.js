@@ -51,6 +51,8 @@ const WEB_HELPER_AUTO_ACTIVATE = parseBool(process.env.WEB_HELPER_AUTO_ACTIVATE,
 const WEB_HELPER_HANDOFF_STAGE = "launch-handoff";
 const WEB_HELPER_SITE_CRAWL_MAX_PAGES = Math.max(1, Number(process.env.WEB_HELPER_SITE_CRAWL_MAX_PAGES || 12));
 const WEB_HELPER_SITE_CRAWL_MAX_LINKS_PER_PAGE = Math.max(1, Number(process.env.WEB_HELPER_SITE_CRAWL_MAX_LINKS_PER_PAGE || 60));
+const WEB_HELPER_HANDOFF_AUTOMATION_ENABLED = parseBool(process.env.WEB_HELPER_HANDOFF_AUTOMATION_ENABLED, true);
+const WEB_HELPER_HANDOFF_AUTOMATION_CACHE_TTL_MS = Number(process.env.WEB_HELPER_HANDOFF_AUTOMATION_CACHE_TTL_MS || 60000);
 const GHOST_WEB_HELPER_WEBHOOK_SECRET = stripWrappingQuotes(String(
   process.env.GHOST_WEB_HELPER_WEBHOOK_SECRET ||
   process.env.GHOST_MISSION_CONTROL_WEBHOOK_SECRET ||
@@ -88,6 +90,9 @@ const runtimeClients = [];
 let runtimeClientsHydrated = false;
 let runtimeClientsRepoSyncedAt = 0;
 let runtimeClientsRepoSyncPending = null;
+let webHelperHandoffAutomationPromise = null;
+let webHelperHandoffAutomationLastRunAt = 0;
+let webHelperHandoffAutomationLastResult = null;
 let runtimeClientsRepoLastError = "";
 let runtimeClientsRepoLastPersistAt = 0;
 let runtimeClientsDbSyncedAt = 0;
@@ -5286,6 +5291,60 @@ async function runWebHelperHandoffAutomation(options = {}) {
   };
 }
 
+async function maybeRunWebHelperHandoffAutomation(options = {}) {
+  const forceRun = Boolean(options.forceRun);
+  const now = Date.now();
+
+  if (!WEB_HELPER_HANDOFF_AUTOMATION_ENABLED && !forceRun) {
+    return {
+      generatedAt: new Date().toISOString(),
+      enabled: false,
+      cached: false,
+      targetCount: 0,
+      provisionedCount: 0,
+      existingCount: 0,
+      skippedCount: 0,
+      failedCount: 0,
+      provisioned: [],
+      existing: [],
+      skipped: [],
+      failed: []
+    };
+  }
+
+  if (
+    !forceRun &&
+    webHelperHandoffAutomationLastResult &&
+    now - webHelperHandoffAutomationLastRunAt < WEB_HELPER_HANDOFF_AUTOMATION_CACHE_TTL_MS
+  ) {
+    return {
+      ...webHelperHandoffAutomationLastResult,
+      cached: true
+    };
+  }
+
+  if (!forceRun && webHelperHandoffAutomationPromise) {
+    return webHelperHandoffAutomationPromise;
+  }
+
+  webHelperHandoffAutomationPromise = runWebHelperHandoffAutomation(options)
+    .then((result) => {
+      const normalized = {
+        ...result,
+        enabled: true,
+        cached: false
+      };
+      webHelperHandoffAutomationLastRunAt = Date.now();
+      webHelperHandoffAutomationLastResult = normalized;
+      return normalized;
+    })
+    .finally(() => {
+      webHelperHandoffAutomationPromise = null;
+    });
+
+  return webHelperHandoffAutomationPromise;
+}
+
 function getCurrentWebsiteWebHelperClients() {
   return getAllClients().filter(isCurrentWebsiteWebHelperClient);
 }
@@ -9474,13 +9533,29 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && url.pathname === "/mission/clients") {
     syncClientStore(url.searchParams.get("refresh") === "true")
-      .then((storageRead) => {
+      .then(async (storageRead) => {
+        let handoffAutomation = null;
+        try {
+          handoffAutomation = await maybeRunWebHelperHandoffAutomation({
+            request,
+            forceRun: url.searchParams.get("runHandoffAutomation") === "true",
+            refreshExisting: false
+          });
+        } catch (error) {
+          handoffAutomation = {
+            generatedAt: new Date().toISOString(),
+            enabled: WEB_HELPER_HANDOFF_AUTOMATION_ENABLED,
+            ok: false,
+            error: String(error?.message || error || "Web Helper handoff automation failed")
+          };
+        }
         const clients = getAllClients();
         sendJson(request, response, 200, {
           generatedAt: new Date().toISOString(),
           summary: summarizeClients(clients),
           pipelineStages: CLIENT_PIPELINE_STAGES,
           dataHealth: getClientDataHealth(clients),
+          handoffAutomation,
           clients: clients.map(buildClientResponseRecord),
           storage: getClientStorageStatus(storageRead),
           actions: [
@@ -9814,9 +9889,10 @@ const server = http.createServer((request, response) => {
     readJsonBody(request)
       .then(async (payload) => {
         await syncClientStore(true);
-        const automation = await runWebHelperHandoffAutomation({
+        const automation = await maybeRunWebHelperHandoffAutomation({
           request,
-          refreshExisting: Boolean(payload.refreshExisting)
+          refreshExisting: Boolean(payload.refreshExisting),
+          forceRun: true
         });
         sendJson(request, response, 200, buildClientResponsePayload({ ok: true, target: "web-helper-handoff-automation" }, 200, {
           automation,
