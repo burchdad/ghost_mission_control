@@ -88,6 +88,48 @@
       "source": "runtime"
     },
     {
+      "id": "inland-empire-ghost-hunters",
+      "clientName": "Inland Empire Ghost Hunters",
+      "websiteUrl": "https://inlandempireghosthunters.com",
+      "repo": "burchdad/inland-empire-ghost-hunters",
+      "githubUrl": "https://github.com/burchdad/inland-empire-ghost-hunters",
+      "railwayUrl": "",
+      "vercelUrl": "",
+      "mobileAppUrl": "",
+      "googleBusinessUrl": "",
+      "analyticsUrl": "",
+      "adsStatus": "",
+      "socialUrls": [],
+      "finalDomainPurchased": true,
+      "clientDetailsPending": true,
+      "leadSource": "referral",
+      "leadSourceDetail": "Referred by Keisha Law Firm",
+      "leadStage": "deposit-paid",
+      "proposalSent": true,
+      "depositInvoiceSent": true,
+      "proposalSigned": true,
+      "partnershipSigned": false,
+      "depositPaid": true,
+      "finalPaymentPaid": false,
+      "businessEmail": "andyoliveras68@icloud.com",
+      "businessPhone": "909-684-7946",
+      "plan": "Launch + Care",
+      "contact": "Andy Oliveras",
+      "notes": "Needs everything, not sure about marketing though",
+      "stage": "client-review",
+      "status": "client-review",
+      "services": [
+        "website-build"
+      ],
+      "plannedServices": [
+        "web-helper-care",
+        "search-intelligence"
+      ],
+      "createdAt": "2026-06-17T14:01:56.278Z",
+      "updatedAt": "2026-06-19T22:13:17.067Z",
+      "source": "runtime"
+    },
+    {
       "id": "tisha-shipley",
       "clientName": "Tisha Shipley",
       "websiteUrl": "https://ridersmagicmark.com",

@@ -7043,6 +7043,20 @@ const liveDeploymentMap = {
     ],
     notes: "Website finished, domain wrapped, final website payment accepted. Web Helper care is active; SEO/monthly contract is the next service step."
   },
+  "inland-empire-ghost-hunters": {
+    provider: "Vercel",
+    url: "https://inlandempireghosthunters.com",
+    status: "Client review",
+    clientName: "Inland Empire Ghost Hunters",
+    canonicalRepo: "inland-empire-ghost-hunters",
+    stage: "client-review",
+    services: ["website-build"],
+    plannedServices: ["web-helper-care", "search-intelligence"],
+    finalDomainPurchased: true,
+    leadSource: "referral",
+    leadSourceDetail: "Referred by Keisha Law Firm",
+    notes: "Needs everything, not sure about marketing though"
+  },
   "peptides-ecommerce": {
     provider: "Vercel",
     url: "https://www.peppersandvibes.com",

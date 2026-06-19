@@ -873,6 +873,25 @@ const seededClientProfiles = [
     services: ["website-build", "web-helper-care"],
     plannedServices: ["local-service"],
     source: "client-deployment-map"
+  },
+  {
+    id: "inland-empire-ghost-hunters",
+    clientName: "Inland Empire Ghost Hunters",
+    websiteUrl: "https://inlandempireghosthunters.com",
+    repo: "burchdad/inland-empire-ghost-hunters",
+    githubUrl: "https://github.com/burchdad/inland-empire-ghost-hunters",
+    stage: "client-review",
+    plan: "Launch + Care",
+    services: ["website-build"],
+    plannedServices: ["web-helper-care", "search-intelligence"],
+    finalDomainPurchased: true,
+    leadSource: "referral",
+    leadSourceDetail: "Referred by Keisha Law Firm",
+    businessEmail: "andyoliveras68@icloud.com",
+    businessPhone: "909-684-7946",
+    contact: "Andy Oliveras",
+    notes: "Needs everything, not sure about marketing though",
+    source: "client-deployment-map"
   }
 ];
 
