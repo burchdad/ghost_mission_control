@@ -3431,9 +3431,28 @@ function materializeWorkerArgs(args, replacements = {}) {
   });
 }
 
+function normalizeCodexWorkerArgs(command, args = []) {
+  const commandName = path.basename(String(command || "")).toLowerCase();
+  if (!commandName.startsWith("codex")) {
+    return Array.isArray(args) ? args : [];
+  }
+
+  const normalized = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = String(args[index] || "");
+    if (arg === "--prompt-file") {
+      index += 1;
+      continue;
+    }
+    normalized.push(arg);
+  }
+
+  return normalized.length ? normalized : ["exec", "--sandbox", "workspace-write", "--ask-for-approval", "never"];
+}
+
 function runExecFile(command, args = [], options = {}) {
   return new Promise((resolve) => {
-    execFile(command, args, {
+    const child = execFile(command, args, {
       cwd: options.cwd || ROOT,
       env: options.env || process.env,
       timeout: options.timeout || CODEX_WORKER_TIMEOUT_MS,
@@ -3449,6 +3468,9 @@ function runExecFile(command, args = [], options = {}) {
         error: error ? String(error.message || error) : ""
       });
     });
+    if (typeof options.input === "string" && child.stdin) {
+      child.stdin.end(options.input);
+    }
   });
 }
 
@@ -3589,7 +3611,8 @@ async function runCodexBuildWorker(payload = {}) {
 
     const promptPath = path.join(runDir, `${normalizeCodexBranchSlug(taskId)}.prompt.txt`);
     await fs.promises.mkdir(path.dirname(promptPath), { recursive: true });
-    await fs.promises.writeFile(promptPath, buildCodexWorkerPrompt({ ...payload, ticketId, taskId, repo, baseBranch, targetBranch }), "utf8");
+    const workerPrompt = buildCodexWorkerPrompt({ ...payload, ticketId, taskId, repo, baseBranch, targetBranch });
+    await fs.promises.writeFile(promptPath, workerPrompt, "utf8");
 
     const workerEnv = {
       ...process.env,
@@ -3603,16 +3626,17 @@ async function runCodexBuildWorker(payload = {}) {
       CODEX_WORKER_SUMMARY: String(payload.summary || ""),
       CODEX_WORKER_DETAILS: String(payload.details || "")
     };
-    const workerArgs = materializeWorkerArgs(parseWorkerArgs(CODEX_WORKER_ARGS), {
+    const workerArgs = normalizeCodexWorkerArgs(CODEX_WORKER_COMMAND, materializeWorkerArgs(parseWorkerArgs(CODEX_WORKER_ARGS), {
       PROMPT_PATH: promptPath,
       REPO_DIR: repoDir,
       TICKET_ID: ticketId,
       TASK_ID: taskId,
       BRANCH: targetBranch
-    });
+    }));
     const worker = await runExecFile(CODEX_WORKER_COMMAND, workerArgs, {
       cwd: repoDir,
       env: workerEnv,
+      input: workerArgs.length ? "" : workerPrompt,
       timeout: CODEX_WORKER_TIMEOUT_MS
     });
     if (!worker.ok) {
@@ -9425,6 +9449,7 @@ if (require.main === module) {
     buildCodexRunnerWorkOrder,
     buildCodexWorkerPrompt,
     parseWorkerArgs,
-    materializeWorkerArgs
+    materializeWorkerArgs,
+    normalizeCodexWorkerArgs
   };
 }

@@ -17,7 +17,8 @@ const {
   buildCodexRunnerWorkOrder,
   buildCodexWorkerPrompt,
   parseWorkerArgs,
-  materializeWorkerArgs
+  materializeWorkerArgs,
+  normalizeCodexWorkerArgs
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -265,6 +266,7 @@ function testWorkerArgsParsingSupportsJsonAndQuotes() {
   assert.deepStrictEqual(parseWorkerArgs('["--prompt","file path"]'), ["--prompt", "file path"]);
   assert.deepStrictEqual(parseWorkerArgs('--prompt "file path" --dry-run'), ["--prompt", "file path", "--dry-run"]);
   assert.deepStrictEqual(materializeWorkerArgs(["--prompt", "{PROMPT_PATH}"], { PROMPT_PATH: "work/order.txt" }), ["--prompt", "work/order.txt"]);
+  assert.deepStrictEqual(normalizeCodexWorkerArgs("codex", ["exec", "--prompt-file", "work/order.txt"]), ["exec"]);
 }
 
 function testFinalPaymentCompletesWebBuildStage() {
