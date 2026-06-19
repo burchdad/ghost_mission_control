@@ -3567,7 +3567,9 @@ function buildCodexWorkerPrompt(payload = {}) {
     `- Details: ${payload.details || ""}`,
     "",
     "Required output:",
+    "- You are running inside a checked-out Git repository. Edit files directly in this working tree.",
     "- Make the smallest safe source-code/content change that satisfies the ticket.",
+    "- Do not only describe a plan; apply the requested change.",
     "- Keep work on the current testing branch.",
     "- Do not merge or deploy production.",
     "- If the request is ambiguous or requires credentials/DNS/payment/legal action, leave a clear note and make no risky change."
@@ -3683,7 +3685,7 @@ async function runCodexBuildWorker(payload = {}) {
 
     const status = await runExecFile("git", ["status", "--porcelain"], { cwd: repoDir });
     if (!String(status.stdout || "").trim()) {
-      throw new Error("Codex worker command completed but did not modify any files.");
+      throw new Error(`Codex worker command completed but did not modify any files. Output: ${redactSecrets(worker.stdout || worker.stderr || "No Codex output captured.")}`);
     }
 
     const tests = payload.testCommand || CODEX_BUILD_DEFAULT_TEST_COMMAND;
