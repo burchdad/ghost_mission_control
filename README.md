@@ -275,6 +275,8 @@ GHOST_MISSION_CONTROL_PUBLIC_URL=https://<railway-domain>
 
 The intake webhook accepts `POST /mission/codex-runner/intake` with `X-Codex-Build-Secret`, marks the linked ticket as active, and returns the callback URL the runner should use after building. A dedicated external Codex runner can use the same payload contract and report results to `POST /mission/codex-build-tasks/result`.
 
+The built-in runner intake now creates the configured testing branch in the target GitHub repo and commits a structured work-order file under `.ghost/web-helper-requests/`. This makes every ticket branch visible in GitHub immediately and gives the downstream Codex/build worker a durable prompt and audit trail. This first built-in runner does not mutate source files by itself; the dedicated Codex/build worker should consume the work order, apply the requested source-code fix, test, commit, push, and report back. Set `GITHUB_TOKEN` with contents write access to the client repos.
+
 ## Client Update Email Delivery
 
 Mission Control can email clients after a Web Helper update is merged and ready for review. Resend is the preferred direct sender; the older `CLIENT_UPDATE_EMAIL_WEBHOOK_URL` remains available as a fallback for a separate email agent.

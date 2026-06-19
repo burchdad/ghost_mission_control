@@ -13,7 +13,8 @@ const {
   assessWebHelperRequest,
   buildClientConfirmationToken,
   buildClientUpdateEmailPayload,
-  hasWebHelperEvent
+  hasWebHelperEvent,
+  buildCodexRunnerWorkOrder
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -225,6 +226,24 @@ function testWebHelperEventDeduplicationMatcher() {
   assert.strictEqual(hasWebHelperEvent(events, "client_email_queued", "client_review"), false);
 }
 
+function testCodexRunnerWorkOrderIncludesBranchAndPrompt() {
+  const workOrder = buildCodexRunnerWorkOrder({
+    ticketId: "whr_123",
+    taskId: "codex_whr_123",
+    clientName: "Gray Matters Tech",
+    repo: "burchdad/barbara_consulting",
+    baseBranch: "main",
+    targetBranch: "testing/web-helper-whr-123",
+    summary: "Update services copy",
+    details: "Replace the first services paragraph.",
+    prompt: "Make the requested copy update.",
+    testCommand: "npm run check && npm run build"
+  });
+  assert.ok(workOrder.includes("testing/web-helper-whr-123"));
+  assert.ok(workOrder.includes("Replace the first services paragraph."));
+  assert.ok(workOrder.includes("Make the requested copy update."));
+}
+
 function testFinalPaymentCompletesWebBuildStage() {
   const client = buildClientRecord({
     clientName: "Done Build",
@@ -257,6 +276,7 @@ function testFinalPaymentCompletesWebBuildStage() {
   testClientConfirmationTokenIsStable,
   testClientUpdateEmailUsesRequesterFallback,
   testWebHelperEventDeduplicationMatcher,
+  testCodexRunnerWorkOrderIncludesBranchAndPrompt,
   testFinalPaymentCompletesWebBuildStage
 ].forEach((test) => test());
 

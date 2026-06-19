@@ -65,6 +65,7 @@ const GHOST_MISSION_CONTROL_PUBLIC_URL = String(process.env.GHOST_MISSION_CONTRO
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const RESEND_FROM_EMAIL = stripWrappingQuotes(String(process.env.RESEND_FROM_EMAIL || process.env.CLIENT_UPDATE_EMAIL_FROM || "Ghost Mission Control <onboarding@resend.dev>").trim());
 const RESEND_REPLY_TO_EMAIL = stripWrappingQuotes(String(process.env.RESEND_REPLY_TO_EMAIL || process.env.SUPPORT_EMAIL || "").trim());
+const CODEX_RUNNER_WORK_ORDER_DIR = String(process.env.CODEX_RUNNER_WORK_ORDER_DIR || ".ghost/web-helper-requests").trim();
 const runtimeClients = [];
 let runtimeClientsHydrated = false;
 let runtimeClientsRepoSyncedAt = 0;
@@ -1871,6 +1872,18 @@ async function relayCodexBuildTask(task) {
   }
 }
 
+function parseCodexRelayBody(relay) {
+  if (!relay?.body) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(relay.body);
+  } catch {
+    return null;
+  }
+}
+
 async function persistCodexBuildTask(task) {
   const init = await ensureCodexBuildTaskTable();
   if (!init.ok) {
@@ -1980,14 +1993,20 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
   }
 
   const relay = await relayCodexBuildTask(task);
+  const relayBody = parseCodexRelayBody(relay);
+  const relayRunner = relayBody?.runner || null;
   task.relay = relay;
-  task.status = relay.ok ? "sent_to_runner" : "queued";
+  task.status = relayRunner?.ok ? "ready_for_owner_review" : relayRunner && relayRunner.ok === false ? "blocked" : relay.ok ? "sent_to_runner" : "queued";
   task.events.push({
     type: relay.ok ? "codex_build_relay_sent" : "codex_build_relay_pending",
     status: task.status,
     actor: "mission_control",
-    message: relay.ok
-      ? "Codex build payload sent to the configured runner webhook."
+    message: relayRunner?.ok
+      ? `Codex runner created ${relayRunner.targetBranch} and committed ${relayRunner.path}.`
+      : relayRunner && relayRunner.ok === false
+        ? `Codex runner accepted the handoff but could not create the branch: ${relayRunner.error || relayRunner.reason || "unknown error"}.`
+        : relay.ok
+          ? "Codex build payload sent to the configured runner webhook."
       : relay.reason || relay.error || `Codex runner did not accept the handoff (${relay.status || "unknown"}).`,
     at: new Date().toISOString()
   });
@@ -1997,11 +2016,15 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
     return stored;
   }
 
-  const ticketStatus = relay.ok ? "sent_to_runner" : "codex_queued";
+  const ticketStatus = relayRunner?.ok ? "ready_review" : relayRunner && relayRunner.ok === false ? "blocked" : relay.ok ? "sent_to_runner" : "codex_queued";
   const updatedTicket = await updateWebHelperRequestStatusInPostgres(ticket.id, ticketStatus, {
     actor: "mission_control",
-    message: relay.ok
-      ? `${stored.task.id} sent to Codex runner. Branch ${stored.task.targetBranch}. Owner approval still required before merge.`
+    message: relayRunner?.ok
+      ? `${stored.task.id} created testing branch ${stored.task.targetBranch} and committed the Web Helper work order.`
+      : relayRunner && relayRunner.ok === false
+        ? `${stored.task.id} could not create testing branch ${stored.task.targetBranch}: ${relayRunner.error || relayRunner.reason || "unknown error"}.`
+        : relay.ok
+          ? `${stored.task.id} sent to Codex runner. Branch ${stored.task.targetBranch}. Owner approval still required before merge.`
       : `${stored.task.id} created. Branch ${stored.task.targetBranch}. Waiting for Codex runner pickup; owner approval still required before merge.`
   });
 
@@ -3187,6 +3210,187 @@ async function fetchGitHubTextFile(repoFullName, filePath, ref = "main") {
   } catch {
     return "";
   }
+}
+
+async function callGitHubApi(method, apiPath, body = null, purpose = "codex-runner") {
+  if (!GITHUB_TOKEN) {
+    return { ok: false, status: 503, error: "GITHUB_TOKEN is required for Codex runner GitHub writes." };
+  }
+
+  const response = await fetch(`https://api.github.com${apiPath}`, {
+    method,
+    headers: {
+      ...getGitHubApiHeaders(purpose),
+      "Content-Type": "application/json"
+    },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = null;
+  }
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    data,
+    body: text.slice(0, 2000)
+  };
+}
+
+function splitGithubRepo(repoFullName) {
+  const normalized = normalizeGithubRepoFullName(repoFullName) || String(repoFullName || "").trim();
+  const [owner, repo] = normalized.split("/");
+  return owner && repo ? { owner, repo, fullName: `${owner}/${repo}` } : null;
+}
+
+function githubRepoPath(repoFullName, suffix = "") {
+  const parsed = splitGithubRepo(repoFullName);
+  if (!parsed) {
+    return "";
+  }
+
+  return `/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}${suffix}`;
+}
+
+async function getGithubBranchHeadSha(repoFullName, branch) {
+  const apiPath = githubRepoPath(repoFullName, `/branches/${encodeURIComponent(branch)}`);
+  if (!apiPath) {
+    return { ok: false, status: 400, error: "A valid GitHub repo is required." };
+  }
+
+  const result = await callGitHubApi("GET", apiPath, null, "codex-runner-branch");
+  if (!result.ok) {
+    return { ok: false, status: result.status, error: `Unable to read branch ${branch}.`, detail: result.body };
+  }
+
+  return { ok: true, sha: result.data?.commit?.sha || "", branch: result.data?.name || branch };
+}
+
+async function ensureGithubBranch(repoFullName, baseBranch, targetBranch) {
+  const existing = await getGithubBranchHeadSha(repoFullName, targetBranch);
+  if (existing.ok) {
+    return { ok: true, created: false, targetBranch, sha: existing.sha };
+  }
+
+  const base = await getGithubBranchHeadSha(repoFullName, baseBranch);
+  if (!base.ok) {
+    return base;
+  }
+
+  const apiPath = githubRepoPath(repoFullName, "/git/refs");
+  const created = await callGitHubApi("POST", apiPath, {
+    ref: `refs/heads/${targetBranch}`,
+    sha: base.sha
+  }, "codex-runner-create-branch");
+  if (!created.ok && created.status !== 422) {
+    return { ok: false, status: created.status, error: `Unable to create branch ${targetBranch}.`, detail: created.body };
+  }
+
+  const head = await getGithubBranchHeadSha(repoFullName, targetBranch);
+  return { ok: head.ok, created: created.ok, targetBranch, sha: head.sha || base.sha, detail: created.ok ? "" : created.body };
+}
+
+async function getGithubFileSha(repoFullName, filePath, ref) {
+  const apiPath = githubRepoPath(repoFullName, `/contents/${encodeGitHubPath(filePath)}?ref=${encodeURIComponent(ref)}`);
+  if (!apiPath) {
+    return "";
+  }
+
+  const result = await callGitHubApi("GET", apiPath, null, "codex-runner-file");
+  return result.ok ? result.data?.sha || "" : "";
+}
+
+function buildCodexRunnerWorkOrder(payload = {}) {
+  const lines = [
+    `# Web Helper Work Order: ${payload.summary || payload.ticketId || "Website Update"}`,
+    "",
+    "This file was generated by Ghost Mission Control so the requested update has a concrete testing branch, audit trail, and build prompt.",
+    "",
+    "## Ticket",
+    "",
+    `- Ticket ID: ${payload.ticketId || ""}`,
+    `- Task ID: ${payload.taskId || ""}`,
+    `- Client: ${payload.clientName || ""}`,
+    `- Website: ${payload.websiteUrl || ""}`,
+    `- Repo: ${payload.repo || ""}`,
+    `- Page/section: ${payload.pageUrl || ""}`,
+    `- Request type: ${payload.requestType || ""}`,
+    `- Priority: ${payload.priority || "normal"}`,
+    `- Base branch: ${payload.baseBranch || "main"}`,
+    `- Target branch: ${payload.targetBranch || ""}`,
+    "",
+    "## Client Request",
+    "",
+    payload.details || payload.summary || "No expanded ticket details were provided.",
+    "",
+    "## Codex Build Prompt",
+    "",
+    "```text",
+    payload.prompt || "",
+    "```",
+    "",
+    "## Required Verification",
+    "",
+    `- ${payload.testCommand || CODEX_BUILD_DEFAULT_TEST_COMMAND}`,
+    "",
+    "## Guardrails",
+    "",
+    "- Keep all work on this testing branch until owner approval.",
+    "- Do not merge to main from this automated step.",
+    "- If credentials, DNS, payment, legal, or sensitive data is needed, stop and request owner approval."
+  ];
+
+  return `${lines.join("\n")}\n`;
+}
+
+async function commitCodexRunnerWorkOrder(payload = {}) {
+  const repo = normalizeGithubRepoFullName(payload.repo);
+  const baseBranch = String(payload.baseBranch || CODEX_BUILD_DEFAULT_BASE_BRANCH || "main").trim();
+  const targetBranch = String(payload.targetBranch || `testing/web-helper-${normalizeCodexBranchSlug(payload.ticketId || payload.taskId || "ticket")}`).trim();
+  const taskId = String(payload.taskId || (payload.ticketId ? `codex_${payload.ticketId}` : `codex_${Date.now()}`)).trim();
+  if (!repo) {
+    return { ok: false, status: 400, error: "A valid repo is required for Codex runner branch creation." };
+  }
+
+  const branch = await ensureGithubBranch(repo, baseBranch, targetBranch);
+  if (!branch.ok) {
+    return branch;
+  }
+
+  const filePath = `${CODEX_RUNNER_WORK_ORDER_DIR.replace(/\/+$/, "")}/${normalizeCodexBranchSlug(taskId)}.md`;
+  const existingSha = await getGithubFileSha(repo, filePath, targetBranch);
+  const content = buildCodexRunnerWorkOrder({
+    ...payload,
+    taskId,
+    repo,
+    baseBranch,
+    targetBranch
+  });
+  const apiPath = githubRepoPath(repo, `/contents/${encodeGitHubPath(filePath)}`);
+  const write = await callGitHubApi("PUT", apiPath, {
+    message: `Add Web Helper work order for ${payload.ticketId || taskId}`,
+    content: Buffer.from(content, "utf8").toString("base64"),
+    branch: targetBranch,
+    ...(existingSha ? { sha: existingSha } : {})
+  }, "codex-runner-work-order");
+  if (!write.ok) {
+    return { ok: false, status: write.status, error: "Unable to commit Web Helper work order.", detail: write.body };
+  }
+
+  return {
+    ok: true,
+    repo,
+    baseBranch,
+    targetBranch,
+    branchCreated: branch.created,
+    path: filePath,
+    commitSha: write.data?.commit?.sha || "",
+    htmlUrl: write.data?.content?.html_url || ""
+  };
 }
 
 function safeParseJson(raw, fallback = null) {
@@ -8438,12 +8642,32 @@ const server = http.createServer((request, response) => {
             : "Codex runner intake accepted the build handoff and moved the ticket into active build."
         });
 
+        let runner = { ok: false, skipped: true, reason: "Merge handoff does not create a build branch." };
+        if (!isMerge) {
+          runner = await commitCodexRunnerWorkOrder(payload);
+          await updateCodexBuildTaskStatus(taskId, runner.ok ? "ready_for_owner_review" : "blocked", {
+            type: runner.ok ? "codex_runner_branch_created" : "codex_runner_branch_failed",
+            actor: "codex_runner",
+            message: runner.ok
+              ? `Created ${runner.targetBranch} and committed Web Helper work order at ${runner.path}.`
+              : `Unable to create Codex runner branch: ${runner.error || runner.reason || "unknown error"}.`,
+            data: runner
+          });
+          await updateWebHelperRequestStatusInPostgres(ticketId, runner.ok ? "ready_review" : "blocked", {
+            actor: "codex_runner",
+            message: runner.ok
+              ? `Testing branch ${runner.targetBranch} is available with the Web Helper work order.`
+              : `Codex runner could not create the testing branch: ${runner.error || runner.reason || "unknown error"}.`
+          });
+        }
+
         sendJson(request, response, 202, {
           ok: true,
           accepted: true,
           taskType,
           task: taskUpdate.task,
           ticket: ticketUpdate.request,
+          runner,
           resultCallbackUrl: payload.resultCallbackUrl || buildMissionControlUrl("/mission/codex-build-tasks/result")
         });
       })
@@ -8893,6 +9117,7 @@ if (require.main === module) {
     assessWebHelperRequest,
     buildClientConfirmationToken,
     buildClientUpdateEmailPayload,
-    hasWebHelperEvent
+    hasWebHelperEvent,
+    buildCodexRunnerWorkOrder
   };
 }
