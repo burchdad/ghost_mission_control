@@ -281,6 +281,8 @@ The built-in runner intake creates the configured testing branch in the target G
 
 Mission Control also exposes `POST /mission/codex-runner/work` for the next worker layer. The worker clones the target branch, writes a prompt file, runs `CODEX_WORKER_COMMAND` with `CODEX_WORKER_ARGS`, runs the configured test command, commits and pushes any source changes, then reports back to `/mission/codex-build-tasks/result`. Codex receives the ticket prompt as the `codex exec` positional prompt argument; the legacy `["exec","--prompt-file","{PROMPT_PATH}"]` form is auto-normalized for the Codex CLI. Use `{PROMPT_PATH}`, `{REPO_DIR}`, `{TICKET_ID}`, `{TASK_ID}`, and `{BRANCH}` placeholders inside custom `CODEX_WORKER_ARGS`. Set `CODEX_WORKER_AUTORUN=true` only when the deployed environment can safely run the configured worker command during intake. Set `GITHUB_TOKEN` with contents write access to the client repos.
 
+When `CODEX_WORKER_COMMAND=codex`, the worker performs a non-interactive `codex login --with-api-key` using `OPENAI_API_KEY` before running `codex exec`.
+
 ## Client Update Email Delivery
 
 Mission Control can email clients after a Web Helper update is merged and ready for review. Resend is the preferred direct sender; the older `CLIENT_UPDATE_EMAIL_WEBHOOK_URL` remains available as a fallback for a separate email agent.

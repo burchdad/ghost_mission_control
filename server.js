@@ -3465,6 +3465,10 @@ function appendCodexPromptArg(command, args = [], prompt = "") {
   return hasExplicitPrompt ? normalizedArgs : [...normalizedArgs, String(prompt || "")];
 }
 
+function isCodexWorkerCommand(command) {
+  return path.basename(String(command || "")).toLowerCase().startsWith("codex");
+}
+
 function runExecFile(command, args = [], options = {}) {
   return new Promise((resolve) => {
     const child = execFile(command, args, {
@@ -3614,6 +3618,7 @@ async function runCodexBuildWorker(payload = {}) {
   await fs.promises.mkdir(CODEX_WORKER_ROOT, { recursive: true });
   const runDir = path.join(CODEX_WORKER_ROOT, `${normalizeCodexBranchSlug(taskId)}-${Date.now()}`);
   const repoDir = path.join(runDir, "repo");
+  const codexHome = path.join(runDir, ".codex");
   try {
     await fs.promises.mkdir(runDir, { recursive: true });
     const cloneUrl = buildAuthenticatedGithubCloneUrl(repo);
@@ -3631,6 +3636,7 @@ async function runCodexBuildWorker(payload = {}) {
 
     const workerEnv = {
       ...process.env,
+      CODEX_HOME: codexHome,
       CODEX_WORKER_PROMPT_PATH: promptPath,
       CODEX_WORKER_REPO_DIR: repoDir,
       CODEX_WORKER_TICKET_ID: ticketId,
@@ -3641,6 +3647,23 @@ async function runCodexBuildWorker(payload = {}) {
       CODEX_WORKER_SUMMARY: String(payload.summary || ""),
       CODEX_WORKER_DETAILS: String(payload.details || "")
     };
+    await fs.promises.mkdir(codexHome, { recursive: true });
+    if (isCodexWorkerCommand(CODEX_WORKER_COMMAND)) {
+      if (!OPENAI_API_KEY) {
+        throw new Error("OPENAI_API_KEY is required for Codex worker API-key login.");
+      }
+
+      const login = await runExecFile(CODEX_WORKER_COMMAND, ["login", "--with-api-key"], {
+        cwd: repoDir,
+        env: workerEnv,
+        input: `${OPENAI_API_KEY}\n`,
+        timeout: 60000
+      });
+      if (!login.ok) {
+        throw new Error(`Codex API-key login failed. ${redactSecrets(login.stderr || login.stdout || login.error)}`);
+      }
+    }
+
     const workerArgs = appendCodexPromptArg(CODEX_WORKER_COMMAND, normalizeCodexWorkerArgs(CODEX_WORKER_COMMAND, materializeWorkerArgs(parseWorkerArgs(CODEX_WORKER_ARGS), {
       PROMPT_PATH: promptPath,
       REPO_DIR: repoDir,
@@ -9466,6 +9489,7 @@ if (require.main === module) {
     parseWorkerArgs,
     materializeWorkerArgs,
     normalizeCodexWorkerArgs,
-    appendCodexPromptArg
+    appendCodexPromptArg,
+    isCodexWorkerCommand
   };
 }
