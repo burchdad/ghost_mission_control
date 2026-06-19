@@ -2,6 +2,8 @@ const http = require("http");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
+const { execFile } = require("child_process");
 
 const BASE_PORT = Number(process.env.PORT || 4173);
 const MAX_PORT_ATTEMPTS = 10;
@@ -58,6 +60,11 @@ const CODEX_BUILD_WEBHOOK_URL = String(process.env.CODEX_BUILD_WEBHOOK_URL || ""
 const CODEX_BUILD_WEBHOOK_SECRET = String(process.env.CODEX_BUILD_WEBHOOK_SECRET || "").trim();
 const CODEX_BUILD_DEFAULT_BASE_BRANCH = String(process.env.CODEX_BUILD_DEFAULT_BASE_BRANCH || "main").trim();
 const CODEX_BUILD_DEFAULT_TEST_COMMAND = String(process.env.CODEX_BUILD_DEFAULT_TEST_COMMAND || "npm run check && npm run build").trim();
+const CODEX_WORKER_COMMAND = String(process.env.CODEX_WORKER_COMMAND || "").trim();
+const CODEX_WORKER_ARGS = String(process.env.CODEX_WORKER_ARGS || "").trim();
+const CODEX_WORKER_AUTORUN = String(process.env.CODEX_WORKER_AUTORUN || "false").toLowerCase() === "true";
+const CODEX_WORKER_TIMEOUT_MS = Number(process.env.CODEX_WORKER_TIMEOUT_MS || 600000);
+const CODEX_WORKER_ROOT = String(process.env.CODEX_WORKER_ROOT || path.join(os.tmpdir(), "ghost-codex-worker")).trim();
 const WEB_HELPER_AUTOMATION_ENABLED = String(process.env.WEB_HELPER_AUTOMATION_ENABLED || "true").toLowerCase() !== "false";
 const CLIENT_UPDATE_EMAIL_WEBHOOK_URL = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_URL || "").trim();
 const CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET || "").trim();
@@ -1995,16 +2002,20 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
   const relay = await relayCodexBuildTask(task);
   const relayBody = parseCodexRelayBody(relay);
   const relayRunner = relayBody?.runner || null;
+  const relayRunnerReady = relayRunner?.result?.status === "ready_review" || relayRunner?.result?.status === "success";
+  const relayRunnerBlocked = relayRunner && (relayRunner.ok === false || relayRunner.blocked);
   task.relay = relay;
-  task.status = relayRunner?.ok ? "ready_for_owner_review" : relayRunner && relayRunner.ok === false ? "blocked" : relay.ok ? "sent_to_runner" : "queued";
+  task.status = relayRunnerReady ? "ready_for_owner_review" : relayRunnerBlocked ? "blocked" : relay.ok ? "sent_to_runner" : "queued";
   task.events.push({
     type: relay.ok ? "codex_build_relay_sent" : "codex_build_relay_pending",
     status: task.status,
     actor: "mission_control",
-    message: relayRunner?.ok
-      ? `Codex runner created ${relayRunner.targetBranch} and committed ${relayRunner.path}.`
-      : relayRunner && relayRunner.ok === false
-        ? `Codex runner accepted the handoff but could not create the branch: ${relayRunner.error || relayRunner.reason || "unknown error"}.`
+    message: relayRunnerReady
+      ? `Codex worker committed and pushed ${relayRunner.result?.commitSha || "a testing branch update"}.`
+      : relayRunnerBlocked
+        ? `Codex runner accepted the handoff but could not complete the build: ${relayRunner.error || relayRunner.reason || "unknown error"}.`
+        : relayRunner?.ok
+          ? `Codex runner created ${relayRunner.targetBranch || relayRunner.runner?.targetBranch} and queued the worker handoff.`
         : relay.ok
           ? "Codex build payload sent to the configured runner webhook."
       : relay.reason || relay.error || `Codex runner did not accept the handoff (${relay.status || "unknown"}).`,
@@ -2016,13 +2027,15 @@ async function createCodexBuildTaskFromWebHelperRequest(ticketId, options = {}) 
     return stored;
   }
 
-  const ticketStatus = relayRunner?.ok ? "ready_review" : relayRunner && relayRunner.ok === false ? "blocked" : relay.ok ? "sent_to_runner" : "codex_queued";
+  const ticketStatus = relayRunnerReady ? "ready_review" : relayRunnerBlocked ? "blocked" : relay.ok ? "sent_to_runner" : "codex_queued";
   const updatedTicket = await updateWebHelperRequestStatusInPostgres(ticket.id, ticketStatus, {
     actor: "mission_control",
-    message: relayRunner?.ok
-      ? `${stored.task.id} created testing branch ${stored.task.targetBranch} and committed the Web Helper work order.`
-      : relayRunner && relayRunner.ok === false
-        ? `${stored.task.id} could not create testing branch ${stored.task.targetBranch}: ${relayRunner.error || relayRunner.reason || "unknown error"}.`
+    message: relayRunnerReady
+      ? `${stored.task.id} committed and pushed the testing-branch update for owner review.`
+      : relayRunnerBlocked
+        ? `${stored.task.id} could not complete the Codex worker build: ${relayRunner.error || relayRunner.reason || "unknown error"}.`
+        : relayRunner?.ok
+          ? `${stored.task.id} created testing branch ${stored.task.targetBranch} and queued the worker handoff.`
         : relay.ok
           ? `${stored.task.id} sent to Codex runner. Branch ${stored.task.targetBranch}. Owner approval still required before merge.`
       : `${stored.task.id} created. Branch ${stored.task.targetBranch}. Waiting for Codex runner pickup; owner approval still required before merge.`
@@ -3391,6 +3404,273 @@ async function commitCodexRunnerWorkOrder(payload = {}) {
     commitSha: write.data?.commit?.sha || "",
     htmlUrl: write.data?.content?.html_url || ""
   };
+}
+
+function parseWorkerArgs(rawArgs) {
+  const raw = String(rawArgs || "").trim();
+  if (!raw) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map((entry) => String(entry)) : [];
+  } catch {
+    const matches = raw.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+    return matches.map((entry) => entry.replace(/^"|"$/g, ""));
+  }
+}
+
+function materializeWorkerArgs(args, replacements = {}) {
+  return (Array.isArray(args) ? args : []).map((arg) => {
+    let output = String(arg);
+    Object.entries(replacements).forEach(([key, value]) => {
+      output = output.split(`{${key}}`).join(String(value || ""));
+    });
+    return output;
+  });
+}
+
+function runExecFile(command, args = [], options = {}) {
+  return new Promise((resolve) => {
+    execFile(command, args, {
+      cwd: options.cwd || ROOT,
+      env: options.env || process.env,
+      timeout: options.timeout || CODEX_WORKER_TIMEOUT_MS,
+      windowsHide: true,
+      maxBuffer: options.maxBuffer || 1024 * 1024 * 8
+    }, (error, stdout, stderr) => {
+      resolve({
+        ok: !error,
+        code: error?.code || 0,
+        signal: error?.signal || "",
+        stdout: String(stdout || "").slice(-12000),
+        stderr: String(stderr || "").slice(-12000),
+        error: error ? String(error.message || error) : ""
+      });
+    });
+  });
+}
+
+function runShellCommand(command, options = {}) {
+  const isWindows = process.platform === "win32";
+  return runExecFile(isWindows ? "cmd.exe" : "/bin/sh", [isWindows ? "/d" : "-lc", isWindows ? "/s" : command, ...(isWindows ? ["/c", command] : [])], options);
+}
+
+function buildAuthenticatedGithubCloneUrl(repoFullName) {
+  const repo = normalizeGithubRepoFullName(repoFullName);
+  if (!repo) {
+    return "";
+  }
+
+  if (!GITHUB_TOKEN) {
+    return `https://github.com/${repo}.git`;
+  }
+
+  return `https://x-access-token:${encodeURIComponent(GITHUB_TOKEN)}@github.com/${repo}.git`;
+}
+
+function redactSecrets(value) {
+  let output = String(value || "");
+  [GITHUB_TOKEN, CODEX_BUILD_WEBHOOK_SECRET, GHOST_WEB_HELPER_WEBHOOK_SECRET].filter(Boolean).forEach((secret) => {
+    output = output.split(secret).join("[redacted]");
+    output = output.split(encodeURIComponent(secret)).join("[redacted]");
+  });
+  return output;
+}
+
+async function safeRmDir(dirPath) {
+  if (!dirPath || !dirPath.startsWith(CODEX_WORKER_ROOT)) {
+    return;
+  }
+
+  await fs.promises.rm(dirPath, { recursive: true, force: true });
+}
+
+async function postCodexRunnerResult(callbackUrl, payload) {
+  const url = String(callbackUrl || "").trim();
+  if (!url) {
+    return { ok: false, skipped: true, reason: "No result callback URL was provided." };
+  }
+
+  const headers = { "Content-Type": "application/json" };
+  if (CODEX_BUILD_WEBHOOK_SECRET) {
+    headers["X-Codex-Build-Secret"] = CODEX_BUILD_WEBHOOK_SECRET;
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload)
+    });
+    const body = await response.text();
+    return { ok: response.ok, status: response.status, body: body.slice(0, 2000) };
+  } catch (error) {
+    return { ok: false, status: "network_error", error: String(error?.message || error) };
+  }
+}
+
+function buildCodexWorkerPrompt(payload = {}) {
+  return [
+    payload.prompt || "",
+    "",
+    "Mission Control runner context:",
+    `- Ticket: ${payload.ticketId || ""}`,
+    `- Task: ${payload.taskId || ""}`,
+    `- Repo: ${payload.repo || ""}`,
+    `- Base branch: ${payload.baseBranch || CODEX_BUILD_DEFAULT_BASE_BRANCH}`,
+    `- Working branch: ${payload.targetBranch || ""}`,
+    `- Page/section: ${payload.pageUrl || "sitewide"}`,
+    `- Summary: ${payload.summary || ""}`,
+    `- Details: ${payload.details || ""}`,
+    "",
+    "Required output:",
+    "- Make the smallest safe source-code/content change that satisfies the ticket.",
+    "- Keep work on the current testing branch.",
+    "- Do not merge or deploy production.",
+    "- If the request is ambiguous or requires credentials/DNS/payment/legal action, leave a clear note and make no risky change."
+  ].filter(Boolean).join("\n");
+}
+
+async function runCodexBuildWorker(payload = {}) {
+  const ticketId = String(payload.ticketId || payload.ticket_id || payload.sourceTicketId || "").trim();
+  const taskId = String(payload.taskId || payload.task_id || (ticketId ? `codex_${ticketId}` : "")).trim();
+  const repo = normalizeGithubRepoFullName(payload.repo);
+  const baseBranch = String(payload.baseBranch || CODEX_BUILD_DEFAULT_BASE_BRANCH || "main").trim();
+  const targetBranch = String(payload.targetBranch || `testing/web-helper-${normalizeCodexBranchSlug(ticketId || taskId)}`).trim();
+  const callbackUrl = payload.resultCallbackUrl || buildMissionControlUrl("/mission/codex-build-tasks/result");
+  if (!ticketId || !taskId || !repo) {
+    return { ok: false, status: 400, error: "ticketId, taskId, and repo are required for the Codex worker." };
+  }
+
+  const branchResult = await commitCodexRunnerWorkOrder({ ...payload, ticketId, taskId, repo, baseBranch, targetBranch });
+  if (!branchResult.ok) {
+    return branchResult;
+  }
+
+  await updateCodexBuildTaskStatus(taskId, "in_progress", {
+    type: "codex_worker_started",
+    actor: "codex_worker",
+    message: `Codex worker started on ${repo}:${targetBranch}.`,
+    data: { repo, targetBranch, workOrderPath: branchResult.path }
+  });
+  await updateWebHelperRequestStatusInPostgres(ticketId, "in_progress", {
+    actor: "codex_worker",
+    message: "Codex worker is preparing the requested source-code update."
+  });
+
+  if (!CODEX_WORKER_COMMAND) {
+    const blocked = {
+      ticketId,
+      taskId,
+      status: "blocked",
+      branch: targetBranch,
+      targetBranch,
+      message: "CODEX_WORKER_COMMAND is not configured, so Mission Control created the branch/work-order but did not mutate source files.",
+      tests: "not run"
+    };
+    await postCodexRunnerResult(callbackUrl, blocked);
+    return { ok: false, blocked: true, runner: branchResult, error: blocked.message };
+  }
+
+  await fs.promises.mkdir(CODEX_WORKER_ROOT, { recursive: true });
+  const runDir = path.join(CODEX_WORKER_ROOT, `${normalizeCodexBranchSlug(taskId)}-${Date.now()}`);
+  const repoDir = path.join(runDir, "repo");
+  try {
+    await fs.promises.mkdir(runDir, { recursive: true });
+    const cloneUrl = buildAuthenticatedGithubCloneUrl(repo);
+    const clone = await runExecFile("git", ["clone", "--no-tags", "--depth", "1", "--branch", targetBranch, cloneUrl, repoDir], {
+      timeout: CODEX_WORKER_TIMEOUT_MS
+    });
+    if (!clone.ok) {
+      throw new Error(`Unable to clone ${repo}:${targetBranch}. ${redactSecrets(clone.stderr || clone.error)}`);
+    }
+
+    const promptPath = path.join(runDir, `${normalizeCodexBranchSlug(taskId)}.prompt.txt`);
+    await fs.promises.mkdir(path.dirname(promptPath), { recursive: true });
+    await fs.promises.writeFile(promptPath, buildCodexWorkerPrompt({ ...payload, ticketId, taskId, repo, baseBranch, targetBranch }), "utf8");
+
+    const workerEnv = {
+      ...process.env,
+      CODEX_WORKER_PROMPT_PATH: promptPath,
+      CODEX_WORKER_REPO_DIR: repoDir,
+      CODEX_WORKER_TICKET_ID: ticketId,
+      CODEX_WORKER_TASK_ID: taskId,
+      CODEX_WORKER_REPO: repo,
+      CODEX_WORKER_BRANCH: targetBranch,
+      CODEX_WORKER_PAGE_URL: String(payload.pageUrl || ""),
+      CODEX_WORKER_SUMMARY: String(payload.summary || ""),
+      CODEX_WORKER_DETAILS: String(payload.details || "")
+    };
+    const workerArgs = materializeWorkerArgs(parseWorkerArgs(CODEX_WORKER_ARGS), {
+      PROMPT_PATH: promptPath,
+      REPO_DIR: repoDir,
+      TICKET_ID: ticketId,
+      TASK_ID: taskId,
+      BRANCH: targetBranch
+    });
+    const worker = await runExecFile(CODEX_WORKER_COMMAND, workerArgs, {
+      cwd: repoDir,
+      env: workerEnv,
+      timeout: CODEX_WORKER_TIMEOUT_MS
+    });
+    if (!worker.ok) {
+      throw new Error(`Codex worker command failed. ${redactSecrets(worker.stderr || worker.stdout || worker.error)}`);
+    }
+
+    const status = await runExecFile("git", ["status", "--porcelain"], { cwd: repoDir });
+    if (!String(status.stdout || "").trim()) {
+      throw new Error("Codex worker command completed but did not modify any files.");
+    }
+
+    const tests = payload.testCommand || CODEX_BUILD_DEFAULT_TEST_COMMAND;
+    const testRun = tests ? await runShellCommand(tests, { cwd: repoDir, timeout: CODEX_WORKER_TIMEOUT_MS }) : { ok: true, stdout: "No test command configured.", stderr: "" };
+    if (!testRun.ok) {
+      throw new Error(`Verification failed: ${redactSecrets(testRun.stderr || testRun.stdout || testRun.error)}`);
+    }
+
+    await runExecFile("git", ["config", "user.name", "Ghost Mission Control"], { cwd: repoDir });
+    await runExecFile("git", ["config", "user.email", "updates@ghostai.solutions"], { cwd: repoDir });
+    await runExecFile("git", ["add", "-A"], { cwd: repoDir });
+    const commit = await runExecFile("git", ["commit", "-m", `Apply Web Helper fix for ${ticketId}`], { cwd: repoDir });
+    if (!commit.ok) {
+      throw new Error(`Unable to commit worker changes. ${redactSecrets(commit.stderr || commit.stdout || commit.error)}`);
+    }
+
+    const commitSha = await runExecFile("git", ["rev-parse", "HEAD"], { cwd: repoDir });
+    const push = await runExecFile("git", ["push", "origin", targetBranch], { cwd: repoDir, timeout: CODEX_WORKER_TIMEOUT_MS });
+    if (!push.ok) {
+      throw new Error(`Unable to push ${targetBranch}. ${redactSecrets(push.stderr || push.stdout || push.error)}`);
+    }
+
+    const resultPayload = {
+      ticketId,
+      taskId,
+      status: "ready_review",
+      branch: targetBranch,
+      targetBranch,
+      commitSha: String(commitSha.stdout || "").trim(),
+      message: `Codex worker committed and pushed the requested update to ${targetBranch}.`,
+      tests: redactSecrets(testRun.stdout || "Verification passed.")
+    };
+    const callback = await postCodexRunnerResult(callbackUrl, resultPayload);
+    return { ok: true, runner: branchResult, result: resultPayload, callback };
+  } catch (error) {
+    const resultPayload = {
+      ticketId,
+      taskId,
+      status: "blocked",
+      branch: targetBranch,
+      targetBranch,
+      message: redactSecrets(String(error?.message || error || "Codex worker failed.")),
+      tests: "failed_or_not_run"
+    };
+    const callback = await postCodexRunnerResult(callbackUrl, resultPayload);
+    return { ok: false, runner: branchResult, error: resultPayload.message, callback };
+  } finally {
+    await safeRmDir(runDir);
+  }
 }
 
 function safeParseJson(raw, fallback = null) {
@@ -8644,21 +8924,25 @@ const server = http.createServer((request, response) => {
 
         let runner = { ok: false, skipped: true, reason: "Merge handoff does not create a build branch." };
         if (!isMerge) {
-          runner = await commitCodexRunnerWorkOrder(payload);
-          await updateCodexBuildTaskStatus(taskId, runner.ok ? "ready_for_owner_review" : "blocked", {
-            type: runner.ok ? "codex_runner_branch_created" : "codex_runner_branch_failed",
-            actor: "codex_runner",
-            message: runner.ok
-              ? `Created ${runner.targetBranch} and committed Web Helper work order at ${runner.path}.`
-              : `Unable to create Codex runner branch: ${runner.error || runner.reason || "unknown error"}.`,
-            data: runner
-          });
-          await updateWebHelperRequestStatusInPostgres(ticketId, runner.ok ? "ready_review" : "blocked", {
-            actor: "codex_runner",
-            message: runner.ok
-              ? `Testing branch ${runner.targetBranch} is available with the Web Helper work order.`
-              : `Codex runner could not create the testing branch: ${runner.error || runner.reason || "unknown error"}.`
-          });
+          if (CODEX_WORKER_AUTORUN) {
+            runner = await runCodexBuildWorker(payload);
+          } else {
+            runner = await commitCodexRunnerWorkOrder(payload);
+            await updateCodexBuildTaskStatus(taskId, runner.ok ? "sent_to_runner" : "blocked", {
+              type: runner.ok ? "codex_runner_branch_created" : "codex_runner_branch_failed",
+              actor: "codex_runner",
+              message: runner.ok
+                ? `Created ${runner.targetBranch} and committed Web Helper work order at ${runner.path}. Waiting for worker execution.`
+                : `Unable to create Codex runner branch: ${runner.error || runner.reason || "unknown error"}.`,
+              data: runner
+            });
+            await updateWebHelperRequestStatusInPostgres(ticketId, runner.ok ? "sent_to_runner" : "blocked", {
+              actor: "codex_runner",
+              message: runner.ok
+                ? `Testing branch ${runner.targetBranch} is available with the Web Helper work order and is waiting for worker execution.`
+                : `Codex runner could not create the testing branch: ${runner.error || runner.reason || "unknown error"}.`
+            });
+          }
         }
 
         sendJson(request, response, 202, {
@@ -8670,6 +8954,26 @@ const server = http.createServer((request, response) => {
           runner,
           resultCallbackUrl: payload.resultCallbackUrl || buildMissionControlUrl("/mission/codex-build-tasks/result")
         });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/codex-runner/work") {
+    const configuredSecret = CODEX_BUILD_WEBHOOK_SECRET || GHOST_WEB_HELPER_WEBHOOK_SECRET;
+    const providedSecret = request.headers["x-codex-build-secret"] || request.headers["x-ghost-webhook-secret"] || "";
+    if (configuredSecret && !timingSafeEqualText(providedSecret, configuredSecret)) {
+      sendJson(request, response, 401, { error: "Unauthorized Codex worker request." });
+      return;
+    }
+
+    readJsonBody(request)
+      .then(async (payload) => {
+        const result = await runCodexBuildWorker(payload);
+        sendJson(request, response, result.ok ? 200 : (result.status || 503), result);
       })
       .catch((error) => {
         sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
@@ -9118,6 +9422,9 @@ if (require.main === module) {
     buildClientConfirmationToken,
     buildClientUpdateEmailPayload,
     hasWebHelperEvent,
-    buildCodexRunnerWorkOrder
+    buildCodexRunnerWorkOrder,
+    buildCodexWorkerPrompt,
+    parseWorkerArgs,
+    materializeWorkerArgs
   };
 }

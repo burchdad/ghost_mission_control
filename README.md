@@ -271,11 +271,15 @@ For the built-in Mission Control runner intake shim, set:
 CODEX_BUILD_WEBHOOK_URL=https://<railway-domain>/mission/codex-runner/intake
 CODEX_BUILD_WEBHOOK_SECRET=<shared-secret>
 GHOST_MISSION_CONTROL_PUBLIC_URL=https://<railway-domain>
+CODEX_WORKER_COMMAND=<codex-or-wrapper-command>
+CODEX_WORKER_ARGS=["exec","--prompt-file","{PROMPT_PATH}"]
 ```
 
 The intake webhook accepts `POST /mission/codex-runner/intake` with `X-Codex-Build-Secret`, marks the linked ticket as active, and returns the callback URL the runner should use after building. A dedicated external Codex runner can use the same payload contract and report results to `POST /mission/codex-build-tasks/result`.
 
-The built-in runner intake now creates the configured testing branch in the target GitHub repo and commits a structured work-order file under `.ghost/web-helper-requests/`. This makes every ticket branch visible in GitHub immediately and gives the downstream Codex/build worker a durable prompt and audit trail. This first built-in runner does not mutate source files by itself; the dedicated Codex/build worker should consume the work order, apply the requested source-code fix, test, commit, push, and report back. Set `GITHUB_TOKEN` with contents write access to the client repos.
+The built-in runner intake creates the configured testing branch in the target GitHub repo and commits a structured work-order file under `.ghost/web-helper-requests/`. This makes every ticket branch visible in GitHub immediately and gives the downstream Codex/build worker a durable prompt and audit trail.
+
+Mission Control also exposes `POST /mission/codex-runner/work` for the next worker layer. The worker clones the target branch, writes a prompt file, runs `CODEX_WORKER_COMMAND` with `CODEX_WORKER_ARGS`, runs the configured test command, commits and pushes any source changes, then reports back to `/mission/codex-build-tasks/result`. Use `{PROMPT_PATH}`, `{REPO_DIR}`, `{TICKET_ID}`, `{TASK_ID}`, and `{BRANCH}` placeholders inside `CODEX_WORKER_ARGS`. Set `CODEX_WORKER_AUTORUN=true` only when the deployed environment can safely run the configured worker command during intake. Set `GITHUB_TOKEN` with contents write access to the client repos.
 
 ## Client Update Email Delivery
 

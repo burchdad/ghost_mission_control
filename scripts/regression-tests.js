@@ -14,7 +14,10 @@ const {
   buildClientConfirmationToken,
   buildClientUpdateEmailPayload,
   hasWebHelperEvent,
-  buildCodexRunnerWorkOrder
+  buildCodexRunnerWorkOrder,
+  buildCodexWorkerPrompt,
+  parseWorkerArgs,
+  materializeWorkerArgs
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -244,6 +247,26 @@ function testCodexRunnerWorkOrderIncludesBranchAndPrompt() {
   assert.ok(workOrder.includes("Make the requested copy update."));
 }
 
+function testCodexWorkerPromptCarriesTicketContext() {
+  const prompt = buildCodexWorkerPrompt({
+    ticketId: "whr_456",
+    taskId: "codex_whr_456",
+    repo: "burchdad/barbara_consulting",
+    targetBranch: "testing/web-helper-whr-456",
+    summary: "Swap hero copy",
+    details: "Use the provided owner-approved headline."
+  });
+  assert.ok(prompt.includes("whr_456"));
+  assert.ok(prompt.includes("testing/web-helper-whr-456"));
+  assert.ok(prompt.includes("Use the provided owner-approved headline."));
+}
+
+function testWorkerArgsParsingSupportsJsonAndQuotes() {
+  assert.deepStrictEqual(parseWorkerArgs('["--prompt","file path"]'), ["--prompt", "file path"]);
+  assert.deepStrictEqual(parseWorkerArgs('--prompt "file path" --dry-run'), ["--prompt", "file path", "--dry-run"]);
+  assert.deepStrictEqual(materializeWorkerArgs(["--prompt", "{PROMPT_PATH}"], { PROMPT_PATH: "work/order.txt" }), ["--prompt", "work/order.txt"]);
+}
+
 function testFinalPaymentCompletesWebBuildStage() {
   const client = buildClientRecord({
     clientName: "Done Build",
@@ -277,6 +300,8 @@ function testFinalPaymentCompletesWebBuildStage() {
   testClientUpdateEmailUsesRequesterFallback,
   testWebHelperEventDeduplicationMatcher,
   testCodexRunnerWorkOrderIncludesBranchAndPrompt,
+  testCodexWorkerPromptCarriesTicketContext,
+  testWorkerArgsParsingSupportsJsonAndQuotes,
   testFinalPaymentCompletesWebBuildStage
 ].forEach((test) => test());
 
