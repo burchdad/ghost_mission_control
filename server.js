@@ -3451,7 +3451,16 @@ function normalizeCodexWorkerArgs(command, args = []) {
     normalized.push(arg);
   }
 
-  return normalized.length ? normalized : ["exec", "--sandbox", "workspace-write"];
+  const hasBypass = normalized.includes("--dangerously-bypass-approvals-and-sandbox");
+  const hasSandbox = normalized.includes("--sandbox") || normalized.includes("-s");
+  if (!hasBypass && hasSandbox && normalized.includes("workspace-write")) {
+    return normalized.filter((arg, index, list) => {
+      const previous = list[index - 1] || "";
+      return arg !== "--sandbox" && arg !== "-s" && !(previous === "--sandbox" || previous === "-s");
+    }).concat(["--dangerously-bypass-approvals-and-sandbox"]);
+  }
+
+  return normalized.length ? normalized : ["exec", "--dangerously-bypass-approvals-and-sandbox"];
 }
 
 function appendCodexPromptArg(command, args = [], prompt = "") {

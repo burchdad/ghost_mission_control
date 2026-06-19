@@ -272,14 +272,14 @@ CODEX_BUILD_WEBHOOK_URL=https://<railway-domain>/mission/codex-runner/intake
 CODEX_BUILD_WEBHOOK_SECRET=<shared-secret>
 GHOST_MISSION_CONTROL_PUBLIC_URL=https://<railway-domain>
 CODEX_WORKER_COMMAND=<codex-or-wrapper-command>
-CODEX_WORKER_ARGS=["exec","--sandbox","workspace-write"]
+CODEX_WORKER_ARGS=["exec","--dangerously-bypass-approvals-and-sandbox"]
 ```
 
 The intake webhook accepts `POST /mission/codex-runner/intake` with `X-Codex-Build-Secret`, marks the linked ticket as active, and returns the callback URL the runner should use after building. A dedicated external Codex runner can use the same payload contract and report results to `POST /mission/codex-build-tasks/result`.
 
 The built-in runner intake creates the configured testing branch in the target GitHub repo and commits a structured work-order file under `.ghost/web-helper-requests/`. This makes every ticket branch visible in GitHub immediately and gives the downstream Codex/build worker a durable prompt and audit trail.
 
-Mission Control also exposes `POST /mission/codex-runner/work` for the next worker layer. The worker clones the target branch, writes a prompt file, runs `CODEX_WORKER_COMMAND` with `CODEX_WORKER_ARGS`, runs the configured test command, commits and pushes any source changes, then reports back to `/mission/codex-build-tasks/result`. Codex receives the ticket prompt as the `codex exec` positional prompt argument; the legacy `["exec","--prompt-file","{PROMPT_PATH}"]` form is auto-normalized for the Codex CLI. Use `{PROMPT_PATH}`, `{REPO_DIR}`, `{TICKET_ID}`, `{TASK_ID}`, and `{BRANCH}` placeholders inside custom `CODEX_WORKER_ARGS`. Set `CODEX_WORKER_AUTORUN=true` only when the deployed environment can safely run the configured worker command during intake. Set `GITHUB_TOKEN` with contents write access to the client repos.
+Mission Control also exposes `POST /mission/codex-runner/work` for the next worker layer. The worker clones the target branch, writes a prompt file, runs `CODEX_WORKER_COMMAND` with `CODEX_WORKER_ARGS`, runs the configured test command, commits and pushes any source changes, then reports back to `/mission/codex-build-tasks/result`. Codex receives the ticket prompt as the `codex exec` positional prompt argument; the legacy `["exec","--prompt-file","{PROMPT_PATH}"]` form is auto-normalized for the Codex CLI. Railway does not allow Codex's nested bubblewrap sandbox, so the Docker worker should use `--dangerously-bypass-approvals-and-sandbox` inside the already-isolated Railway container. Use `{PROMPT_PATH}`, `{REPO_DIR}`, `{TICKET_ID}`, `{TASK_ID}`, and `{BRANCH}` placeholders inside custom `CODEX_WORKER_ARGS`. Set `CODEX_WORKER_AUTORUN=true` only when the deployed environment can safely run the configured worker command during intake. Set `GITHUB_TOKEN` with contents write access to the client repos.
 
 When `CODEX_WORKER_COMMAND=codex`, the worker performs a non-interactive `codex login --with-api-key` using `OPENAI_API_KEY` before running `codex exec`.
 
