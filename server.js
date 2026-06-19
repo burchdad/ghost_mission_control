@@ -65,6 +65,7 @@ const CODEX_WORKER_ARGS = String(process.env.CODEX_WORKER_ARGS || "").trim();
 const CODEX_WORKER_AUTORUN = String(process.env.CODEX_WORKER_AUTORUN || "false").toLowerCase() === "true";
 const CODEX_WORKER_TIMEOUT_MS = Number(process.env.CODEX_WORKER_TIMEOUT_MS || 600000);
 const CODEX_WORKER_ROOT = String(process.env.CODEX_WORKER_ROOT || path.join(os.tmpdir(), "ghost-codex-worker")).trim();
+const CODEX_WORKER_VERIFICATION_MODE = String(process.env.CODEX_WORKER_VERIFICATION_MODE || "external").trim().toLowerCase();
 const WEB_HELPER_AUTOMATION_ENABLED = String(process.env.WEB_HELPER_AUTOMATION_ENABLED || "true").toLowerCase() !== "false";
 const CLIENT_UPDATE_EMAIL_WEBHOOK_URL = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_URL || "").trim();
 const CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET = String(process.env.CLIENT_UPDATE_EMAIL_WEBHOOK_SECRET || "").trim();
@@ -2188,6 +2189,28 @@ async function findCodexBuildTaskForTicket(ticketId) {
   return { ok: true, task: dbRowToCodexBuildTask(result.rows[0]) };
 }
 
+async function readCodexBuildTaskById(taskId) {
+  const init = await ensureCodexBuildTaskTable();
+  if (!init.ok) {
+    return init;
+  }
+
+  const normalizedTaskId = String(taskId || "").trim();
+  if (!normalizedTaskId) {
+    return { ok: false, status: 400, error: "Task id is required." };
+  }
+
+  const result = await getClientStorePgPool().query(
+    "SELECT * FROM mission_codex_build_tasks WHERE id = $1 LIMIT 1",
+    [normalizedTaskId]
+  );
+  if (!result.rows.length) {
+    return { ok: false, status: 404, error: "Codex build task was not found." };
+  }
+
+  return { ok: true, task: dbRowToCodexBuildTask(result.rows[0]) };
+}
+
 function buildMissionControlUrl(pathname) {
   const base = GHOST_MISSION_CONTROL_PUBLIC_URL
     ? (GHOST_MISSION_CONTROL_PUBLIC_URL.startsWith("http") ? GHOST_MISSION_CONTROL_PUBLIC_URL : `https://${GHOST_MISSION_CONTROL_PUBLIC_URL}`)
@@ -2427,7 +2450,8 @@ async function processCodexRunnerResult(payload = {}) {
       branch: payload.branch || payload.targetBranch || "",
       commitSha: payload.commitSha || payload.commit_sha || "",
       previewUrl: payload.previewUrl || payload.preview_url || "",
-      tests: payload.tests || payload.testResults || ""
+      tests: payload.tests || payload.testResults || "",
+      verificationMode: payload.verificationMode || payload.verification_mode || ""
     }
   });
   if (!taskUpdate.ok) {
@@ -2440,6 +2464,60 @@ async function processCodexRunnerResult(payload = {}) {
   });
 
   return { ok: ticketUpdate.ok, task: taskUpdate.task, ticket: ticketUpdate.request, status: nextTicketStatus };
+}
+
+async function checkCodexBuildExternalVerification(payload = {}) {
+  const ticketId = String(payload.ticketId || payload.ticket_id || payload.sourceTicketId || payload.id || "").trim();
+  const taskId = String(payload.taskId || payload.task_id || (ticketId ? `codex_${ticketId}` : "")).trim();
+  const linkedTask = taskId ? await readCodexBuildTaskById(taskId) : await findCodexBuildTaskForTicket(ticketId);
+  if (!linkedTask.ok) {
+    return linkedTask;
+  }
+
+  const task = linkedTask.task;
+  const relay = task.relay || {};
+  const repo = normalizeGithubRepoFullName(payload.repo || task.repo || relay.repo);
+  const branch = String(payload.branch || payload.targetBranch || task.targetBranch || relay.branch || relay.targetBranch || "").trim();
+  const commitSha = String(payload.commitSha || payload.commit_sha || relay.commitSha || relay.commit_sha || "").trim();
+  const ref = commitSha || branch;
+  const verification = await readGithubCommitVerification(repo, ref);
+  if (!verification.ok && verification.state === "failure") {
+    const failed = await processCodexRunnerResult({
+      ticketId: task.sourceTicketId || ticketId,
+      taskId: task.id,
+      status: "blocked",
+      branch,
+      commitSha,
+      tests: verification.summary || verification.error || "External verification failed.",
+      message: `External verification failed: ${verification.summary || verification.error || "GitHub/Vercel checks did not pass."}`
+    });
+    return { ok: false, verification, result: failed };
+  }
+
+  if (verification.state === "success") {
+    const ready = await processCodexRunnerResult({
+      ticketId: task.sourceTicketId || ticketId,
+      taskId: task.id,
+      status: "ready_review",
+      branch,
+      commitSha,
+      tests: verification.summary,
+      message: "External GitHub/Vercel verification passed; the ticket is ready for owner review."
+    });
+    return { ok: ready.ok, verification, result: ready };
+  }
+
+  const taskUpdate = await updateCodexBuildTaskStatus(task.id, "external_verification", {
+    type: "external_verification_pending",
+    actor: "mission_control",
+    message: verification.summary || "External GitHub/Vercel verification is still pending.",
+    data: { branch, commitSha, verification }
+  });
+  const ticketUpdate = await updateWebHelperRequestStatusInPostgres(task.sourceTicketId || ticketId, "in_progress", {
+    actor: "mission_control",
+    message: verification.summary || "Waiting for external GitHub/Vercel verification."
+  });
+  return { ok: true, pending: true, verification, task: taskUpdate.task, ticket: ticketUpdate.request };
 }
 
 async function requestCodexRedo(ticketId, instructions = "") {
@@ -3269,6 +3347,109 @@ function githubRepoPath(repoFullName, suffix = "") {
   return `/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}${suffix}`;
 }
 
+function summarizeGithubVerification(statusData = null, checkRunsData = null) {
+  const statusState = String(statusData?.state || "").toLowerCase();
+  const statuses = Array.isArray(statusData?.statuses) ? statusData.statuses : [];
+  const checkRuns = Array.isArray(checkRunsData?.check_runs) ? checkRunsData.check_runs : [];
+  const failedStatus = statuses.find((status) => ["failure", "error"].includes(String(status?.state || "").toLowerCase()));
+  if (failedStatus) {
+    return {
+      state: "failure",
+      ok: false,
+      summary: failedStatus.description || failedStatus.context || "A GitHub commit status failed.",
+      statuses: statuses.length,
+      checkRuns: checkRuns.length
+    };
+  }
+
+  const failedCheck = checkRuns.find((run) => {
+    const conclusion = String(run?.conclusion || "").toLowerCase();
+    return ["failure", "cancelled", "timed_out", "action_required", "startup_failure"].includes(conclusion);
+  });
+  if (failedCheck) {
+    return {
+      state: "failure",
+      ok: false,
+      summary: `${failedCheck.name || "External check"} ended with ${failedCheck.conclusion || "failure"}.`,
+      statuses: statuses.length,
+      checkRuns: checkRuns.length
+    };
+  }
+
+  const pendingStatus = statuses.find((status) => ["pending", "queued", "in_progress"].includes(String(status?.state || "").toLowerCase()));
+  const pendingCheck = checkRuns.find((run) => String(run?.status || "").toLowerCase() !== "completed");
+  if (pendingStatus || pendingCheck) {
+    return {
+      state: "pending",
+      ok: false,
+      summary: pendingStatus?.description || pendingCheck?.name || "External verification is still running.",
+      statuses: statuses.length,
+      checkRuns: checkRuns.length
+    };
+  }
+
+  const completedChecks = checkRuns.filter((run) => String(run?.status || "").toLowerCase() === "completed");
+  const passedChecks = completedChecks.filter((run) => ["success", "neutral", "skipped"].includes(String(run?.conclusion || "").toLowerCase()));
+  const combinedStatusPassed = statusState === "success" || (statuses.length > 0 && statuses.every((status) => String(status?.state || "").toLowerCase() === "success"));
+  const checksPassed = completedChecks.length > 0 && completedChecks.length === passedChecks.length;
+  if (combinedStatusPassed || checksPassed) {
+    return {
+      state: "success",
+      ok: true,
+      summary: "External verification passed.",
+      statuses: statuses.length,
+      checkRuns: checkRuns.length
+    };
+  }
+
+  return {
+    state: "pending",
+    ok: false,
+    summary: "No external GitHub/Vercel checks have reported yet.",
+    statuses: statuses.length,
+    checkRuns: checkRuns.length
+  };
+}
+
+async function readGithubCommitVerification(repoFullName, ref) {
+  const repo = normalizeGithubRepoFullName(repoFullName);
+  const normalizedRef = String(ref || "").trim();
+  if (!repo || !normalizedRef) {
+    return { ok: false, state: "failure", status: 400, error: "Repo and commit ref are required for external verification." };
+  }
+
+  const encodedRef = encodeURIComponent(normalizedRef);
+  const statusPath = githubRepoPath(repo, `/commits/${encodedRef}/status`);
+  const checksPath = githubRepoPath(repo, `/commits/${encodedRef}/check-runs?per_page=100`);
+  const [statusResult, checksResult] = await Promise.all([
+    callGitHubApi("GET", statusPath, null, "codex-external-status"),
+    callGitHubApi("GET", checksPath, null, "codex-external-checks")
+  ]);
+
+  if (!statusResult.ok && !checksResult.ok) {
+    return {
+      ok: false,
+      state: "failure",
+      status: statusResult.status || checksResult.status || 503,
+      error: "Unable to read external verification checks from GitHub.",
+      detail: statusResult.body || checksResult.body || ""
+    };
+  }
+
+  const summary = summarizeGithubVerification(statusResult.ok ? statusResult.data : null, checksResult.ok ? checksResult.data : null);
+  return {
+    ok: summary.ok,
+    state: summary.state,
+    repo,
+    ref: normalizedRef,
+    summary: summary.summary,
+    statuses: summary.statuses,
+    checkRuns: summary.checkRuns,
+    statusApi: { ok: statusResult.ok, status: statusResult.status },
+    checksApi: { ok: checksResult.ok, status: checksResult.status }
+  };
+}
+
 async function getGithubBranchHeadSha(repoFullName, branch) {
   const apiPath = githubRepoPath(repoFullName, `/branches/${encodeURIComponent(branch)}`);
   if (!apiPath) {
@@ -3697,12 +3878,6 @@ async function runCodexBuildWorker(payload = {}) {
       throw new Error(`Codex worker command completed but did not modify any files. Output: ${redactSecrets(worker.stdout || worker.stderr || "No Codex output captured.")}`);
     }
 
-    const tests = payload.testCommand || CODEX_BUILD_DEFAULT_TEST_COMMAND;
-    const testRun = tests ? await runShellCommand(tests, { cwd: repoDir, timeout: CODEX_WORKER_TIMEOUT_MS }) : { ok: true, stdout: "No test command configured.", stderr: "" };
-    if (!testRun.ok) {
-      throw new Error(`Verification failed: ${redactSecrets(testRun.stderr || testRun.stdout || testRun.error)}`);
-    }
-
     await runExecFile("git", ["config", "user.name", "Ghost Mission Control"], { cwd: repoDir });
     await runExecFile("git", ["config", "user.email", "updates@ghostai.solutions"], { cwd: repoDir });
     await runExecFile("git", ["add", "-A"], { cwd: repoDir });
@@ -3717,15 +3892,53 @@ async function runCodexBuildWorker(payload = {}) {
       throw new Error(`Unable to push ${targetBranch}. ${redactSecrets(push.stderr || push.stdout || push.error)}`);
     }
 
+    const verificationMode = String(payload.verificationMode || payload.verification_mode || CODEX_WORKER_VERIFICATION_MODE || "external").trim().toLowerCase();
+    const tests = payload.testCommand || CODEX_BUILD_DEFAULT_TEST_COMMAND;
+    if (verificationMode === "local") {
+      const testRun = tests ? await runShellCommand(tests, { cwd: repoDir, timeout: CODEX_WORKER_TIMEOUT_MS }) : { ok: true, stdout: "No test command configured.", stderr: "" };
+      if (!testRun.ok) {
+        throw new Error(`Verification failed: ${redactSecrets(testRun.stderr || testRun.stdout || testRun.error)}`);
+      }
+
+      const resultPayload = {
+        ticketId,
+        taskId,
+        status: "ready_review",
+        branch: targetBranch,
+        targetBranch,
+        commitSha: String(commitSha.stdout || "").trim(),
+        message: `Codex worker committed, pushed, and locally verified the requested update on ${targetBranch}.`,
+        tests: redactSecrets(testRun.stdout || "Local verification passed.")
+      };
+      const callback = await postCodexRunnerResult(callbackUrl, resultPayload);
+      return { ok: true, runner: branchResult, result: resultPayload, callback };
+    }
+
+    if (verificationMode === "none") {
+      const resultPayload = {
+        ticketId,
+        taskId,
+        status: "ready_review",
+        branch: targetBranch,
+        targetBranch,
+        commitSha: String(commitSha.stdout || "").trim(),
+        message: `Codex worker committed and pushed the requested update to ${targetBranch}; verification was skipped by configuration.`,
+        tests: "verification_skipped"
+      };
+      const callback = await postCodexRunnerResult(callbackUrl, resultPayload);
+      return { ok: true, runner: branchResult, result: resultPayload, callback };
+    }
+
     const resultPayload = {
       ticketId,
       taskId,
-      status: "ready_review",
+      status: "external_verification",
       branch: targetBranch,
       targetBranch,
       commitSha: String(commitSha.stdout || "").trim(),
-      message: `Codex worker committed and pushed the requested update to ${targetBranch}.`,
-      tests: redactSecrets(testRun.stdout || "Verification passed.")
+      message: `Codex worker committed and pushed ${targetBranch}. Waiting for external GitHub/Vercel verification before owner review.`,
+      tests: "external_verification_pending",
+      verificationMode
     };
     const callback = await postCodexRunnerResult(callbackUrl, resultPayload);
     return { ok: true, runner: branchResult, result: resultPayload, callback };
@@ -9055,6 +9268,26 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/mission/codex-build-tasks/checks") {
+    const configuredSecret = CODEX_BUILD_WEBHOOK_SECRET || GHOST_WEB_HELPER_WEBHOOK_SECRET;
+    const providedSecret = request.headers["x-codex-build-secret"] || request.headers["x-ghost-webhook-secret"] || "";
+    if (configuredSecret && !timingSafeEqualText(providedSecret, configuredSecret)) {
+      sendJson(request, response, 401, { error: "Unauthorized Codex verification check." });
+      return;
+    }
+
+    readJsonBody(request)
+      .then(async (payload) => {
+        const result = await checkCodexBuildExternalVerification(payload);
+        sendJson(request, response, result.ok ? 200 : (result.status || 503), result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/mission/codex-build-tasks/result") {
     const configuredSecret = CODEX_BUILD_WEBHOOK_SECRET || GHOST_WEB_HELPER_WEBHOOK_SECRET;
     const providedSecret = request.headers["x-codex-build-secret"] || request.headers["x-ghost-webhook-secret"] || "";
@@ -9501,6 +9734,7 @@ if (require.main === module) {
     materializeWorkerArgs,
     normalizeCodexWorkerArgs,
     appendCodexPromptArg,
-    isCodexWorkerCommand
+    isCodexWorkerCommand,
+    summarizeGithubVerification
   };
 }

@@ -20,7 +20,8 @@ const {
   materializeWorkerArgs,
   normalizeCodexWorkerArgs,
   appendCodexPromptArg,
-  isCodexWorkerCommand
+  isCodexWorkerCommand,
+  summarizeGithubVerification
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -296,6 +297,27 @@ function testFinalPaymentCompletesWebBuildStage() {
   assert.strictEqual(careClient.stage, "web-helper-care");
 }
 
+function testGithubVerificationSummary() {
+  const passing = summarizeGithubVerification(
+    { state: "pending", statuses: [] },
+    { check_runs: [{ name: "Vercel", status: "completed", conclusion: "success" }] }
+  );
+  assert.strictEqual(passing.state, "success");
+  assert.strictEqual(passing.ok, true);
+
+  const failing = summarizeGithubVerification(
+    { state: "success", statuses: [] },
+    { check_runs: [{ name: "Vercel", status: "completed", conclusion: "failure" }] }
+  );
+  assert.strictEqual(failing.state, "failure");
+  assert.strictEqual(failing.ok, false);
+  assert.ok(failing.summary.includes("Vercel"));
+
+  const pending = summarizeGithubVerification({ state: "pending", statuses: [] }, { check_runs: [] });
+  assert.strictEqual(pending.state, "pending");
+  assert.strictEqual(pending.ok, false);
+}
+
 [
   testCanonicalClientAliases,
   testClientMergePreservesRuntimeUpdates,
@@ -310,7 +332,8 @@ function testFinalPaymentCompletesWebBuildStage() {
   testCodexRunnerWorkOrderIncludesBranchAndPrompt,
   testCodexWorkerPromptCarriesTicketContext,
   testWorkerArgsParsingSupportsJsonAndQuotes,
-  testFinalPaymentCompletesWebBuildStage
+  testFinalPaymentCompletesWebBuildStage,
+  testGithubVerificationSummary
 ].forEach((test) => test());
 
 console.log("Regression tests passed");
