@@ -4640,11 +4640,23 @@ function renderClientQuickActions(client, options = {}) {
     .map((action) => `<a href="${escapeHtml(action.url)}" target="_blank" rel="noreferrer">${escapeHtml(action.label)}</a>`)
     .join("");
   const detailsButton = options.includeDetails === false ? "" : `<button type="button" data-client-detail="${escapeHtml(client.id)}">Details</button>`;
+  const provisionButton = shouldShowWebHelperProvision(client)
+    ? `<button type="button" data-client-provision-web-helper="${escapeHtml(client.id)}">Provision Web Helper</button>`
+    : "";
 
   return `<div class="client-quick-actions">
     ${links || `<span>No links yet</span>`}
     ${detailsButton}
+    ${provisionButton}
   </div>`;
+}
+
+function shouldShowWebHelperProvision(client) {
+  const stage = getClientStage(client);
+  const hasCoreLinks = Boolean(client.websiteUrl && client.repo);
+  const postBuildStage = ["final-payment", "launch-handoff", "completed-archived", "web-helper-care", "growth-services"].includes(stage);
+  const hasHelperService = (client.services || []).includes("web-helper-care") || (client.plannedServices || []).includes("web-helper-care");
+  return hasCoreLinks && (postBuildStage || hasHelperService || client.finalPaymentPaid);
 }
 
 function getClientDisplayUrl(client) {
@@ -5375,6 +5387,7 @@ function openClientDetail(clientId) {
     <div class="client-detail-section client-detail-section-wide client-detail-section-compact">
       <h3>Quick Actions</h3>
       ${renderClientQuickActions(client, { includeDetails: false })}
+      <p id="clientProvisionResponse" class="command-response client-provision-response" aria-live="polite"></p>
     </div>
     ${renderClientLeadChecklist(client)}
     <div class="client-detail-section">
@@ -5644,6 +5657,55 @@ async function mergeClientRecordsFromUi(sourceId, targetId) {
   }
 }
 
+function formatProvisionEnvBundle(envBundle) {
+  const entries = Object.entries(envBundle?.values || {});
+  if (!entries.length) {
+    return "No env bundle returned.";
+  }
+
+  return entries.map(([key, value]) => `${key}=${value}`).join("\n");
+}
+
+async function provisionClientWebHelper(clientId) {
+  const client = getClientById(clientId);
+  if (!client) {
+    return;
+  }
+
+  const confirmed = window.confirm(`Provision a Web Helper for ${client.clientName}? This updates Mission Control, activates helper memory, and returns the client env bundle.`);
+  if (!confirmed) {
+    return;
+  }
+
+  const target = document.getElementById("clientProvisionResponse");
+  if (target) {
+    target.textContent = "Provisioning Web Helper...";
+  }
+
+  try {
+    const result = await postClientMutation("/mission/clients/provision-web-helper", {
+      id: clientId,
+      finalPaymentPaid: client.finalPaymentPaid || getClientStage(client) === "completed-archived",
+      refresh: true
+    });
+    const provisioned = result.provisioned || {};
+    const envText = formatProvisionEnvBundle(provisioned.envBundle);
+    if (target) {
+      target.innerHTML = `
+        <strong>${escapeHtml(provisioned.message || "Web Helper provisioned.")}</strong>
+        <span>Helper: ${escapeHtml(provisioned.webHelperId || "")}</span>
+        <span>Activation: ${escapeHtml(provisioned.activation?.status || "ready")}</span>
+        <pre>${escapeHtml(envText)}</pre>
+      `;
+    }
+    loadWebHelpers("");
+  } catch (error) {
+    if (target) {
+      target.textContent = String(error.message || error);
+    }
+  }
+}
+
 function getClientStorageMessage(result) {
   const write = result?.storage?.lastWrite || result?.storage?.database?.lastWrite || result?.storage?.repoStore?.lastWrite;
   const databaseWrite = result?.storage?.database?.lastWrite;
@@ -5769,7 +5831,10 @@ async function submitClientOnboarding(event) {
 
   try {
     const result = await saveClientRecord(payload);
-    elements.clientFormResponse.textContent = `${isEditing ? "Saved" : "Created"} ${result.created.clientName}.${getClientStorageMessage(result)}`;
+    const provisionNote = result.provisioned
+      ? ` ${result.provisioned.message || "Web Helper auto-provisioned."}`
+      : "";
+    elements.clientFormResponse.textContent = `${isEditing ? "Saved" : "Created"} ${result.created.clientName}.${getClientStorageMessage(result)}${provisionNote}`;
     if (!didClientRepoStoreFail(result)) {
       closeClientModal();
     }
@@ -8584,6 +8649,12 @@ async function init() {
     const upsellTarget = event.target.closest("[data-client-upsell-email][data-client-upsell-service]");
     if (upsellTarget) {
       openUpsellEmailAgent(upsellTarget.dataset.clientUpsellEmail, upsellTarget.dataset.clientUpsellService);
+      return;
+    }
+
+    const provisionTarget = event.target.closest("[data-client-provision-web-helper]");
+    if (provisionTarget) {
+      provisionClientWebHelper(provisionTarget.dataset.clientProvisionWebHelper);
       return;
     }
 

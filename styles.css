@@ -558,6 +558,30 @@ margin: 0;
   font-size: 0.8rem;
 }
 
+.client-provision-response {
+  display: grid;
+  gap: 6px;
+}
+
+.client-provision-response strong,
+.client-provision-response span {
+  display: block;
+}
+
+.client-provision-response pre {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 4px 0 0;
+  padding: 12px;
+  border: 1px solid rgba(105, 255, 143, 0.22);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+
 .field-label {
 color: var(--muted);
   font-size: 0.85rem;

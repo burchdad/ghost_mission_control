@@ -21,7 +21,8 @@ const {
   normalizeCodexWorkerArgs,
   appendCodexPromptArg,
   isCodexWorkerCommand,
-  summarizeGithubVerification
+  summarizeGithubVerification,
+  buildWebHelperProvisionEnvBundle
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -297,6 +298,26 @@ function testFinalPaymentCompletesWebBuildStage() {
   assert.strictEqual(careClient.stage, "web-helper-care");
 }
 
+function testWebHelperProvisionEnvBundle() {
+  const client = buildClientRecord({
+    id: "gray-matters-tech",
+    clientName: "Gray Matters Tech",
+    websiteUrl: "https://www.graymatterstech.com",
+    repo: "burchdad/barbara_consulting",
+    stage: "completed-archived",
+    services: ["website-build", "web-helper-care"]
+  });
+  const bundle = buildWebHelperProvisionEnvBundle(client, {
+    headers: { host: "ghostmissioncontrol-production.up.railway.app" }
+  });
+
+  assert.strictEqual(bundle.webHelperId, "gray-matters-tech-web-helper");
+  assert.strictEqual(bundle.values.GHOST_CLIENT_ID, "gray-matters-tech");
+  assert.strictEqual(bundle.values.GHOST_REPO, "burchdad/barbara_consulting");
+  assert.strictEqual(bundle.values.GHOST_MISSION_CONTROL_WEBHOOK_URL, "https://ghostmissioncontrol-production.up.railway.app/mission/web-helper-requests");
+  assert.strictEqual(bundle.values.GHOST_MISSION_CONTROL_WEBHOOK_SECRET, "<owner-managed shared intake secret>");
+}
+
 function testGithubVerificationSummary() {
   const passing = summarizeGithubVerification(
     { state: "pending", statuses: [] },
@@ -333,6 +354,7 @@ function testGithubVerificationSummary() {
   testCodexWorkerPromptCarriesTicketContext,
   testWorkerArgsParsingSupportsJsonAndQuotes,
   testFinalPaymentCompletesWebBuildStage,
+  testWebHelperProvisionEnvBundle,
   testGithubVerificationSummary
 ].forEach((test) => test());
 

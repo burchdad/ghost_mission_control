@@ -4753,6 +4753,107 @@ function isCurrentWebsiteWebHelperClient(client) {
   );
 }
 
+function buildWebHelperProvisionEnvBundle(client, request = null) {
+  const webHelperId = `${client.id}-web-helper`;
+  const host = request?.headers?.host || "";
+  const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
+  const webhookBase = host ? `${protocol}://${host}` : (GHOST_MISSION_CONTROL_PUBLIC_URL || "").replace(/\/$/, "");
+  const webhookUrl = `${webhookBase.replace(/\/$/, "")}/mission/web-helper-requests`;
+  const values = {
+    GHOST_CLIENT_ID: client.id,
+    GHOST_CLIENT_NAME: client.clientName,
+    GHOST_SITE_URL: client.websiteUrl,
+    GHOST_REPO: normalizeGithubRepoFullName(client.repo || client.githubUrl) || client.repo || "",
+    GHOST_WEB_HELPER_ID: webHelperId,
+    GHOST_WEB_HELPER_APPROVAL_REQUIRED: String(GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED),
+    GHOST_WEB_HELPER_BRANCH_POLICY: GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY,
+    GHOST_MISSION_CONTROL_WEBHOOK_URL: webhookUrl,
+    GHOST_MISSION_CONTROL_WEBHOOK_SECRET: "<owner-managed shared intake secret>"
+  };
+
+  return {
+    webHelperId,
+    webhookUrl,
+    secretManagedByOwner: true,
+    values,
+    vercel: {
+      target: client.vercelUrl || client.websiteUrl || "",
+      status: client.vercelUrl ? "ready_for_env_sync" : "needs_vercel_project",
+      note: client.vercelUrl
+        ? "Apply these keys to the client Vercel project for Production and Preview."
+        : "Add the client Vercel project URL/id before automatic Vercel env sync."
+    },
+    railway: {
+      target: client.railwayUrl || "",
+      status: client.railwayUrl ? "ready_for_env_sync" : "not_required_or_missing",
+      note: client.railwayUrl
+        ? "Apply these keys to the client Railway service if the support bot runs through that backend."
+        : "No Railway backend is linked for this client."
+    }
+  };
+}
+
+async function provisionWebHelperForClient(client, options = {}) {
+  const currentServices = new Set(client.services || []);
+  const currentPlanned = new Set(client.plannedServices || []);
+  currentServices.add("website-build");
+  currentServices.add("web-helper-care");
+  currentPlanned.delete("web-helper-care");
+
+  const targetStage = options.stage || client.stage || "completed-archived";
+  const provisionedClient = buildClientRecord({
+    ...client,
+    stage: targetStage,
+    status: targetStage,
+    services: [...currentServices],
+    plannedServices: [...currentPlanned],
+    finalPaymentPaid: options.finalPaymentPaid ?? client.finalPaymentPaid,
+    finalDomainPurchased: client.finalDomainPurchased === false ? false : true,
+    clientDetailsPending: Boolean(client.clientDetailsPending),
+    notes: [
+      client.notes,
+      options.note || `Web Helper provisioned by Mission Control on ${new Date().toISOString()}.`
+    ].filter(Boolean).join("\n"),
+    source: "runtime",
+    updatedAt: new Date().toISOString()
+  });
+
+  const savedClient = upsertRuntimeClient(provisionedClient);
+  persistRuntimeClients();
+  const databaseWrite = await persistRuntimeClientToPostgres(savedClient || provisionedClient);
+  const storageWrite = await persistClientMutationFallback(databaseWrite);
+  const activation = await activateWebHelperForTarget((savedClient || provisionedClient).id, {
+    command: options.command || "Provision Web Helper after completed website payment",
+    forceRefresh: Boolean(options.refresh)
+  });
+
+  return {
+    client: savedClient || provisionedClient,
+    storageWrite,
+    activation,
+    envBundle: buildWebHelperProvisionEnvBundle(savedClient || provisionedClient, options.request)
+  };
+}
+
+function shouldAutoProvisionWebHelper(client) {
+  if (!client?.finalPaymentPaid || !client.websiteUrl || !client.repo) {
+    return false;
+  }
+
+  const stage = normalizeClientStage(client.stage);
+  if (!["completed-archived", "web-helper-care", "growth-services", "launch-handoff"].includes(stage)) {
+    return false;
+  }
+
+  const services = new Set([...(client.services || []), ...(client.plannedServices || [])]);
+  if (!services.has("web-helper-care")) {
+    return false;
+  }
+
+  hydrateWebHelperActivations();
+  return !webHelperActivations.has(client.id);
+}
+
 function getCurrentWebsiteWebHelperClients() {
   return getAllClients().filter(isCurrentWebsiteWebHelperClient);
 }
@@ -8996,9 +9097,27 @@ const server = http.createServer((request, response) => {
           }
         }
 
+        let webHelperProvision = null;
+        if (shouldAutoProvisionWebHelper(savedClient || client)) {
+          const provisioned = await provisionWebHelperForClient(savedClient || client, {
+            request,
+            refresh: true,
+            finalPaymentPaid: true,
+            command: "Auto-provision Web Helper after final payment save",
+            note: "Auto-provisioned Web Helper after final payment was recorded."
+          });
+          webHelperProvision = {
+            client: provisioned.client,
+            webHelperId: provisioned.envBundle.webHelperId,
+            activation: summarizeWebHelperActivation(provisioned.activation),
+            envBundle: provisioned.envBundle,
+            message: `${provisioned.client.clientName} Web Helper was auto-provisioned after final payment.`
+          };
+        }
         const clients = getAllClients();
         sendJson(request, response, 201, {
           created: savedClient || client,
+          provisioned: webHelperProvision,
           summary: summarizeClients(clients),
           pipelineStages: CLIENT_PIPELINE_STAGES,
           dataHealth: getClientDataHealth(clients),
@@ -9116,6 +9235,50 @@ const server = http.createServer((request, response) => {
             target: savedClient || mergedClient
           },
           message: `${sourceClient.clientName} merged into ${targetClient.clientName}.`
+        }));
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/clients/provision-web-helper") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        await syncClientStore(true);
+        const clientId = canonicalClientId(payload.id || payload.clientId);
+        const client = getAllClients().find((entry) => canonicalClientId(entry.id) === clientId);
+        if (!client) {
+          sendJson(request, response, 404, { error: "Client not found" });
+          return;
+        }
+
+        if (!client.websiteUrl || !client.repo) {
+          sendJson(request, response, 400, {
+            error: "Website URL and GitHub repo are required before Web Helper provisioning."
+          });
+          return;
+        }
+
+        const targetStage = normalizeClientStage(payload.stage || client.stage || "completed-archived");
+        const provisioned = await provisionWebHelperForClient(client, {
+          request,
+          refresh: Boolean(payload.refresh),
+          finalPaymentPaid: payload.finalPaymentPaid ?? client.finalPaymentPaid ?? true,
+          stage: targetStage === "lead" || targetStage === "website-build" ? "completed-archived" : targetStage,
+          note: payload.note || "Web Helper provisioned from client pipeline.",
+          command: payload.command || "Provision Web Helper from client pipeline"
+        });
+
+        sendJson(request, response, 201, buildClientResponsePayload(provisioned.storageWrite, 201, {
+          provisioned: {
+            client: provisioned.client,
+            webHelperId: provisioned.envBundle.webHelperId,
+            activation: summarizeWebHelperActivation(provisioned.activation),
+            envBundle: provisioned.envBundle,
+            message: `${provisioned.client.clientName} Web Helper is provisioned. Apply the env bundle to the client host, then run a smoke test.`
+          }
         }));
       })
       .catch((error) => {
@@ -9878,6 +10041,7 @@ if (require.main === module) {
     normalizeCodexWorkerArgs,
     appendCodexPromptArg,
     isCodexWorkerCommand,
-    summarizeGithubVerification
+    summarizeGithubVerification,
+    buildWebHelperProvisionEnvBundle
   };
 }
