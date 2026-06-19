@@ -47,22 +47,26 @@ const CLIENT_STORE_POSTGRES_ENABLED = String(process.env.CLIENT_STORE_POSTGRES_E
 const CLIENT_STORE_CACHE_TTL_MS = Number(process.env.CLIENT_STORE_CACHE_TTL_MS || 30000);
 const DATABASE_URL = String(process.env.DATABASE_URL || process.env.POSTGRES_URL || "").trim();
 const DATABASE_SSL = String(process.env.DATABASE_SSL || "auto").toLowerCase();
-const WEB_HELPER_AUTO_ACTIVATE = String(process.env.WEB_HELPER_AUTO_ACTIVATE || "true").toLowerCase() !== "false";
+const WEB_HELPER_AUTO_ACTIVATE = parseBool(process.env.WEB_HELPER_AUTO_ACTIVATE, true);
 const WEB_HELPER_HANDOFF_STAGE = "launch-handoff";
-const GHOST_WEB_HELPER_WEBHOOK_SECRET = String(process.env.GHOST_WEB_HELPER_WEBHOOK_SECRET || "").trim();
+const GHOST_WEB_HELPER_WEBHOOK_SECRET = stripWrappingQuotes(String(
+  process.env.GHOST_WEB_HELPER_WEBHOOK_SECRET ||
+  process.env.GHOST_MISSION_CONTROL_WEBHOOK_SECRET ||
+  ""
+).trim());
 const GHOST_WEB_HELPER_ALLOWED_SOURCES = String(process.env.GHOST_WEB_HELPER_ALLOWED_SOURCES || "client_admin_dashboard")
   .split(",")
   .map((source) => source.trim())
   .filter(Boolean);
 const GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY = String(process.env.GHOST_WEB_HELPER_DEFAULT_BRANCH_POLICY || "testing_branch_only").trim();
-const GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED = String(process.env.GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED || "true").toLowerCase() !== "false";
+const GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED = parseBool(process.env.GHOST_WEB_HELPER_DEFAULT_APPROVAL_REQUIRED, true);
 const CODEX_BUILD_WEBHOOK_URL = String(process.env.CODEX_BUILD_WEBHOOK_URL || "").trim();
-const CODEX_BUILD_WEBHOOK_SECRET = String(process.env.CODEX_BUILD_WEBHOOK_SECRET || "").trim();
+const CODEX_BUILD_WEBHOOK_SECRET = stripWrappingQuotes(String(process.env.CODEX_BUILD_WEBHOOK_SECRET || "").trim());
 const CODEX_BUILD_DEFAULT_BASE_BRANCH = String(process.env.CODEX_BUILD_DEFAULT_BASE_BRANCH || "main").trim();
 const CODEX_BUILD_DEFAULT_TEST_COMMAND = String(process.env.CODEX_BUILD_DEFAULT_TEST_COMMAND || "npm run check && npm run build").trim();
 const CODEX_WORKER_COMMAND = String(process.env.CODEX_WORKER_COMMAND || "").trim();
 const CODEX_WORKER_ARGS = String(process.env.CODEX_WORKER_ARGS || "").trim();
-const CODEX_WORKER_AUTORUN = String(process.env.CODEX_WORKER_AUTORUN || "false").toLowerCase() === "true";
+const CODEX_WORKER_AUTORUN = parseBool(process.env.CODEX_WORKER_AUTORUN, false);
 const CODEX_WORKER_TIMEOUT_MS = Number(process.env.CODEX_WORKER_TIMEOUT_MS || 600000);
 const CODEX_WORKER_ROOT = String(process.env.CODEX_WORKER_ROOT || path.join(os.tmpdir(), "ghost-codex-worker")).trim();
 const CODEX_WORKER_VERIFICATION_MODE = String(process.env.CODEX_WORKER_VERIFICATION_MODE || "external").trim().toLowerCase();
@@ -197,7 +201,7 @@ function parseBool(value, fallback = false) {
   }
 
   if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
+    const normalized = stripWrappingQuotes(value).toLowerCase();
     if (["1", "true", "yes", "on"].includes(normalized)) {
       return true;
     }
@@ -1873,7 +1877,9 @@ async function relayCodexBuildTask(task) {
     return {
       ok: response.ok,
       status: response.status,
-      body: body.slice(0, 2000)
+      body,
+      bodyPreview: body.slice(0, 2000),
+      bodyTruncated: body.length > 2000
     };
   } catch (error) {
     return {
