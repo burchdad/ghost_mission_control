@@ -7798,21 +7798,29 @@ function renderWebHelperTicketStats(request, helper) {
 
 function renderWebHelperTicketActions(ticket) {
   const actions = [
-    { label: "Send to Codex Build", action: "codex-build", tone: "primary", hint: "Create the testing-branch build prompt for the Codex runner." },
-    { label: "Acknowledge", action: "triage", status: "triage", tone: "secondary", hint: "Confirm this is real and ready for triage." },
-    { label: "Assign / Start", action: "start", status: "in_progress", tone: "secondary", hint: "Move manual helper work into active build." },
-    { label: "Ready for Review", action: "review", status: "ready_review", tone: "secondary", hint: "Prepared work is ready for owner/client review." },
-    { label: "Request Approval", action: "approval", status: "needs_approval", tone: "secondary", hint: "Move the prepared fix into owner approval." },
-    { label: "Approve Change", action: "approve-merge", tone: "primary", hint: "Owner approves merge after testing and review." },
-    { label: "Redo", action: "redo", tone: "secondary", hint: "Send this back through the Codex build loop." },
-    { label: "Redo with Chat", action: "redo-chat", tone: "secondary", hint: "Use the ticket note as owner feedback for Codex." },
-    { label: "Complete / Archive", action: "done", status: "done", tone: "secondary", hint: "Close the ticket after merge, delivery, or archive." },
-    { label: "Needs Info", action: "needs-info", status: "blocked", tone: "danger", hint: "Send back for credentials, copy, assets, or approval details." },
-    { label: "Open Agent Chat", action: "chat", tone: "secondary", hint: "Load this ticket into Execution with full context." }
+    { label: "Acknowledge", action: "triage", status: "triage", tone: "secondary", hint: "Confirm this is real and ready for triage.", columns: ["new", "blocked"] },
+    { label: "Send to Codex Build", action: "codex-build", tone: "primary", hint: "Create the testing-branch build prompt for the Codex runner.", columns: ["triage", "blocked"] },
+    { label: "Assign / Start", action: "start", status: "in_progress", tone: "secondary", hint: "Move manual helper work into active build.", columns: ["triage"] },
+    { label: "Ready for Review", action: "review", status: "ready_review", tone: "secondary", hint: "Prepared work is ready for owner/client review.", columns: ["in_progress"] },
+    { label: "Request Approval", action: "approval", status: "needs_approval", tone: "secondary", hint: "Move the prepared fix into owner approval.", columns: ["ready_review"] },
+    { label: "Approve Change", action: "approve-merge", tone: "primary", hint: "Owner approves merge after testing and review.", columns: ["ready_review", "needs_approval"] },
+    { label: "Redo", action: "redo", tone: "secondary", hint: "Send this back through the Codex build loop.", columns: ["ready_review", "needs_approval", "approved"] },
+    { label: "Redo with Chat", action: "redo-chat", tone: "secondary", hint: "Use the ticket note as owner feedback for Codex.", columns: ["ready_review", "needs_approval", "approved", "blocked"] },
+    { label: "Complete / Archive", action: "done", status: "done", tone: "secondary", hint: "Close the ticket after merge, delivery, or archive.", columns: ["approved", "blocked"] },
+    { label: "Needs Info", action: "needs-info", status: "blocked", tone: "danger", hint: "Send back for credentials, copy, assets, or approval details.", columns: ["new", "triage", "in_progress", "ready_review", "needs_approval", "approved"] }
   ];
+  const currentColumn = getWebHelperTicketColumn(ticket);
+  const visibleActions = actions.filter((item) => item.columns.includes(currentColumn));
+
+  if (!visibleActions.length) {
+    return `<div class="web-helper-ticket-actions is-empty">
+      <p>No workflow actions are needed for this ticket stage.</p>
+    </div>
+    <p id="webHelperTicketActionResponse" class="command-response" aria-live="polite"></p>`;
+  }
 
   return `<div class="web-helper-ticket-actions">
-    ${actions.map((item) => `<button class="${item.tone === "primary" ? "command-send" : item.tone === "danger" ? "danger-button" : "new-client-button secondary-button"}" type="button" title="${escapeHtml(item.hint)}" data-web-helper-ticket-action="${escapeHtml(item.action)}" data-web-helper-ticket-id="${escapeHtml(getWebHelperTicketId(ticket))}" ${item.status ? `data-web-helper-ticket-status="${escapeHtml(item.status)}"` : ""}>
+    ${visibleActions.map((item) => `<button class="web-helper-workflow-button is-${escapeHtml(item.tone)}" type="button" title="${escapeHtml(item.hint)}" data-web-helper-ticket-action="${escapeHtml(item.action)}" data-web-helper-ticket-id="${escapeHtml(getWebHelperTicketId(ticket))}" ${item.status ? `data-web-helper-ticket-status="${escapeHtml(item.status)}"` : ""}>
       <strong>${escapeHtml(item.label)}</strong>
       <span>${escapeHtml(item.hint)}</span>
     </button>`).join("")}
