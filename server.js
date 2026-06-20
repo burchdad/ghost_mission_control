@@ -53,11 +53,16 @@ const WEB_HELPER_SITE_CRAWL_MAX_PAGES = Math.max(1, Number(process.env.WEB_HELPE
 const WEB_HELPER_SITE_CRAWL_MAX_LINKS_PER_PAGE = Math.max(1, Number(process.env.WEB_HELPER_SITE_CRAWL_MAX_LINKS_PER_PAGE || 60));
 const WEB_HELPER_HANDOFF_AUTOMATION_ENABLED = parseBool(process.env.WEB_HELPER_HANDOFF_AUTOMATION_ENABLED, true);
 const WEB_HELPER_HANDOFF_AUTOMATION_CACHE_TTL_MS = Number(process.env.WEB_HELPER_HANDOFF_AUTOMATION_CACHE_TTL_MS || 60000);
-const GHOST_WEB_HELPER_WEBHOOK_SECRET = stripWrappingQuotes(String(
-  process.env.GHOST_WEB_HELPER_WEBHOOK_SECRET ||
-  process.env.GHOST_MISSION_CONTROL_WEBHOOK_SECRET ||
-  ""
+const GHOST_MISSION_CONTROL_WEBHOOK_SECRET = stripWrappingQuotes(String(
+  process.env.GHOST_MISSION_CONTROL_WEBHOOK_SECRET || ""
 ).trim());
+const GHOST_WEB_HELPER_WEBHOOK_SECRET = stripWrappingQuotes(String(
+  process.env.GHOST_WEB_HELPER_WEBHOOK_SECRET || ""
+).trim());
+const GHOST_WEB_HELPER_WEBHOOK_SECRETS = [
+  GHOST_WEB_HELPER_WEBHOOK_SECRET,
+  GHOST_MISSION_CONTROL_WEBHOOK_SECRET
+].filter(Boolean);
 const GHOST_WEB_HELPER_ALLOWED_SOURCES = String(process.env.GHOST_WEB_HELPER_ALLOWED_SOURCES || "client_admin_dashboard")
   .split(",")
   .map((source) => source.trim())
@@ -1644,12 +1649,12 @@ function timingSafeEqualText(left, right) {
 }
 
 function verifyWebHelperWebhookSecret(request) {
-  if (!GHOST_WEB_HELPER_WEBHOOK_SECRET) {
-    return { ok: false, status: 503, error: "GHOST_WEB_HELPER_WEBHOOK_SECRET is not configured." };
+  if (!GHOST_WEB_HELPER_WEBHOOK_SECRETS.length) {
+    return { ok: false, status: 503, error: "GHOST_WEB_HELPER_WEBHOOK_SECRET or GHOST_MISSION_CONTROL_WEBHOOK_SECRET is not configured." };
   }
 
   const providedSecret = request.headers["x-ghost-webhook-secret"] || request.headers["x-webhook-secret"] || "";
-  if (!timingSafeEqualText(providedSecret, GHOST_WEB_HELPER_WEBHOOK_SECRET)) {
+  if (!GHOST_WEB_HELPER_WEBHOOK_SECRETS.some((secret) => timingSafeEqualText(providedSecret, secret))) {
     return { ok: false, status: 401, error: "Invalid webhook secret." };
   }
 
