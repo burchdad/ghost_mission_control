@@ -1648,6 +1648,15 @@ function timingSafeEqualText(left, right) {
   return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+function webhookSecretFingerprint(value) {
+  const normalized = normalizeWebhookSecret(value);
+  if (!normalized) {
+    return "";
+  }
+
+  return crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 12);
+}
+
 function verifyWebHelperWebhookSecret(request) {
   if (!GHOST_WEB_HELPER_WEBHOOK_SECRETS.length) {
     return { ok: false, status: 503, error: "GHOST_WEB_HELPER_WEBHOOK_SECRET or GHOST_MISSION_CONTROL_WEBHOOK_SECRET is not configured." };
@@ -1655,7 +1664,16 @@ function verifyWebHelperWebhookSecret(request) {
 
   const providedSecret = request.headers["x-ghost-webhook-secret"] || request.headers["x-webhook-secret"] || "";
   if (!GHOST_WEB_HELPER_WEBHOOK_SECRETS.some((secret) => timingSafeEqualText(providedSecret, secret))) {
-    return { ok: false, status: 401, error: "Invalid webhook secret." };
+    return {
+      ok: false,
+      status: 401,
+      error: "Invalid webhook secret.",
+      detail: {
+        provided_fingerprint: webhookSecretFingerprint(providedSecret),
+        accepted_fingerprints: GHOST_WEB_HELPER_WEBHOOK_SECRETS.map(webhookSecretFingerprint).filter(Boolean),
+        accepted_secret_count: GHOST_WEB_HELPER_WEBHOOK_SECRETS.length
+      }
+    };
   }
 
   return { ok: true };
@@ -10087,7 +10105,10 @@ const server = http.createServer((request, response) => {
   if (request.method === "POST" && url.pathname === "/mission/web-helper-requests") {
     const auth = verifyWebHelperWebhookSecret(request);
     if (!auth.ok) {
-      sendJson(request, response, auth.status || 401, { error: auth.error || "Unauthorized" });
+      sendJson(request, response, auth.status || 401, {
+        error: auth.error || "Unauthorized",
+        detail: auth.detail
+      });
       return;
     }
 
