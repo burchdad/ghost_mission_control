@@ -21,6 +21,7 @@
         <aside class="nav-rail" aria-label="Primary navigation">
           <p class="nav-title">Ghost Ops</p>
           <button class="nav-item active" type="button" data-view="mission-control">Overview</button>
+          <button class="nav-item" type="button" data-view="executive-command">Executive Command</button>
           <p class="nav-group-label">Client Ops</p>
           <button class="nav-item" type="button" data-view="onboarding">
             <span>Leads / Proposals</span><span id="navBadgeOnboarding" class="nav-badge"></span>
@@ -105,6 +106,17 @@
 
       <section class="layout-grid">
         <div class="main-column">
+          <section class="module-panel view-panel" id="executivePanel" aria-label="Executive command">
+            <div class="panel-header client-pipeline-header">
+              <div>
+                <p class="eyebrow">Nova CEO</p>
+                <h2>Executive Command</h2>
+                <p>Revenue, contracts, delivery risk, fractional roles, government opportunities, and next executive actions in one operating view.</p>
+              </div>
+            </div>
+            <div id="executiveCommandBoard" class="executive-command-board"></div>
+          </section>
+
           <section class="module-panel view-panel" id="cockpitPanel" aria-label="Mission overview cockpit">
             <div class="panel-header client-pipeline-header">
               <div>

@@ -53,6 +53,8 @@ const elements = {
   kpiSection: document.getElementById("kpiSection"),
   missionSummary: document.getElementById("missionSummary"),
   missionStatuses: document.getElementById("missionStatuses"),
+  executivePanel: document.getElementById("executivePanel"),
+  executiveCommandBoard: document.getElementById("executiveCommandBoard"),
   cockpitPanel: document.getElementById("cockpitPanel"),
   cockpitBoard: document.getElementById("cockpitBoard"),
   moduleCards: document.getElementById("moduleCards"),
@@ -1370,6 +1372,7 @@ const viewVisibility = {
     "crossSystemPanel",
     "activityPanel"
   ],
+  "executive-command": ["executivePanel", "alertsPanel", "perceptionPanel"],
   clients: ["clientsPanel", "clientActionsPanel"],
   onboarding: ["onboardingPanel"],
   services: ["servicesPanel", "serviceActionsPanel"],
@@ -1404,6 +1407,7 @@ function setActiveView(view) {
 
   const shellPanels = [
     "operationsPanel",
+    "executivePanel",
     "cockpitPanel",
     "clientsPanel",
     "clientActionsPanel",
@@ -1477,7 +1481,7 @@ function setActiveView(view) {
     item.classList.toggle("active", item.dataset.agentsTab === activeAgentsSubview);
   });
 
-  const mainColumnPanels = ["operationsPanel", "cockpitPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "intelligencePanel", "strategyPanel", "executionPanel", "agentOpsPanel"];
+  const mainColumnPanels = ["operationsPanel", "executivePanel", "cockpitPanel", "clientsPanel", "onboardingPanel", "servicesPanel", "toolsPanel", "buildQueuePanel", "webHelpersPanel", "intelligencePanel", "strategyPanel", "executionPanel", "agentOpsPanel"];
   const sideColumnPanels = [
     "clientActionsPanel",
     "onboardingActionsPanel",
@@ -1825,6 +1829,7 @@ function renderPerceptionLayer(execution, agents, intelligence, autonomy) {
 function getViewLabel(view) {
   const labels = {
     "mission-control": "Overview",
+    "executive-command": "Executive Command",
     clients: "Web Clients",
     onboarding: "Leads / Proposals",
     services: "Service Pipelines",
@@ -1863,6 +1868,7 @@ function setFocusMode(enabled, targetView = activeView) {
 function getPaletteActions() {
   const viewLabels = {
     "mission-control": "Overview",
+    "executive-command": "Executive Command",
     clients: "Web Clients",
     onboarding: "Leads / Proposals",
     services: "Service Pipelines",
@@ -1883,6 +1889,7 @@ function getPaletteActions() {
 
   return [
     setView("web-helpers", true),
+    setView("executive-command", true),
     setView("clients", true),
     setView("onboarding", true),
     setView("services", true),
@@ -3533,6 +3540,7 @@ function renderPredictiveAlerts(signals) {
       </article>
     `;
     updateNavBadges();
+    renderExecutiveCommand();
     return;
   }
 
@@ -5107,6 +5115,301 @@ function renderCockpit() {
   `;
 }
 
+function getExecutiveClients() {
+  const payload = liveClients?.clients?.length ? mergeClientPayloadWithSeed(liveClients) : buildClientPayloadFallback();
+  return payload.clients || [];
+}
+
+function readNumberLike(...values) {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === "string") {
+      const parsed = Number(value.replace(/[^0-9.-]/g, ""));
+      if (Number.isFinite(parsed) && value.replace(/[^0-9]/g, "")) {
+        return parsed;
+      }
+    }
+  }
+
+  return 0;
+}
+
+function formatExecutiveMoney(value) {
+  if (!value) {
+    return "$0 tracked";
+  }
+
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(value);
+}
+
+function getClientMonthlyRevenue(client) {
+  return readNumberLike(
+    client.monthlyRevenue,
+    client.monthlyRetainer,
+    client.mrr,
+    client.serviceValueMonthly,
+    client.revenue?.monthly,
+    client.pricing?.monthly
+  );
+}
+
+function getClientOneTimeRevenue(client) {
+  return readNumberLike(
+    client.oneTimeRevenue,
+    client.projectValue,
+    client.buildValue,
+    client.depositAmount,
+    client.finalPaymentAmount,
+    client.revenue?.oneTime,
+    client.pricing?.oneTime
+  );
+}
+
+function getExecutiveServiceLineCounts(clients) {
+  return servicePipelineDefinitions.map((pipeline) => ({
+    ...pipeline,
+    count: clients.filter((client) => getClientServiceBreakdown(client).some((entry) => pipeline.serviceKeys.includes(entry.serviceKey))).length
+  }));
+}
+
+function createExecutiveAction(priority, title, detail, view = "clients") {
+  return { priority, title, detail, view };
+}
+
+function renderExecutiveActionQueue(actions) {
+  const queuedActions = actions.filter(Boolean).slice(0, 4);
+  return `<div class="executive-action-queue">
+    <div class="executive-action-queue-head">
+      <span>Action Queue</span>
+      <strong>${queuedActions.length}</strong>
+    </div>
+    ${queuedActions.length ? `<div class="executive-action-list">
+      ${queuedActions.map((action) => `<button class="executive-action priority-${escapeHtml(action.priority)}" type="button" ${action.view ? `data-view-shortcut="${escapeHtml(action.view)}"` : ""}>
+        <span class="executive-action-dot priority-${escapeHtml(action.priority)}" aria-hidden="true"></span>
+        <span>
+          <strong>${escapeHtml(action.title)}</strong>
+          <small>${escapeHtml(action.detail)}</small>
+        </span>
+      </button>`).join("")}
+    </div>` : `<div class="pipeline-empty">No queued executive actions.</div>`}
+  </div>`;
+}
+
+function renderExecutiveMetric(label, value, detail = "") {
+  return `<article class="executive-metric">
+    <span>${escapeHtml(label)}</span>
+    <strong>${escapeHtml(value)}</strong>
+    ${detail ? `<p>${escapeHtml(detail)}</p>` : ""}
+  </article>`;
+}
+
+function renderExecutiveSection({ eyebrow, title, summary, metrics, actions, tone = "green" }) {
+  return `<section class="executive-command-card tone-border-${escapeHtml(tone)}">
+    <div class="executive-section-head">
+      <div>
+        <span>${escapeHtml(eyebrow)}</span>
+        <h3>${escapeHtml(title)}</h3>
+      </div>
+    </div>
+    <p>${escapeHtml(summary)}</p>
+    <div class="executive-section-metrics">
+      ${metrics.map((metric) => renderExecutiveMetric(metric.label, metric.value, metric.detail)).join("")}
+    </div>
+    ${renderExecutiveActionQueue(actions)}
+  </section>`;
+}
+
+function renderExecutiveCommand() {
+  if (!elements.executiveCommandBoard) {
+    return;
+  }
+
+  const clients = getExecutiveClients();
+  const webClients = clients.filter((client) => getClientStage(client) !== "lead");
+  const leadClients = clients.filter((client) => getClientStage(client) === "lead");
+  const tickets = flattenWebHelperRequests(liveWebHelpers || []);
+  const monthlyRevenue = webClients.reduce((total, client) => total + getClientMonthlyRevenue(client), 0);
+  const oneTimeRevenue = webClients.reduce((total, client) => total + getClientOneTimeRevenue(client), 0);
+  const pipelineClients = clients.filter((client) => ["lead", "deposit-paid", "website-build", "client-review", "final-payment", "launch-handoff"].includes(getClientStage(client)));
+  const serviceLines = getExecutiveServiceLineCounts(webClients);
+  const pendingContracts = webClients.flatMap((client) =>
+    getClientServiceBreakdown(client)
+      .filter((service) => /pending|needed/i.test(service.agreementStatus))
+      .map((service) => ({ client, service }))
+  );
+  const activeWebHelpers = webClients.filter((client) => getClientServiceBreakdown(client).some((service) => service.serviceKey === "web-helper-care" && service.serviceState === "active"));
+  const enterpriseClients = webClients.filter((client) => getClientServiceBreakdown(client).some((service) => service.serviceKey === "enterprise-platform"));
+  const governmentReadyClients = webClients.filter((client) => /government|federal|rfq|capabilit/i.test(`${client.plan || ""} ${client.notes || ""} ${client.clientName || ""}`));
+  const blockedTickets = tickets.filter((ticket) => normalizeWebHelperStatus(ticket.status) === "blocked");
+  const reviewTickets = tickets.filter((ticket) => ["ready_review", "ready_for_review", "review", "owner_review"].includes(normalizeWebHelperStatus(ticket.status)));
+  const dataHealth = liveClientDataHealth;
+  const topServiceLine = serviceLines.reduce((best, line) => line.count > best.count ? line : best, { label: "None", count: 0 });
+  const topClient = [...webClients].sort((a, b) => getClientServiceBreakdown(b).length - getClientServiceBreakdown(a).length)[0];
+  const nextLead = leadClients[0] || pipelineClients[0];
+
+  const revenueActions = [
+    pendingContracts[0] && createExecutiveAction("high", `Send agreement to ${pendingContracts[0].client.clientName}`, pendingContracts[0].service.agreementStatus, "services"),
+    nextLead && createExecutiveAction("medium", `Follow up on ${nextLead.clientName}`, `${getClientStageLabel(getClientStage(nextLead))} needs the next revenue step.`, "onboarding"),
+    activeWebHelpers[0] && createExecutiveAction("low", `Renew ${activeWebHelpers[0].clientName} care rhythm`, "Confirm monthly Web Helper or SEO retainer status.", "services")
+  ];
+
+  const fractionalActions = [
+    createExecutiveAction("medium", "Schedule monthly strategy session", "Confirm executive cadence for active retained clients.", "clients"),
+    topClient && createExecutiveAction("medium", `Review hours allocation for ${topClient.clientName}`, `${getClientServiceBreakdown(topClient).length} active/planned service lane(s).`, "services"),
+    createExecutiveAction("low", "Prepare executive report", "Summarize revenue, delivery, risk, and service pipeline movement.", "executive-command")
+  ];
+
+  const governmentActions = [
+    governmentReadyClients[0] && createExecutiveAction("high", `Review government readiness for ${governmentReadyClients[0].clientName}`, "Capability or procurement language is present in the client profile.", "clients"),
+    createExecutiveAction("medium", "Update capability statement", "Keep federal-facing proof, NAICS, services, and case studies current.", "executive-command"),
+    createExecutiveAction("low", "Scan for RFQ response deadlines", "Add deadlines to Mission Control when opportunities are identified.", "strategy")
+  ];
+
+  const sections = [
+    {
+      eyebrow: "Revenue",
+      title: "Revenue Command",
+      summary: "Tracks visible revenue signals and the next action needed to protect or expand cash flow.",
+      tone: pendingContracts.length ? "yellow" : "green",
+      metrics: [
+        { label: "Current MRR", value: formatExecutiveMoney(monthlyRevenue), detail: monthlyRevenue ? "from client records" : "add retainer values to client records" },
+        { label: "One-Time Revenue", value: formatExecutiveMoney(oneTimeRevenue), detail: "current tracked project value" },
+        { label: "Pipeline Value", value: `${pipelineClients.length} active account(s)`, detail: "leads, builds, review, final payment, handoff" }
+      ],
+      actions: revenueActions
+    },
+    {
+      eyebrow: "Client Value",
+      title: "Client Value Panel",
+      summary: "Ranks account value by active service footprint, care status, and missing growth opportunities.",
+      tone: dataHealth?.status === "attention" ? "yellow" : "green",
+      metrics: [
+        { label: "Highest Service Footprint", value: topClient?.clientName || "None", detail: topClient ? `${getClientServiceBreakdown(topClient).length} service lane(s)` : "no clients loaded" },
+        { label: "Data Health", value: dataHealth?.status || "unknown", detail: `${dataHealth?.missingRequiredCount || 0} field gap(s)` },
+        { label: "Growth Candidates", value: serviceLines.filter((line) => line.count > 0).length, detail: "service lines with mapped clients" }
+      ],
+      actions: [
+        dataHealth?.status === "attention" && createExecutiveAction("high", "Clean client data health", `${dataHealth.duplicateCount || 0} duplicate group(s), ${dataHealth.missingRequiredCount || 0} field gap(s).`, "clients"),
+        topClient && createExecutiveAction("medium", `Audit value expansion for ${topClient.clientName}`, "Look for SEO, automation, reporting, or platform upsell.", "services"),
+        createExecutiveAction("low", "Tag partner vs client pricing", "Keep partner/client pricing structure ready for service quotes.", "clients")
+      ]
+    },
+    {
+      eyebrow: "Pipeline",
+      title: "Pipeline Command",
+      summary: "Shows current business motion across leads, builds, reviews, handoffs, and completed accounts.",
+      tone: pipelineClients.length ? "blue" : "gray",
+      metrics: [
+        { label: "Leads", value: leadClients.length, detail: "proposal or discovery stage" },
+        { label: "Active Pipeline", value: pipelineClients.length, detail: "pre-completion client movement" },
+        { label: "Web Helper Tickets", value: tickets.length, detail: `${reviewTickets.length} ready for review` }
+      ],
+      actions: [
+        reviewTickets[0] && createExecutiveAction("high", `Review ${reviewTickets[0].clientName || "client"} update`, reviewTickets[0].title || reviewTickets[0].summary || "Ticket ready for owner review.", "web-helpers"),
+        blockedTickets[0] && createExecutiveAction("high", `Unblock ${blockedTickets[0].clientName || "client"} ticket`, blockedTickets[0].title || blockedTickets[0].summary || "Ticket needs credentials, details, or approval.", "web-helpers"),
+        nextLead && createExecutiveAction("medium", `Advance ${nextLead.clientName}`, `Currently in ${getClientStageLabel(getClientStage(nextLead))}.`, "clients")
+      ]
+    },
+    {
+      eyebrow: "Contracts",
+      title: "Contract Command",
+      summary: "Keeps service agreements, care retainers, SEO contracts, and platform scopes from becoming quiet blockers.",
+      tone: pendingContracts.length ? "yellow" : "green",
+      metrics: [
+        { label: "Pending Agreements", value: pendingContracts.length, detail: "service lanes needing contract clarity" },
+        { label: "Active Web Helpers", value: activeWebHelpers.length, detail: "client sites with care active" },
+        { label: "Top Service Line", value: topServiceLine.label, detail: `${topServiceLine.count} mapped client(s)` }
+      ],
+      actions: [
+        pendingContracts[0] && createExecutiveAction("high", `Resolve ${pendingContracts[0].client.clientName} contract`, pendingContracts[0].service.title, "services"),
+        pendingContracts[1] && createExecutiveAction("medium", `Follow up ${pendingContracts[1].client.clientName}`, pendingContracts[1].service.agreementStatus, "services"),
+        createExecutiveAction("low", "Review retainer renewal dates", "Add renewal metadata to client records when available.", "services")
+      ]
+    },
+    {
+      eyebrow: "Fractional Roles",
+      title: "Fractional Command",
+      summary: "Turns retained leadership, strategy, and operator work into scheduled executive follow-through.",
+      tone: "blue",
+      metrics: [
+        { label: "Strategy Accounts", value: enterpriseClients.length, detail: "enterprise/platform style clients" },
+        { label: "Service Lines", value: serviceLines.length, detail: "available operating lanes" },
+        { label: "Executive Reports", value: "weekly", detail: "recommended cadence" }
+      ],
+      actions: fractionalActions
+    },
+    {
+      eyebrow: "Equity",
+      title: "Equity Portfolio",
+      summary: "Keeps partner/client classification and upside tracking visible before pricing and retainers are quoted.",
+      tone: "violet",
+      metrics: [
+        { label: "Partner Records", value: webClients.filter((client) => /partner/i.test(client.relationshipType || "")).length, detail: "marked partner/client accounts" },
+        { label: "Client Records", value: webClients.length, detail: "active web client universe" },
+        { label: "Pricing Tiers", value: new Set(webClients.map((client) => client.pricingTier).filter(Boolean)).size, detail: "tracked tier variants" }
+      ],
+      actions: [
+        createExecutiveAction("medium", "Confirm partner vs client classification", "Pricing and upsell flow changes by relationship type.", "clients"),
+        createExecutiveAction("medium", "Attach pricing structure to services", "Add package prices before quoting new service lanes.", "services"),
+        createExecutiveAction("low", "Track equity or rev-share terms", "Add source records when partner deals exist.", "executive-command")
+      ]
+    },
+    {
+      eyebrow: "Government",
+      title: "Government Command",
+      summary: "Surfaces federal readiness, capability statement upkeep, and opportunity-response actions.",
+      tone: governmentReadyClients.length ? "yellow" : "blue",
+      metrics: [
+        { label: "Gov-Ready Profiles", value: governmentReadyClients.length, detail: "matched by government/federal/capability terms" },
+        { label: "Capability Statement", value: "review", detail: "keep proof current" },
+        { label: "RFQ Watch", value: "manual", detail: "connect source feed when ready" }
+      ],
+      actions: governmentActions
+    },
+    {
+      eyebrow: "Nova CEO",
+      title: "Executive Insights",
+      summary: "Prioritizes the next owner action across delivery, revenue, client risk, and opportunity expansion.",
+      tone: blockedTickets.length || pendingContracts.length ? "yellow" : "green",
+      metrics: [
+        { label: "Highest Priority", value: blockedTickets.length ? "Unblock ticket" : pendingContracts.length ? "Contract follow-up" : "Growth optimization", detail: "computed from live queues" },
+        { label: "Confidence", value: dataHealth?.status === "attention" ? "Medium" : "High", detail: "based on current data health" },
+        { label: "Next Review", value: "today", detail: "owner action recommended" }
+      ],
+      actions: [
+        blockedTickets[0] && createExecutiveAction("high", `Fix blocked ticket for ${blockedTickets[0].clientName || "client"}`, blockedTickets[0].title || "Needs info.", "web-helpers"),
+        pendingContracts[0] && createExecutiveAction("medium", `Close ${pendingContracts[0].client.clientName} agreement gap`, pendingContracts[0].service.agreementStatus, "services"),
+        createExecutiveAction("low", "Run weekly executive digest", "Send revenue, work queue, and client-risk summary.", "executive-command")
+      ]
+    }
+  ];
+
+  elements.executiveCommandBoard.innerHTML = `
+    <div class="executive-kpi-grid">
+      ${renderExecutiveMetric("Current MRR", formatExecutiveMoney(monthlyRevenue), monthlyRevenue ? "tracked from records" : "retainer values needed")}
+      ${renderExecutiveMetric("Target MRR", "Set target", "add target in Executive Command settings later")}
+      ${renderExecutiveMetric("One-Time Revenue", formatExecutiveMoney(oneTimeRevenue), "current tracked month")}
+      ${renderExecutiveMetric("Pipeline Value", `${pipelineClients.length} account(s)`, "active lead/build/payment/handoff movement")}
+    </div>
+    <div class="executive-service-strip">
+      ${serviceLines.map((line) => `<article>
+        <span>${escapeHtml(line.label)}</span>
+        <strong>${line.count}</strong>
+      </article>`).join("")}
+    </div>
+    <div class="executive-section-grid">
+      ${sections.map(renderExecutiveSection).join("")}
+    </div>
+  `;
+}
+
 function renderClientPipeline(clients) {
   if (!elements.clientPipeline) {
     return;
@@ -5585,6 +5888,7 @@ function renderClients(payload) {
   renderOpsActions(elements.clientActions, clientActions.length ? clientActions : activePayload.actions || [], "Client actions will appear here.");
   updateNavBadges();
   renderCockpit();
+  renderExecutiveCommand();
 }
 
 function getSelectedClientServices() {
@@ -6880,6 +7184,7 @@ function renderServices(payload) {
   ];
   renderOpsActions(elements.serviceActions, getServiceActions(actions), "Service actions will appear here.");
   updateNavBadges();
+  renderExecutiveCommand();
 }
 
 function getVisibleServicePipelines() {
@@ -8434,6 +8739,7 @@ function renderWebHelpers(payload) {
 
   updateNavBadges();
   renderCockpit();
+  renderExecutiveCommand();
   renderExecutionConsole();
 }
 
