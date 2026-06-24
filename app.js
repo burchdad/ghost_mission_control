@@ -593,6 +593,17 @@ const clientServiceDefinitions = {
       partner: "Partner build allocation"
     }
   },
+  "enterprise-platform": {
+    label: "Enterprise Platform",
+    category: "Platform",
+    agreement: "Enterprise platform implementation contract",
+    system: "Platform architecture + integrations",
+    pipeline: "enterprise-platforms",
+    pricing: {
+      client: "Custom platform project",
+      partner: "Partner platform allocation"
+    }
+  },
   reporting: {
     label: "Client Reporting",
     category: "Reporting",
@@ -692,6 +703,22 @@ const servicePipelineDefinitions = [
       { id: "approval", label: "Approval" },
       { id: "live", label: "Live" },
       { id: "retention", label: "Retention" }
+    ]
+  },
+  {
+    id: "enterprise-platforms",
+    label: "Enterprise Platforms",
+    description: "Custom portals, internal platforms, integrations, enterprise workflows, testing, deployment, and support.",
+    system: "Platform architecture + integrations",
+    serviceKeys: ["enterprise-platform"],
+    stages: [
+      { id: "discovery", label: "Discovery" },
+      { id: "architecture", label: "Architecture" },
+      { id: "development", label: "Development" },
+      { id: "integration", label: "Integration" },
+      { id: "testing", label: "Testing" },
+      { id: "deployment", label: "Deployment" },
+      { id: "support", label: "Support" }
     ]
   },
   {
@@ -5161,7 +5188,7 @@ function getClientServiceAgreementStatus(client, serviceKey) {
     return hasGrowthAgreement ? "growth contract active" : "growth contract pending";
   }
 
-  if (serviceKey === "ecommerce" || serviceKey === "mobile-app" || serviceKey === "software-tool") {
+  if (serviceKey === "ecommerce" || serviceKey === "mobile-app" || serviceKey === "software-tool" || serviceKey === "enterprise-platform") {
     return hasBaseAgreement ? "scope active" : "scope contract pending";
   }
 
@@ -6245,6 +6272,17 @@ const fallbackServiceCatalog = [
     nextActions: ["Map workflow", "Define approval gates", "Connect CRM and Slack"]
   },
   {
+    id: "enterprise-platform",
+    name: "Enterprise Platform",
+    status: "planned",
+    category: "Platform",
+    owner: "Platform Architect",
+    description: "Enterprise portals, internal platforms, integrations, system architecture, testing, deployment, and support.",
+    connectedSystems: ["Client Systems", "GitHub", "Vercel", "Railway", "APIs"],
+    triggers: ["Platform scope approved", "Integration needed", "Operational workflow expansion"],
+    nextActions: ["Run discovery", "Map architecture", "Define integration and deployment plan"]
+  },
+  {
     id: "reporting",
     name: "Client Reporting",
     status: "planned",
@@ -6918,6 +6956,9 @@ function getServicePipelineStatus(client, pipeline, serviceKey, serviceState = "
     if (pipeline.id === "automations") {
       return "opportunity";
     }
+    if (pipeline.id === "enterprise-platforms") {
+      return "discovery";
+    }
     if (pipeline.id === "commerce") {
       return "storefront";
     }
@@ -6969,6 +7010,22 @@ function getServicePipelineStatus(client, pipeline, serviceKey, serviceState = "
       return "retention";
     }
     return serviceKey === "lead-funnel" ? "mapped" : "build";
+  }
+
+  if (pipeline.id === "enterprise-platforms") {
+    if (stage === "client-review") {
+      return "testing";
+    }
+    if (stage === "final-payment" || stage === "launch-handoff") {
+      return "deployment";
+    }
+    if (["web-helper-care", "growth-services", "completed-archived", "paused-archived"].includes(stage)) {
+      return "support";
+    }
+    if (hasCoreConnectionGap) {
+      return "architecture";
+    }
+    return serviceState === "active" ? "development" : "discovery";
   }
 
   if (pipeline.id === "commerce") {

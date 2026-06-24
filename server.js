@@ -5818,6 +5818,17 @@ function getServiceCatalog() {
       nextActions: ["Collect ad account access", "Confirm budget rules", "Connect tracking"]
     },
     {
+      id: "enterprise-platform",
+      name: "Enterprise Platform",
+      status: "planned",
+      category: "platform",
+      owner: "Platform Architect",
+      description: "Enterprise portals, internal platforms, integrations, system architecture, testing, deployment, and support.",
+      connectedSystems: ["Client Systems", "GitHub", "Vercel", "Railway", "APIs"],
+      triggers: ["platform scope approved", "integration needed", "operational workflow expansion"],
+      nextActions: ["Run discovery", "Map architecture", "Define integration and deployment plan"]
+    },
+    {
       id: "reporting",
       name: "Client Reporting",
       status: "planned",
