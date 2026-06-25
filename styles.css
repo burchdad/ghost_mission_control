@@ -3735,13 +3735,19 @@ display: grid;
   display: none;
 }
 
-.discovery-brief-section {
+.discovery-brief-section,
+.proposal-draft-section {
   display: grid;
   gap: 0.65rem;
   border: 1px solid rgba(244, 199, 96, 0.24);
   border-radius: 10px;
   background: linear-gradient(135deg, rgba(50, 37, 12, 0.62), rgba(8, 12, 18, 0.88));
   padding: 0.72rem;
+}
+
+.proposal-draft-section {
+  border-color: rgba(91, 227, 255, 0.24);
+  background: linear-gradient(135deg, rgba(12, 43, 56, 0.62), rgba(8, 12, 24, 0.9));
 }
 
 .lead-intake-heading {

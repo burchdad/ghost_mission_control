@@ -148,6 +148,13 @@ const elements = {
   clientDiscoveryRecommendedPathInput: document.getElementById("clientDiscoveryRecommendedPathInput"),
   clientDiscoverySuccessInput: document.getElementById("clientDiscoverySuccessInput"),
   clientDiscoveryNextStepInput: document.getElementById("clientDiscoveryNextStepInput"),
+  clientProposalDraftStatusInput: document.getElementById("clientProposalDraftStatusInput"),
+  clientProposalDraftTitleInput: document.getElementById("clientProposalDraftTitleInput"),
+  clientProposalDraftScopeInput: document.getElementById("clientProposalDraftScopeInput"),
+  clientProposalDraftInvestmentInput: document.getElementById("clientProposalDraftInvestmentInput"),
+  clientProposalDraftTimelineInput: document.getElementById("clientProposalDraftTimelineInput"),
+  clientProposalDraftClientNeedsInput: document.getElementById("clientProposalDraftClientNeedsInput"),
+  clientProposalDraftCtaInput: document.getElementById("clientProposalDraftCtaInput"),
   clientLeadStageInput: document.getElementById("clientLeadStageInput"),
   clientRelationshipInput: document.getElementById("clientRelationshipInput"),
   clientPricingTierInput: document.getElementById("clientPricingTierInput"),
@@ -2214,6 +2221,7 @@ function clearLeadIntakeFields() {
     elements.clientExampleSitesInput
   ].forEach((field) => setFieldValue(field, ""));
   clearDiscoveryBriefFields();
+  clearProposalDraftFields();
 }
 
 function clearDiscoveryBriefFields() {
@@ -2226,6 +2234,18 @@ function clearDiscoveryBriefFields() {
     elements.clientDiscoveryRecommendedPathInput,
     elements.clientDiscoverySuccessInput,
     elements.clientDiscoveryNextStepInput
+  ].forEach((field) => setFieldValue(field, ""));
+}
+
+function clearProposalDraftFields() {
+  [
+    elements.clientProposalDraftStatusInput,
+    elements.clientProposalDraftTitleInput,
+    elements.clientProposalDraftScopeInput,
+    elements.clientProposalDraftInvestmentInput,
+    elements.clientProposalDraftTimelineInput,
+    elements.clientProposalDraftClientNeedsInput,
+    elements.clientProposalDraftCtaInput
   ].forEach((field) => setFieldValue(field, ""));
 }
 
@@ -2300,6 +2320,51 @@ function buildDiscoveryBriefNoteBlock(discovery) {
     `Recommended path: ${discovery.recommendedPath || "Not provided"}`,
     `Success criteria: ${discovery.success || "Not provided"}`,
     `Next step promised: ${discovery.nextStep || "Not provided"}`
+  ];
+
+  return lines.join("\n");
+}
+
+function getProposalDraftValues() {
+  return {
+    status: elements.clientProposalDraftStatusInput?.value || "",
+    statusLabel: getSelectDisplayValue(elements.clientProposalDraftStatusInput),
+    title: elements.clientProposalDraftTitleInput?.value?.trim() || "",
+    scope: elements.clientProposalDraftScopeInput?.value?.trim() || "",
+    investment: elements.clientProposalDraftInvestmentInput?.value?.trim() || "",
+    timeline: elements.clientProposalDraftTimelineInput?.value?.trim() || "",
+    clientNeeds: elements.clientProposalDraftClientNeedsInput?.value?.trim() || "",
+    cta: elements.clientProposalDraftCtaInput?.value?.trim() || ""
+  };
+}
+
+function hasProposalDraftValues(proposal) {
+  const values = [
+    proposal?.status,
+    proposal?.title,
+    proposal?.scope,
+    proposal?.investment,
+    proposal?.timeline,
+    proposal?.clientNeeds,
+    proposal?.cta
+  ];
+  return values.some((value) => String(value || "").trim());
+}
+
+function buildProposalDraftNoteBlock(proposal) {
+  if (!hasProposalDraftValues(proposal)) {
+    return "";
+  }
+
+  const lines = [
+    `Proposal draft (${new Date().toLocaleString()})`,
+    `Status: ${proposal.statusLabel || "Not started"}`,
+    `Title: ${proposal.title || "Not provided"}`,
+    `Recommended scope: ${proposal.scope || "Not provided"}`,
+    `Investment summary: ${proposal.investment || "Not provided"}`,
+    `Timeline / phases: ${proposal.timeline || "Not provided"}`,
+    `Client needs: ${proposal.clientNeeds || "Not provided"}`,
+    `Approval CTA: ${proposal.cta || "Not provided"}`
   ];
 
   return lines.join("\n");
@@ -6541,6 +6606,8 @@ async function submitClientOnboarding(event) {
   const leadIntakeNotes = isLeadIntake ? buildLeadIntakeNoteBlock(leadIntake) : "";
   const discoveryBrief = getDiscoveryBriefValues();
   const discoveryBriefNotes = buildDiscoveryBriefNoteBlock(discoveryBrief);
+  const proposalDraft = getProposalDraftValues();
+  const proposalDraftNotes = buildProposalDraftNoteBlock(proposalDraft);
   const rawNotes = elements.clientNotesInput?.value || "";
 
   const payload = {
@@ -6575,7 +6642,7 @@ async function submitClientOnboarding(event) {
     plan: isLeadIntake ? (leadIntake.offerPathLabel || "Lead intake") : elements.clientPlanInput?.value || "",
     ...serviceState,
     contact: elements.clientContactInput?.value || elements.clientNameInput?.value || "",
-    notes: mergeStructuredNotes(rawNotes, leadIntakeNotes, discoveryBriefNotes)
+    notes: mergeStructuredNotes(rawNotes, leadIntakeNotes, discoveryBriefNotes, proposalDraftNotes)
   };
 
   if (!payload.clientName.trim()) {
@@ -6585,6 +6652,18 @@ async function submitClientOnboarding(event) {
 
   if (discoveryBriefNotes && payload.stage === "lead" && (!payload.leadStage || payload.leadStage === "new-lead")) {
     payload.leadStage = "contacted-discovery";
+  }
+
+  if (proposalDraftNotes && payload.stage === "lead" && (!payload.leadStage || payload.leadStage === "new-lead")) {
+    payload.leadStage = "contacted-discovery";
+  }
+
+  if (proposalDraft.status === "sent") {
+    payload.proposalSent = true;
+    payload.depositInvoiceSent = true;
+    if (payload.stage === "lead") {
+      payload.leadStage = "proposal-sent";
+    }
   }
 
   if (payload.depositPaid) {
@@ -7169,6 +7248,7 @@ function formatLeadActivityDate(value) {
 function getLeadActivityTimeline(client) {
   const stageId = getLeadDeskColumnId(client);
   const hasDiscoveryBrief = /post-discovery brief/i.test(String(client.notes || ""));
+  const hasProposalDraft = /proposal draft/i.test(String(client.notes || ""));
   const activities = [
     {
       label: "Lead created",
@@ -7193,6 +7273,15 @@ function getLeadActivityTimeline(client) {
       detail: hasDiscoveryBrief ? "Post-call notes captured" : stageId === "contacted-discovery" ? "Needs post-call notes" : "Discovery completed",
       at: client.updatedAt,
       status: hasDiscoveryBrief || stageId !== "contacted-discovery" ? "complete" : "active"
+    });
+  }
+
+  if (hasProposalDraft) {
+    activities.push({
+      label: "Proposal draft",
+      detail: client.proposalSent ? "Draft used for sent proposal" : "Scope and investment prepared",
+      at: client.updatedAt,
+      status: client.proposalSent ? "complete" : "active"
     });
   }
 

@@ -672,6 +672,49 @@
               <textarea id="clientDiscoveryNextStepInput" name="discoveryNextStep" rows="2" placeholder="Proposal, follow-up email, asset request, second call, deposit link..."></textarea>
             </label>
           </section>
+          <section class="proposal-draft-section" aria-label="Proposal workspace">
+            <div class="lead-intake-heading">
+              <span>Proposal Workspace</span>
+              <strong>Shape the scrollable proposal before it goes to the lead.</strong>
+            </div>
+            <div class="lead-intake-grid">
+              <label>
+                <span>Proposal status</span>
+                <select id="clientProposalDraftStatusInput" name="proposalDraftStatus">
+                  <option value="">Not started</option>
+                  <option value="draft">Drafting</option>
+                  <option value="ready">Ready to send</option>
+                  <option value="sent">Sent to lead</option>
+                </select>
+              </label>
+              <label>
+                <span>Proposal title</span>
+                <input id="clientProposalDraftTitleInput" name="proposalDraftTitle" type="text" placeholder="Growth launch plan for Acme Dental" />
+              </label>
+            </div>
+            <label>
+              <span>Recommended scope</span>
+              <textarea id="clientProposalDraftScopeInput" name="proposalDraftScope" rows="2" placeholder="What you recommend they buy first and why"></textarea>
+            </label>
+            <div class="lead-intake-grid">
+              <label>
+                <span>Investment summary</span>
+                <input id="clientProposalDraftInvestmentInput" name="proposalDraftInvestment" type="text" placeholder="$400 website + $250/mo SEO" />
+              </label>
+              <label>
+                <span>Timeline / phases</span>
+                <input id="clientProposalDraftTimelineInput" name="proposalDraftTimeline" type="text" placeholder="2-week launch, then 30-day growth setup" />
+              </label>
+            </div>
+            <label>
+              <span>What we need from client</span>
+              <textarea id="clientProposalDraftClientNeedsInput" name="proposalDraftClientNeeds" rows="2" placeholder="Logo, domain access, photos, ad account, approval contact..."></textarea>
+            </label>
+            <label>
+              <span>Approval CTA</span>
+              <input id="clientProposalDraftCtaInput" name="proposalDraftCta" type="text" placeholder="Approve and pay deposit, request changes, or book follow-up" />
+            </label>
+          </section>
           <label class="client-ops-field">
             <span>Lead Pipeline Stage</span>
             <select id="clientLeadStageInput" name="leadStage">
