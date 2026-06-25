@@ -7023,6 +7023,172 @@ function getLeadCardContactLine(client) {
   return contact || email || phone || "Contact pending";
 }
 
+const serviceValueEstimates = {
+  "website-build": { oneTime: 400 },
+  "web-helper-care": { monthly: 100 },
+  "search-intelligence": { monthly: 250 },
+  "local-service": { oneTime: 100, monthly: 250 },
+  "google-business-profile": { oneTime: 100 },
+  "lead-funnel": { oneTime: 700 },
+  "crm-setup": { oneTime: 700 },
+  "ghl-setup": { oneTime: 800 },
+  "content-social": { monthly: 600 },
+  "paid-ads": { oneTime: 2200 },
+  "social-media-ads": { oneTime: 1200 },
+  "google-ads": { oneTime: 1000 },
+  "software-tool": { oneTime: 4000 },
+  "ai-automation": { oneTime: 4500 },
+  "ai-chatbot": { oneTime: 3000 },
+  "mobile-app": { oneTime: 5000 },
+  "enterprise-platform": { oneTime: 4000 },
+  ecommerce: { oneTime: 400 },
+  reporting: { monthly: 0 }
+};
+
+function getLeadRequestedServices(client) {
+  return [...new Set([...(client.services || []), ...(client.plannedServices || [])])];
+}
+
+function getLeadRequestedValue(client) {
+  const services = getLeadRequestedServices(client);
+  const totals = services.reduce((sum, serviceKey) => {
+    const estimate = serviceValueEstimates[serviceKey] || {};
+    sum.oneTime += Number(estimate.oneTime || 0);
+    sum.monthly += Number(estimate.monthly || 0);
+    return sum;
+  }, { oneTime: 0, monthly: 0 });
+
+  return {
+    ...totals,
+    services
+  };
+}
+
+function formatCompactMoney(value) {
+  const amount = Number(value || 0);
+  if (!amount) {
+    return "$0";
+  }
+  if (amount >= 1000 && amount % 1000 === 0) {
+    return `$${amount / 1000}k`;
+  }
+  if (amount >= 1000) {
+    return `$${(amount / 1000).toFixed(1).replace(/\.0$/, "")}k`;
+  }
+  return `$${amount}`;
+}
+
+function formatLeadValueBadge(client) {
+  const value = getLeadRequestedValue(client);
+  if (value.oneTime && value.monthly) {
+    return `${formatCompactMoney(value.oneTime)} + ${formatCompactMoney(value.monthly)}/mo`;
+  }
+  if (value.monthly) {
+    return `${formatCompactMoney(value.monthly)}/mo`;
+  }
+  if (value.oneTime) {
+    return formatCompactMoney(value.oneTime);
+  }
+  return "TBD";
+}
+
+function formatLeadActivityDate(value) {
+  if (!value) {
+    return "pending";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "logged";
+  }
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function getLeadActivityTimeline(client) {
+  const stageId = getLeadDeskColumnId(client);
+  const activities = [
+    {
+      label: "Lead created",
+      detail: getLeadSourceLabel(client),
+      at: client.createdAt,
+      status: "complete"
+    }
+  ];
+
+  if (client.leadSource || client.businessEmail || client.businessPhone || client.notes) {
+    activities.push({
+      label: "Intake captured",
+      detail: getLeadCardContactLine(client),
+      at: client.createdAt || client.updatedAt,
+      status: "complete"
+    });
+  }
+
+  if (["contacted-discovery", "proposal-sent", "agreement-returned", "deposit-paid"].includes(stageId)) {
+    activities.push({
+      label: "Discovery call",
+      detail: stageId === "contacted-discovery" ? "Needs post-call notes" : "Discovery completed",
+      at: client.updatedAt,
+      status: stageId === "contacted-discovery" ? "active" : "complete"
+    });
+  }
+
+  if (client.proposalSent || client.depositInvoiceSent || ["proposal-sent", "agreement-returned", "deposit-paid"].includes(stageId)) {
+    activities.push({
+      label: "Proposal sent",
+      detail: client.depositInvoiceSent ? "Proposal + invoice sent" : "Proposal routed",
+      at: client.updatedAt,
+      status: "complete"
+    });
+  }
+
+  if (client.proposalSigned || ["agreement-returned", "deposit-paid"].includes(stageId)) {
+    activities.push({
+      label: "Agreement returned",
+      detail: "Ready for deposit follow-up",
+      at: client.updatedAt,
+      status: "complete"
+    });
+  }
+
+  if (client.depositPaid || stageId === "deposit-paid") {
+    activities.push({
+      label: "Deposit paid",
+      detail: "Move into build queue",
+      at: client.updatedAt,
+      status: "complete"
+    });
+  }
+
+  if (stageId === "lost-not-now") {
+    activities.push({
+      label: "Paused / lost",
+      detail: "Review for revive or archive",
+      at: client.updatedAt,
+      status: "paused"
+    });
+  }
+
+  return activities.slice(-4);
+}
+
+function renderLeadActivityTimeline(client) {
+  const activities = getLeadActivityTimeline(client);
+  return `<div class="lead-activity-timeline" aria-label="${escapeHtml(client.clientName)} activity timeline">
+    ${activities.map((activity) => `<div class="lead-activity-item is-${escapeHtml(activity.status)}">
+      <span>${escapeHtml(formatLeadActivityDate(activity.at))}</span>
+      <strong>${escapeHtml(activity.label)}</strong>
+      <p>${escapeHtml(activity.detail)}</p>
+    </div>`).join("")}
+  </div>`;
+}
+
+function getLeadServiceSummary(client) {
+  const services = getLeadRequestedServices(client)
+    .map((serviceKey) => getClientServiceDefinition(serviceKey).label)
+    .filter(Boolean);
+  return services.length ? services.slice(0, 3).join(", ") : "Scope pending";
+}
+
 function getLeadNextStageId(client) {
   const column = getLeadDeskColumnId(client);
   if (column === "new-lead") {
@@ -7172,6 +7338,10 @@ function renderLeadDeskPipeline(queue) {
         </div>
         ${clients.length ? clients.map((client) => `<article class="onboarding-client-card lead-card" draggable="true" data-lead-drag="${escapeHtml(client.id)}" data-client-detail="${escapeHtml(client.id)}" tabindex="0" role="button" aria-label="Open ${escapeHtml(client.clientName)} details">
           ${renderLeadNotificationButton(client)}
+          <div class="lead-value-badge" title="${escapeHtml(`Estimated requested value: ${formatLeadValueBadge(client)}`)}">
+            <span>Value</span>
+            <strong>${escapeHtml(formatLeadValueBadge(client))}</strong>
+          </div>
           <div class="onboarding-client-head">
             <div>
               <h3>${escapeHtml(client.clientName)}</h3>
@@ -7180,6 +7350,8 @@ function renderLeadDeskPipeline(queue) {
             </div>
             <span class="pill ${column.id === "deposit-paid" ? "tone-green" : column.id === "lost-not-now" ? "tone-gray" : column.id === "agreement-returned" ? "tone-blue" : "tone-yellow"}">${escapeHtml(getLeadStageLabel(column.id))}</span>
           </div>
+          <div class="lead-scope-line">${escapeHtml(getLeadServiceSummary(client))}</div>
+          ${renderLeadActivityTimeline(client)}
           <p>${escapeHtml(client.nextAction || getLeadDeskNextAction(client))}</p>
         </article>`).join("") : `<div class="pipeline-empty">No leads</div>`}
       </section>`;
