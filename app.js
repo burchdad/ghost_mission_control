@@ -140,6 +140,14 @@ const elements = {
   clientCurrentProblemInput: document.getElementById("clientCurrentProblemInput"),
   clientVisualDirectionInput: document.getElementById("clientVisualDirectionInput"),
   clientExampleSitesInput: document.getElementById("clientExampleSitesInput"),
+  clientDiscoveryDateInput: document.getElementById("clientDiscoveryDateInput"),
+  clientDiscoveryTypeInput: document.getElementById("clientDiscoveryTypeInput"),
+  clientDiscoveryNeedInput: document.getElementById("clientDiscoveryNeedInput"),
+  clientDiscoveryProblemInput: document.getElementById("clientDiscoveryProblemInput"),
+  clientDiscoveryDecisionMakerInput: document.getElementById("clientDiscoveryDecisionMakerInput"),
+  clientDiscoveryRecommendedPathInput: document.getElementById("clientDiscoveryRecommendedPathInput"),
+  clientDiscoverySuccessInput: document.getElementById("clientDiscoverySuccessInput"),
+  clientDiscoveryNextStepInput: document.getElementById("clientDiscoveryNextStepInput"),
   clientLeadStageInput: document.getElementById("clientLeadStageInput"),
   clientRelationshipInput: document.getElementById("clientRelationshipInput"),
   clientPricingTierInput: document.getElementById("clientPricingTierInput"),
@@ -2205,6 +2213,20 @@ function clearLeadIntakeFields() {
     elements.clientVisualDirectionInput,
     elements.clientExampleSitesInput
   ].forEach((field) => setFieldValue(field, ""));
+  clearDiscoveryBriefFields();
+}
+
+function clearDiscoveryBriefFields() {
+  [
+    elements.clientDiscoveryDateInput,
+    elements.clientDiscoveryTypeInput,
+    elements.clientDiscoveryNeedInput,
+    elements.clientDiscoveryProblemInput,
+    elements.clientDiscoveryDecisionMakerInput,
+    elements.clientDiscoveryRecommendedPathInput,
+    elements.clientDiscoverySuccessInput,
+    elements.clientDiscoveryNextStepInput
+  ].forEach((field) => setFieldValue(field, ""));
 }
 
 function getLeadIntakeValues() {
@@ -2246,12 +2268,47 @@ function buildLeadIntakeNoteBlock(intake) {
   return lines.join("\n");
 }
 
-function mergeLeadIntakeNotes(existingNotes, intakeBlock) {
-  const notes = String(existingNotes || "").trim();
-  if (!intakeBlock) {
-    return notes;
+function getDiscoveryBriefValues() {
+  return {
+    date: elements.clientDiscoveryDateInput?.value || "",
+    type: getSelectDisplayValue(elements.clientDiscoveryTypeInput),
+    need: elements.clientDiscoveryNeedInput?.value?.trim() || "",
+    problem: elements.clientDiscoveryProblemInput?.value?.trim() || "",
+    decisionMaker: elements.clientDiscoveryDecisionMakerInput?.value?.trim() || "",
+    recommendedPath: elements.clientDiscoveryRecommendedPathInput?.value?.trim() || "",
+    success: elements.clientDiscoverySuccessInput?.value?.trim() || "",
+    nextStep: elements.clientDiscoveryNextStepInput?.value?.trim() || ""
+  };
+}
+
+function hasDiscoveryBriefValues(discovery) {
+  return Object.values(discovery || {}).some((value) => String(value || "").trim());
+}
+
+function buildDiscoveryBriefNoteBlock(discovery) {
+  if (!hasDiscoveryBriefValues(discovery)) {
+    return "";
   }
-  return notes ? `${intakeBlock}\n\nInternal notes:\n${notes}` : intakeBlock;
+
+  const lines = [
+    `Post-discovery brief (${new Date().toLocaleString()})`,
+    `Call date: ${discovery.date || "Not provided"}`,
+    `Meeting type: ${discovery.type || "Not selected"}`,
+    `Stated need: ${discovery.need || "Not provided"}`,
+    `Business problem: ${discovery.problem || "Not provided"}`,
+    `Decision maker: ${discovery.decisionMaker || "Not provided"}`,
+    `Recommended path: ${discovery.recommendedPath || "Not provided"}`,
+    `Success criteria: ${discovery.success || "Not provided"}`,
+    `Next step promised: ${discovery.nextStep || "Not provided"}`
+  ];
+
+  return lines.join("\n");
+}
+
+function mergeStructuredNotes(existingNotes, ...blocks) {
+  const parts = blocks.map((block) => String(block || "").trim()).filter(Boolean);
+  const notes = String(existingNotes || "").trim();
+  return [...parts, notes].filter(Boolean).join("\n\n");
 }
 
 const clientModalModeDefaults = {
@@ -6482,6 +6539,8 @@ async function submitClientOnboarding(event) {
     serviceState.plannedServices = [...new Set([...serviceState.plannedServices, ...leadIntake.selectedServices])];
   }
   const leadIntakeNotes = isLeadIntake ? buildLeadIntakeNoteBlock(leadIntake) : "";
+  const discoveryBrief = getDiscoveryBriefValues();
+  const discoveryBriefNotes = buildDiscoveryBriefNoteBlock(discoveryBrief);
   const rawNotes = elements.clientNotesInput?.value || "";
 
   const payload = {
@@ -6516,12 +6575,16 @@ async function submitClientOnboarding(event) {
     plan: isLeadIntake ? (leadIntake.offerPathLabel || "Lead intake") : elements.clientPlanInput?.value || "",
     ...serviceState,
     contact: elements.clientContactInput?.value || elements.clientNameInput?.value || "",
-    notes: mergeLeadIntakeNotes(rawNotes, leadIntakeNotes)
+    notes: mergeStructuredNotes(rawNotes, leadIntakeNotes, discoveryBriefNotes)
   };
 
   if (!payload.clientName.trim()) {
     elements.clientFormResponse.textContent = "Client name is required.";
     return;
+  }
+
+  if (discoveryBriefNotes && payload.stage === "lead" && (!payload.leadStage || payload.leadStage === "new-lead")) {
+    payload.leadStage = "contacted-discovery";
   }
 
   if (payload.depositPaid) {
@@ -7105,6 +7168,7 @@ function formatLeadActivityDate(value) {
 
 function getLeadActivityTimeline(client) {
   const stageId = getLeadDeskColumnId(client);
+  const hasDiscoveryBrief = /post-discovery brief/i.test(String(client.notes || ""));
   const activities = [
     {
       label: "Lead created",
@@ -7125,10 +7189,10 @@ function getLeadActivityTimeline(client) {
 
   if (["contacted-discovery", "proposal-sent", "agreement-returned", "deposit-paid"].includes(stageId)) {
     activities.push({
-      label: "Discovery call",
-      detail: stageId === "contacted-discovery" ? "Needs post-call notes" : "Discovery completed",
+      label: hasDiscoveryBrief ? "Discovery brief" : "Discovery call",
+      detail: hasDiscoveryBrief ? "Post-call notes captured" : stageId === "contacted-discovery" ? "Needs post-call notes" : "Discovery completed",
       at: client.updatedAt,
-      status: stageId === "contacted-discovery" ? "active" : "complete"
+      status: hasDiscoveryBrief || stageId !== "contacted-discovery" ? "complete" : "active"
     });
   }
 

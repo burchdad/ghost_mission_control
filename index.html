@@ -624,6 +624,54 @@
               <textarea id="clientExampleSitesInput" name="exampleSites" rows="2" placeholder="Example websites, competitors, apps, or notes"></textarea>
             </label>
           </section>
+          <section class="discovery-brief-section" aria-label="Post discovery brief">
+            <div class="lead-intake-heading">
+              <span>Post-Discovery Brief</span>
+              <strong>Fill this out right after the phone call or meeting.</strong>
+            </div>
+            <div class="lead-intake-grid">
+              <label>
+                <span>Call date</span>
+                <input id="clientDiscoveryDateInput" name="discoveryDate" type="date" />
+              </label>
+              <label>
+                <span>Meeting type</span>
+                <select id="clientDiscoveryTypeInput" name="discoveryType">
+                  <option value="">Not selected</option>
+                  <option value="phone-call">Phone call</option>
+                  <option value="video-meeting">Video meeting</option>
+                  <option value="in-person">In person</option>
+                  <option value="chat-message">Chat / message thread</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>What they said they need</span>
+              <textarea id="clientDiscoveryNeedInput" name="discoveryNeed" rows="2" placeholder="The plain-language ask from the call"></textarea>
+            </label>
+            <label>
+              <span>Real business problem</span>
+              <textarea id="clientDiscoveryProblemInput" name="discoveryProblem" rows="2" placeholder="What is costing them time, money, leads, trust, or capacity?"></textarea>
+            </label>
+            <div class="lead-intake-grid">
+              <label>
+                <span>Decision maker</span>
+                <input id="clientDiscoveryDecisionMakerInput" name="discoveryDecisionMaker" type="text" placeholder="Owner, partner, manager, committee..." />
+              </label>
+              <label>
+                <span>Recommended path</span>
+                <input id="clientDiscoveryRecommendedPathInput" name="discoveryRecommendedPath" type="text" placeholder="Startup package, a la carte website + SEO, custom build..." />
+              </label>
+            </div>
+            <label>
+              <span>Success criteria</span>
+              <textarea id="clientDiscoverySuccessInput" name="discoverySuccess" rows="2" placeholder="How they will know this worked"></textarea>
+            </label>
+            <label>
+              <span>Next step promised</span>
+              <textarea id="clientDiscoveryNextStepInput" name="discoveryNextStep" rows="2" placeholder="Proposal, follow-up email, asset request, second call, deposit link..."></textarea>
+            </label>
+          </section>
           <label class="client-ops-field">
             <span>Lead Pipeline Stage</span>
             <select id="clientLeadStageInput" name="leadStage">
