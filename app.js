@@ -467,6 +467,8 @@ const clientRelationshipDefinitions = {
   prospect: { label: "Prospect", pricingTier: "standard" }
 };
 
+const defaultClientPlan = "Startup - $997-$1,997/mo + $500 setup";
+
 function normalizeClientRelationship(value) {
   const relationship = String(value || "").trim().toLowerCase();
   return clientRelationshipDefinitions[relationship] ? relationship : "client";
@@ -492,7 +494,7 @@ const clientServiceDefinitions = {
     system: "GitHub + Vercel",
     pipeline: "web-delivery",
     pricing: {
-      client: "$1,500-$4,500 project",
+      client: "$400 one-off project",
       partner: "Partner scope / rev share"
     }
   },
@@ -503,7 +505,7 @@ const clientServiceDefinitions = {
     system: "Web Helper Agent",
     pipeline: "web-care",
     pricing: {
-      client: "$149-$499/mo",
+      client: "$100/mo maintenance",
       partner: "Partner care allocation"
     }
   },
@@ -514,19 +516,30 @@ const clientServiceDefinitions = {
     system: "geo.ghostai.solutions",
     pipeline: "seo-geo",
     pricing: {
-      client: "$500-$1,500/mo",
+      client: "$250/mo SEO, AEO, GEO",
       partner: "Partner growth allocation"
     }
   },
   "local-service": {
-    label: "Local Service Growth",
+    label: "Google Profile / Local GEO",
     category: "Growth",
-    agreement: "Local SEO integration contract",
+    agreement: "Google Profile / local SEO contract",
     system: "GBP + GEO + Web Helper",
     pipeline: "seo-geo",
     pricing: {
-      client: "$350-$1,200/mo",
+      client: "$100 GBP build + $250/mo SEO, AEO, GEO",
       partner: "Partner local growth allocation"
+    }
+  },
+  "google-business-profile": {
+    label: "Google Profile Build",
+    category: "Local",
+    agreement: "Google Business Profile build scope",
+    system: "GBP + local authority setup",
+    pipeline: "seo-geo",
+    pricing: {
+      client: "$100 one-off build",
+      partner: "Partner local setup allocation"
     }
   },
   "lead-funnel": {
@@ -536,18 +549,40 @@ const clientServiceDefinitions = {
     system: "Ghost Lead Command + GhostCRM",
     pipeline: "automations",
     pricing: {
-      client: "$750-$2,500/mo",
+      client: "$700 CRM setup / $800 GHL setup",
       partner: "Partner lead-share motion"
     }
   },
+  "crm-setup": {
+    label: "CRM Setup",
+    category: "CRM",
+    agreement: "CRM setup scope",
+    system: "GhostCRM + lead routing",
+    pipeline: "automations",
+    pricing: {
+      client: "$700 setup",
+      partner: "Partner CRM allocation"
+    }
+  },
+  "ghl-setup": {
+    label: "GHL Setup",
+    category: "CRM",
+    agreement: "GoHighLevel setup scope",
+    system: "GHL + funnel automation",
+    pipeline: "automations",
+    pricing: {
+      client: "$800 setup",
+      partner: "Partner GHL allocation"
+    }
+  },
   "software-tool": {
-    label: "Software Tool",
+    label: "SaaS Dev",
     category: "Software",
-    agreement: "Software build / automation contract",
+    agreement: "SaaS / software build contract",
     system: "Tool registry + deployment map",
     pipeline: "automations",
     pricing: {
-      client: "Custom project",
+      client: "$4,000 SaaS dev project",
       partner: "Partner build allocation"
     }
   },
@@ -558,7 +593,7 @@ const clientServiceDefinitions = {
     system: "Lead Command + GhostCRM + Slack approvals",
     pipeline: "automations",
     pricing: {
-      client: "$500-$2,000/mo",
+      client: "$4,500/integration or $3,000/chatbot",
       partner: "Partner automation allocation"
     }
   },
@@ -569,7 +604,7 @@ const clientServiceDefinitions = {
     system: "Storefront + payments",
     pipeline: "commerce",
     pricing: {
-      client: "$500-$2,500/mo",
+      client: "Custom commerce project",
       partner: "Partner store allocation"
     }
   },
@@ -580,7 +615,7 @@ const clientServiceDefinitions = {
     system: "Content operator + social pages",
     pipeline: "social",
     pricing: {
-      client: "$399-$1,500/mo",
+      client: "$600/mo social management",
       partner: "Partner content allocation"
     }
   },
@@ -591,8 +626,30 @@ const clientServiceDefinitions = {
     system: "Meta Ads + Google Ads + reporting",
     pipeline: "ads",
     pricing: {
-      client: "10%-15% of ad spend",
+      client: "$1,200 social ads / $1,000 Google Ads",
       partner: "Partner ad ops allocation"
+    }
+  },
+  "social-media-ads": {
+    label: "Social Media Ads",
+    category: "Ads",
+    agreement: "Social ads campaign scope",
+    system: "Meta Ads + creative + reporting",
+    pipeline: "ads",
+    pricing: {
+      client: "$1,200 social ads",
+      partner: "Partner social ads allocation"
+    }
+  },
+  "google-ads": {
+    label: "Google Ads",
+    category: "Ads",
+    agreement: "Google Ads campaign scope",
+    system: "Google Ads + conversion tracking",
+    pipeline: "ads",
+    pricing: {
+      client: "$1,000 Google Ads",
+      partner: "Partner Google Ads allocation"
     }
   },
   "mobile-app": {
@@ -602,7 +659,7 @@ const clientServiceDefinitions = {
     system: "App build queue + stores",
     pipeline: "mobile-apps",
     pricing: {
-      client: "Custom project",
+      client: "$5,000 mobile app dev",
       partner: "Partner build allocation"
     }
   },
@@ -613,8 +670,19 @@ const clientServiceDefinitions = {
     system: "Platform architecture + integrations",
     pipeline: "enterprise-platforms",
     pricing: {
-      client: "Custom platform project",
+      client: "Custom enterprise / SaaS from $4,000",
       partner: "Partner platform allocation"
+    }
+  },
+  "ai-chatbot": {
+    label: "AI Chatbot",
+    category: "Automation",
+    agreement: "AI chatbot build scope",
+    system: "Website chatbot + knowledge base",
+    pipeline: "automations",
+    pricing: {
+      client: "$3,000 chatbot",
+      partner: "Partner chatbot allocation"
     }
   },
   reporting: {
@@ -624,7 +692,7 @@ const clientServiceDefinitions = {
     system: "Mission Control + client reports",
     pipeline: "web-care",
     pricing: {
-      client: "$99-$399/mo",
+      client: "Included with monthly packages",
       partner: "Included in partner ops"
     }
   }
@@ -648,7 +716,7 @@ const servicePipelineDefinitions = [
     label: "SEO / AEO / GEO",
     description: "Search visibility, AI answer presence, local authority, competitor analysis, and GEO action queues.",
     system: "geo.ghostai.solutions",
-    serviceKeys: ["search-intelligence", "local-service"],
+    serviceKeys: ["search-intelligence", "local-service", "google-business-profile"],
     stages: [
       { id: "eligible", label: "Eligible" },
       { id: "audit-needed", label: "Audit Needed" },
@@ -678,7 +746,7 @@ const servicePipelineDefinitions = [
     label: "Paid Ads",
     description: "Ad account access, tracking, offer alignment, campaign launch, optimization, and reporting.",
     system: "Meta Ads + Google Ads",
-    serviceKeys: ["paid-ads"],
+    serviceKeys: ["paid-ads", "social-media-ads", "google-ads"],
     stages: [
       { id: "candidate", label: "Candidate" },
       { id: "access", label: "Access" },
@@ -708,7 +776,7 @@ const servicePipelineDefinitions = [
     label: "Automations + Lead Systems",
     description: "Lead Command, CRM, workflow agents, software builds, and revenue automation systems.",
     system: "Ghost Lead Command + GhostCRM + tool registry",
-    serviceKeys: ["lead-funnel", "software-tool", "ai-automation"],
+    serviceKeys: ["lead-funnel", "crm-setup", "ghl-setup", "software-tool", "ai-automation", "ai-chatbot"],
     stages: [
       { id: "opportunity", label: "Opportunity" },
       { id: "mapped", label: "Mapped" },
@@ -891,7 +959,7 @@ const seededClientProfiles = [
     repo: "bougie_and_company",
     githubUrl: "https://github.com/burchdad/bougie_and_company",
     stage: "web-helper-care",
-    plan: "Launch + Care",
+    plan: "Startup - $997-$1,997/mo + $500 setup",
     services: ["website-build", "web-helper-care", "ecommerce"],
     plannedServices: ["search-intelligence"],
     socialUrls: [
@@ -921,7 +989,7 @@ const seededClientProfiles = [
     repo: "burchdad/inland-empire-ghost-hunters",
     githubUrl: "https://github.com/burchdad/inland-empire-ghost-hunters",
     stage: "client-review",
-    plan: "Launch + Care",
+    plan: "Startup - $997-$1,997/mo + $500 setup",
     services: ["website-build"],
     plannedServices: ["web-helper-care", "search-intelligence"],
     finalDomainPurchased: true,
@@ -1093,7 +1161,7 @@ function buildClientOverviewModules(client) {
     revenue: {
       influenced: "client retention",
       generated: "n/a",
-      pipeline: client.plan || "Launch + Care"
+      pipeline: client.plan || defaultClientPlan
     },
     ownership: {
       confidence: hasWebHelper ? "86%" : "55%",
@@ -2278,7 +2346,7 @@ function populateClientForm(client) {
   setFieldValue(elements.clientBusinessEmailInput, client.businessEmail);
   setFieldValue(elements.clientBusinessPhoneInput, client.businessPhone);
   ensureSelectOption(elements.clientPlanInput, client.plan);
-  setFieldValue(elements.clientPlanInput, client.plan || "Launch + Care");
+  setFieldValue(elements.clientPlanInput, client.plan || defaultClientPlan);
   setClientServicePickerValues(client.services || [], client.plannedServices || []);
   setFieldValue(elements.clientContactInput, client.contact);
   setFieldValue(elements.clientNotesInput, client.notes);
@@ -4898,7 +4966,7 @@ function renderClientModalStats(client) {
   const totalChecks = readiness.totalHealth + readiness.totalHandoff;
   return `<div class="client-modal-stats">
     <div><span>Stage</span><strong>${escapeHtml(getClientStageLabel(getClientStage(client)))}</strong></div>
-    <div><span>Plan</span><strong>${escapeHtml(client.plan || "Launch + Care")}</strong></div>
+    <div><span>Plan</span><strong>${escapeHtml(client.plan || defaultClientPlan)}</strong></div>
     <div><span>Services</span><strong>${escapeHtml(`${serviceSummary.active.length} active / ${serviceSummary.planned.length} planned`)}</strong></div>
     <div><span>Readiness</span><strong>${escapeHtml(`${readyChecks}/${totalChecks} ops checks`)}</strong></div>
     <div><span>Connections</span><strong>${escapeHtml(issueCount ? `${issueCount} gaps` : "Ready")}</strong></div>
@@ -5593,7 +5661,7 @@ function getClientServiceAgreementStatus(client, serviceKey) {
       : "care contract pending";
   }
 
-  if (["search-intelligence", "local-service"].includes(serviceKey)) {
+  if (["search-intelligence", "local-service", "google-business-profile"].includes(serviceKey)) {
     return hasGrowthAgreement ? "SEO contract active" : "SEO contract pending";
   }
 
@@ -5601,7 +5669,7 @@ function getClientServiceAgreementStatus(client, serviceKey) {
     return hasGrowthAgreement ? "social contract active" : "social contract pending";
   }
 
-  if (["lead-funnel", "paid-ads", "ai-automation"].includes(serviceKey)) {
+  if (["lead-funnel", "crm-setup", "ghl-setup", "paid-ads", "social-media-ads", "google-ads", "ai-automation", "ai-chatbot"].includes(serviceKey)) {
     return hasGrowthAgreement ? "growth contract active" : "growth contract pending";
   }
 
@@ -5878,7 +5946,7 @@ function openClientDetail(clientId) {
 
   selectedClientId = client.id;
   elements.clientDetailTitle.textContent = client.clientName;
-  elements.clientDetailSubtitle.textContent = `${getClientStageLabel(getClientStage(client))} - ${client.plan || "Launch + Care"}`;
+  elements.clientDetailSubtitle.textContent = `${getClientStageLabel(getClientStage(client))} - ${client.plan || defaultClientPlan}`;
   elements.clientDetailContent.innerHTML = `
     <section class="client-modal-overview">
       <div>
@@ -6036,7 +6104,7 @@ function buildClientSavePayloadFromRecord(client, overrides = {}) {
     clientDetailsPending: Boolean(client.clientDetailsPending),
     businessEmail: client.businessEmail || "",
     businessPhone: client.businessPhone || "",
-    plan: client.plan || "Launch + Care",
+    plan: client.plan || defaultClientPlan,
     services: client.services || [],
     plannedServices: client.plannedServices || [],
     contact: client.contact || "",
@@ -6634,6 +6702,18 @@ const fallbackServiceCatalog = [
     nextActions: ["Add API credentials", "Map siteId to GEO profile", "Import scores and recommendations"]
   },
   {
+    id: "google-business-profile",
+    name: "Google Profile Build",
+    status: "planned",
+    category: "Local",
+    owner: "Local Profile Operator",
+    pricingLabel: "$100 one-off build",
+    description: "Google Business Profile buildout, baseline business details, local authority setup, and handoff notes.",
+    connectedSystems: ["Google Business", "Local SEO", "Client Reports"],
+    triggers: ["New local business", "GBP missing", "Profile rebuild requested"],
+    nextActions: ["Collect business details", "Build profile", "Confirm verification path"]
+  },
+  {
     id: "lead-funnel",
     name: "Lead Funnel",
     status: "planned",
@@ -6643,6 +6723,30 @@ const fallbackServiceCatalog = [
     connectedSystems: ["Forms", "CRM", "Analytics", "Client Reports"],
     triggers: ["Lead drop", "Form failure", "Campaign launch"],
     nextActions: ["Define conversion events", "Connect CRM", "Add form probes"]
+  },
+  {
+    id: "crm-setup",
+    name: "CRM Setup",
+    status: "planned",
+    category: "CRM",
+    owner: "CRM Operator",
+    pricingLabel: "$700 setup",
+    description: "CRM pipeline setup, lead source routing, contact fields, status stages, and owner handoff.",
+    connectedSystems: ["GhostCRM", "Lead Desk", "Forms", "Reports"],
+    triggers: ["CRM setup sold", "Lead process missing", "Manual follow-up bottleneck"],
+    nextActions: ["Map fields", "Create pipeline", "Connect lead sources"]
+  },
+  {
+    id: "ghl-setup",
+    name: "GHL Setup",
+    status: "planned",
+    category: "CRM",
+    owner: "CRM Operator",
+    pricingLabel: "$800 setup",
+    description: "GoHighLevel setup, pipeline configuration, forms, basic automations, and reporting handoff.",
+    connectedSystems: ["GoHighLevel", "Forms", "Calendars", "Reports"],
+    triggers: ["GHL setup sold", "Funnel needs CRM", "Automation handoff requested"],
+    nextActions: ["Collect GHL access", "Map pipeline", "Create automation checklist"]
   },
   {
     id: "content-social",
@@ -6667,6 +6771,30 @@ const fallbackServiceCatalog = [
     nextActions: ["Collect ad account access", "Confirm budget rules", "Connect tracking"]
   },
   {
+    id: "social-media-ads",
+    name: "Social Media Ads",
+    status: "planned",
+    category: "Ads",
+    owner: "Ads Operator",
+    pricingLabel: "$1,200 social ads",
+    description: "Social ad campaign setup, creative coordination, targeting, lead routing, and performance review.",
+    connectedSystems: ["Meta Ads", "Lead Funnel", "Analytics", "Reports"],
+    triggers: ["Social ad project sold", "Campaign launch", "Lead volume push"],
+    nextActions: ["Collect Meta access", "Confirm offer", "Set campaign rules"]
+  },
+  {
+    id: "google-ads",
+    name: "Google Ads",
+    status: "planned",
+    category: "Ads",
+    owner: "Ads Operator",
+    pricingLabel: "$1,000 Google Ads",
+    description: "Google Ads campaign setup, search intent alignment, conversion tracking, and reporting.",
+    connectedSystems: ["Google Ads", "Analytics", "Landing Pages", "Reports"],
+    triggers: ["Google Ads project sold", "Search campaign requested", "Conversion tracking needed"],
+    nextActions: ["Collect Google Ads access", "Confirm keywords", "Connect conversion events"]
+  },
+  {
     id: "ecommerce",
     name: "Commerce Ops",
     status: "active",
@@ -6689,6 +6817,18 @@ const fallbackServiceCatalog = [
     nextActions: ["Define app scope", "Collect store accounts", "Create release checklist"]
   },
   {
+    id: "software-tool",
+    name: "SaaS Dev",
+    status: "planned",
+    category: "Software",
+    owner: "Software Build Operator",
+    pricingLabel: "$4,000 SaaS dev project",
+    description: "SaaS or software tool scoping, build, deployment, integrations, and owner handoff.",
+    connectedSystems: ["GitHub", "Vercel", "Railway", "APIs"],
+    triggers: ["SaaS project sold", "Internal tool requested", "Portal build approved"],
+    nextActions: ["Run discovery", "Map architecture", "Create build queue item"]
+  },
+  {
     id: "ai-automation",
     name: "AI Automation",
     status: "planned",
@@ -6698,6 +6838,18 @@ const fallbackServiceCatalog = [
     connectedSystems: ["Ghost Lead Command", "GhostCRM", "Slack", "Tool Registry"],
     triggers: ["Automation package sold", "Manual process identified", "Lead system requested"],
     nextActions: ["Map workflow", "Define approval gates", "Connect CRM and Slack"]
+  },
+  {
+    id: "ai-chatbot",
+    name: "AI Chatbot",
+    status: "planned",
+    category: "Automation",
+    owner: "Automation Operator",
+    pricingLabel: "$3,000 chatbot",
+    description: "Website chatbot setup, knowledge base preparation, routing, testing, and handoff.",
+    connectedSystems: ["Website", "Knowledge Base", "Lead Funnel", "Reports"],
+    triggers: ["Chatbot sold", "Support deflection requested", "Lead capture chatbot requested"],
+    nextActions: ["Collect FAQs", "Build knowledge base", "Connect lead routing"]
   },
   {
     id: "enterprise-platform",
@@ -7547,6 +7699,8 @@ function renderServiceClientCard(card) {
 
 function renderServiceCard(service) {
   const statusTone = service.status === "active" ? "tone-green" : service.status === "integration-needed" ? "tone-yellow" : "tone-blue";
+  const definition = getClientServiceDefinition(service.id);
+  const priceLabel = service.pricingLabel || service.pricing?.client || definition?.pricing?.client || "Pricing TBD";
   return `<article class="service-card">
     <div class="service-card-head">
       <div>
@@ -7568,6 +7722,10 @@ function renderServiceCard(service) {
       <div>
         <span>Next Action</span>
         <p>${escapeHtml((service.nextActions || [])[0] || "Define service workflow")}</p>
+      </div>
+      <div>
+        <span>Pricing</span>
+        <p>${escapeHtml(priceLabel)}</p>
       </div>
     </div>
   </article>`;

@@ -49,6 +49,7 @@ const DATABASE_URL = String(process.env.DATABASE_URL || process.env.POSTGRES_URL
 const DATABASE_SSL = String(process.env.DATABASE_SSL || "auto").toLowerCase();
 const WEB_HELPER_AUTO_ACTIVATE = parseBool(process.env.WEB_HELPER_AUTO_ACTIVATE, true);
 const WEB_HELPER_HANDOFF_STAGE = "launch-handoff";
+const DEFAULT_CLIENT_PLAN = "Startup - $997-$1,997/mo + $500 setup";
 const WEB_HELPER_SITE_CRAWL_MAX_PAGES = Math.max(1, Number(process.env.WEB_HELPER_SITE_CRAWL_MAX_PAGES || 12));
 const WEB_HELPER_SITE_CRAWL_MAX_LINKS_PER_PAGE = Math.max(1, Number(process.env.WEB_HELPER_SITE_CRAWL_MAX_LINKS_PER_PAGE || 60));
 const WEB_HELPER_HANDOFF_AUTOMATION_ENABLED = parseBool(process.env.WEB_HELPER_HANDOFF_AUTOMATION_ENABLED, true);
@@ -1500,7 +1501,7 @@ async function ensureClientStoreTable() {
         final_payment_paid boolean NOT NULL DEFAULT false,
         business_email text NOT NULL DEFAULT '',
         business_phone text NOT NULL DEFAULT '',
-        plan text NOT NULL DEFAULT 'Launch + Care',
+        plan text NOT NULL DEFAULT 'Startup - $997-$1,997/mo + $500 setup',
         contact text NOT NULL DEFAULT '',
         notes text NOT NULL DEFAULT '',
         source text NOT NULL DEFAULT 'runtime',
@@ -4759,7 +4760,7 @@ function buildWebHelperMemoryDocuments(client, knowledge, activationMeta) {
       "",
       `Activated: ${activationMeta.createdAt}`,
       `Stage: ${client.stage || "unknown"}`,
-      `Plan: ${client.plan || "Launch + Care"}`,
+      `Plan: ${client.plan || DEFAULT_CLIENT_PLAN}`,
       `Services: ${(client.services || []).join(", ") || "not mapped"}`,
       `Planned services: ${(client.plannedServices || []).join(", ") || "none"}`,
       "",
@@ -5702,7 +5703,7 @@ function buildClientWebHelperAgents(clients, requestedSiteId = "", existingHelpe
         status,
         statusLabel: status === "needs-approval" ? "Needs Approval" : "Active",
         autonomyLevel: "Level 1 - prepare changes, owner approves deploy",
-        plan: client.plan || "Launch + Care",
+        plan: client.plan || DEFAULT_CLIENT_PLAN,
         openRequests: requests.length,
         pendingApprovals,
         lastDeployment: client.updatedAt,
@@ -5757,6 +5758,7 @@ function getServiceCatalog() {
       status: "active",
       category: "launch",
       owner: "Build Operator",
+      pricingLabel: "$400 one-off project",
       description: "Discovery, design, build, review, final payment, launch, and handoff into maintenance.",
       connectedSystems: ["Build Queue", "Vercel", "GitHub", "Web Helper Agents"],
       triggers: ["initial deposit paid", "new build approved", "client revision received"],
@@ -5768,6 +5770,7 @@ function getServiceCatalog() {
       status: "active",
       category: "maintenance",
       owner: "Web Helper Agent",
+      pricingLabel: "$100/mo maintenance",
       description: "Client request handling, small edits, safe fixes, approval gates, deploy notes, and client replies.",
       connectedSystems: ["Web Helpers", "Client Request Inbox", "Approvals", "GitHub", "Vercel"],
       triggers: ["completion payment received", "client update request", "site issue detected"],
@@ -5779,10 +5782,23 @@ function getServiceCatalog() {
       status: "integration-needed",
       category: "growth",
       owner: "Search Intelligence Agent",
+      pricingLabel: "$250/mo SEO, AEO, GEO",
       description: "Organic search, answer engine readiness, and generative engine visibility from geo.ghostai.solutions.",
       connectedSystems: ["geo.ghostai.solutions", "Reports", "Web Helpers", "Approvals"],
       triggers: ["new client onboarded", "ranking issue", "AI visibility opportunity"],
       nextActions: ["Add API credentials", "Map siteId to GEO profile", "Import scores and recommendations"]
+    },
+    {
+      id: "google-business-profile",
+      name: "Google Profile Build",
+      status: "planned",
+      category: "local",
+      owner: "Local Profile Operator",
+      pricingLabel: "$100 one-off build",
+      description: "Google Business Profile buildout, baseline business details, local authority setup, and handoff notes.",
+      connectedSystems: ["Google Business", "Local SEO", "Client Reports"],
+      triggers: ["new local business", "GBP missing", "profile rebuild requested"],
+      nextActions: ["Collect business details", "Build profile", "Confirm verification path"]
     },
     {
       id: "lead-funnel",
@@ -5790,10 +5806,35 @@ function getServiceCatalog() {
       status: "planned",
       category: "growth",
       owner: "Funnel Monitor Agent",
+      pricingLabel: "$700 CRM setup / $800 GHL setup",
       description: "Lead capture, conversion path monitoring, follow-up routing, and form health.",
       connectedSystems: ["Forms", "CRM", "Analytics", "Client Reports"],
       triggers: ["lead drop", "form failure", "campaign launch"],
       nextActions: ["Define conversion events", "Connect CRM", "Add form probes"]
+    },
+    {
+      id: "crm-setup",
+      name: "CRM Setup",
+      status: "planned",
+      category: "crm",
+      owner: "CRM Operator",
+      pricingLabel: "$700 setup",
+      description: "CRM pipeline setup, lead source routing, contact fields, status stages, and owner handoff.",
+      connectedSystems: ["GhostCRM", "Lead Desk", "Forms", "Reports"],
+      triggers: ["CRM setup sold", "lead process missing", "manual follow-up bottleneck"],
+      nextActions: ["Map fields", "Create pipeline", "Connect lead sources"]
+    },
+    {
+      id: "ghl-setup",
+      name: "GHL Setup",
+      status: "planned",
+      category: "crm",
+      owner: "CRM Operator",
+      pricingLabel: "$800 setup",
+      description: "GoHighLevel setup, pipeline configuration, forms, basic automations, and reporting handoff.",
+      connectedSystems: ["GoHighLevel", "Forms", "Calendars", "Reports"],
+      triggers: ["GHL setup sold", "funnel needs CRM", "automation handoff requested"],
+      nextActions: ["Collect GHL access", "Map pipeline", "Create automation checklist"]
     },
     {
       id: "content-social",
@@ -5801,6 +5842,7 @@ function getServiceCatalog() {
       status: "planned",
       category: "marketing",
       owner: "Content Operator",
+      pricingLabel: "$600/mo social management",
       description: "Content briefs, posting queue, social distribution, business page posting, and campaign support.",
       connectedSystems: ["Social Pages", "Google Business", "Content Tools", "Search Intelligence"],
       triggers: ["content calendar due", "GEO topic gap", "campaign push"],
@@ -5812,10 +5854,83 @@ function getServiceCatalog() {
       status: "planned",
       category: "growth",
       owner: "Ads Operator",
+      pricingLabel: "$1,200 social ads / $1,000 Google Ads",
       description: "Ad account access, campaign setup, landing-page alignment, tracking, and performance review.",
       connectedSystems: ["Meta Ads", "Google Ads", "Analytics", "Lead Funnel"],
       triggers: ["ad package sold", "campaign refresh", "conversion tracking issue"],
       nextActions: ["Collect ad account access", "Confirm budget rules", "Connect tracking"]
+    },
+    {
+      id: "social-media-ads",
+      name: "Social Media Ads",
+      status: "planned",
+      category: "ads",
+      owner: "Ads Operator",
+      pricingLabel: "$1,200 social ads",
+      description: "Social ad campaign setup, creative coordination, targeting, lead routing, and performance review.",
+      connectedSystems: ["Meta Ads", "Lead Funnel", "Analytics", "Reports"],
+      triggers: ["social ad project sold", "campaign launch", "lead volume push"],
+      nextActions: ["Collect Meta access", "Confirm offer", "Set campaign rules"]
+    },
+    {
+      id: "google-ads",
+      name: "Google Ads",
+      status: "planned",
+      category: "ads",
+      owner: "Ads Operator",
+      pricingLabel: "$1,000 Google Ads",
+      description: "Google Ads campaign setup, search intent alignment, conversion tracking, and reporting.",
+      connectedSystems: ["Google Ads", "Analytics", "Landing Pages", "Reports"],
+      triggers: ["Google Ads project sold", "search campaign requested", "conversion tracking needed"],
+      nextActions: ["Collect Google Ads access", "Confirm keywords", "Connect conversion events"]
+    },
+    {
+      id: "mobile-app",
+      name: "Mobile App Dev",
+      status: "planned",
+      category: "mobile",
+      owner: "App Build Operator",
+      pricingLabel: "$5,000 mobile app dev",
+      description: "Mobile app scoping, build pipeline, store release path, and post-launch care.",
+      connectedSystems: ["App Build Queue", "Client Approvals", "Store Accounts"],
+      triggers: ["mobile app sold", "client app idea approved", "portal expansion"],
+      nextActions: ["Define app scope", "Collect store accounts", "Create release checklist"]
+    },
+    {
+      id: "software-tool",
+      name: "SaaS Dev",
+      status: "planned",
+      category: "software",
+      owner: "Software Build Operator",
+      pricingLabel: "$4,000 SaaS dev project",
+      description: "SaaS or software tool scoping, build, deployment, integrations, and owner handoff.",
+      connectedSystems: ["GitHub", "Vercel", "Railway", "APIs"],
+      triggers: ["SaaS project sold", "internal tool requested", "portal build approved"],
+      nextActions: ["Run discovery", "Map architecture", "Create build queue item"]
+    },
+    {
+      id: "ai-automation",
+      name: "AI Integrations",
+      status: "planned",
+      category: "automation",
+      owner: "Automation Operator",
+      pricingLabel: "$4,500 per integration",
+      description: "AI integrations, workflow automation, agents, approvals, and connected system routing.",
+      connectedSystems: ["OpenAI", "GhostCRM", "Slack", "Tool Registry"],
+      triggers: ["AI integration sold", "manual process identified", "agent workflow requested"],
+      nextActions: ["Map workflow", "Define approval gates", "Connect target systems"]
+    },
+    {
+      id: "ai-chatbot",
+      name: "AI Chatbot",
+      status: "planned",
+      category: "automation",
+      owner: "Automation Operator",
+      pricingLabel: "$3,000 chatbot",
+      description: "Website chatbot setup, knowledge base preparation, routing, testing, and handoff.",
+      connectedSystems: ["Website", "Knowledge Base", "Lead Funnel", "Reports"],
+      triggers: ["chatbot sold", "support deflection requested", "lead capture chatbot requested"],
+      nextActions: ["Collect FAQs", "Build knowledge base", "Connect lead routing"]
     },
     {
       id: "enterprise-platform",
@@ -5823,6 +5938,7 @@ function getServiceCatalog() {
       status: "planned",
       category: "platform",
       owner: "Platform Architect",
+      pricingLabel: "SaaS from $4,000 / custom enterprise",
       description: "Enterprise portals, internal platforms, integrations, system architecture, testing, deployment, and support.",
       connectedSystems: ["Client Systems", "GitHub", "Vercel", "Railway", "APIs"],
       triggers: ["platform scope approved", "integration needed", "operational workflow expansion"],
@@ -5834,6 +5950,7 @@ function getServiceCatalog() {
       status: "planned",
       category: "retention",
       owner: "Reporting Agent",
+      pricingLabel: "Included with monthly packages",
       description: "Monthly service summaries, completed work, search visibility, site health, and next-best investment.",
       connectedSystems: ["Mission History", "Search Intelligence", "Web Helpers", "Billing"],
       triggers: ["monthly report due", "client check-in", "renewal window"],
@@ -6172,7 +6289,7 @@ function normalizeClient(client) {
     finalPaymentPaid: normalizeBoolean(client.finalPaymentPaid),
     businessEmail: String(client.businessEmail || "").trim(),
     businessPhone: String(client.businessPhone || "").trim(),
-    plan: String(client.plan || "Launch + Care").trim(),
+    plan: String(client.plan || DEFAULT_CLIENT_PLAN).trim(),
     contact: String(client.contact || client.primaryContact || "").trim(),
     notes: String(client.notes || "").trim(),
     stage,
@@ -7269,7 +7386,7 @@ function getSeededClientProfiles() {
         contact: deployment.contact,
         businessEmail: deployment.businessEmail,
         businessPhone: deployment.businessPhone,
-        plan: deployment.plan || "Launch + Care",
+        plan: deployment.plan || DEFAULT_CLIENT_PLAN,
         notes: deployment.notes || "",
         source: "deployment-map"
       })

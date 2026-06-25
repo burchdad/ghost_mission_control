@@ -727,10 +727,12 @@
           <label class="client-ops-field">
             <span>Plan</span>
             <select id="clientPlanInput" name="plan">
-              <option>Launch + Care</option>
-              <option>Website Care</option>
-              <option>SEO / AEO / GEO</option>
-              <option>Full Growth Stack</option>
+              <option>Founder Launch - $297-$497/mo + $250 setup</option>
+              <option>Startup - $997-$1,997/mo + $500 setup</option>
+              <option>Growth - $2,497-$4,997/mo + $1,000 setup</option>
+              <option>Scale - $5,000-$10,000+/mo + $2,500 setup</option>
+              <option>Enterprise - custom pricing</option>
+              <option>A la carte / one-off project</option>
             </select>
           </label>
           <fieldset id="clientServicesInput" class="client-service-picker client-ops-field">
@@ -756,14 +758,29 @@
               <label><input type="checkbox" value="search-intelligence" data-client-service="search-intelligence" data-client-service-state="planned" aria-label="SEO AEO GEO planned" /><span>Planned</span></label>
             </div>
             <div class="service-picker-row">
-              <strong>Local Service Growth</strong>
-              <label><input type="checkbox" value="local-service" data-client-service="local-service" data-client-service-state="active" aria-label="Local Service Growth active" /><span>Active</span></label>
-              <label><input type="checkbox" value="local-service" data-client-service="local-service" data-client-service-state="planned" aria-label="Local Service Growth planned" /><span>Planned</span></label>
+              <strong>Google Profile / Local GEO</strong>
+              <label><input type="checkbox" value="local-service" data-client-service="local-service" data-client-service-state="active" aria-label="Google Profile Local GEO active" /><span>Active</span></label>
+              <label><input type="checkbox" value="local-service" data-client-service="local-service" data-client-service-state="planned" aria-label="Google Profile Local GEO planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Google Profile Build</strong>
+              <label><input type="checkbox" value="google-business-profile" data-client-service="google-business-profile" data-client-service-state="active" aria-label="Google Profile Build active" /><span>Active</span></label>
+              <label><input type="checkbox" value="google-business-profile" data-client-service="google-business-profile" data-client-service-state="planned" aria-label="Google Profile Build planned" /><span>Planned</span></label>
             </div>
             <div class="service-picker-row">
               <strong>Lead Funnel</strong>
               <label><input type="checkbox" value="lead-funnel" data-client-service="lead-funnel" data-client-service-state="active" aria-label="Lead Funnel active" /><span>Active</span></label>
               <label><input type="checkbox" value="lead-funnel" data-client-service="lead-funnel" data-client-service-state="planned" aria-label="Lead Funnel planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>CRM Setup</strong>
+              <label><input type="checkbox" value="crm-setup" data-client-service="crm-setup" data-client-service-state="active" aria-label="CRM Setup active" /><span>Active</span></label>
+              <label><input type="checkbox" value="crm-setup" data-client-service="crm-setup" data-client-service-state="planned" aria-label="CRM Setup planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>GHL Setup</strong>
+              <label><input type="checkbox" value="ghl-setup" data-client-service="ghl-setup" data-client-service-state="active" aria-label="GHL Setup active" /><span>Active</span></label>
+              <label><input type="checkbox" value="ghl-setup" data-client-service="ghl-setup" data-client-service-state="planned" aria-label="GHL Setup planned" /><span>Planned</span></label>
             </div>
             <div class="service-picker-row">
               <strong>Ecommerce</strong>
@@ -781,9 +798,19 @@
               <label><input type="checkbox" value="paid-ads" data-client-service="paid-ads" data-client-service-state="planned" aria-label="Paid Ads planned" /><span>Planned</span></label>
             </div>
             <div class="service-picker-row">
-              <strong>Software Tool</strong>
-              <label><input type="checkbox" value="software-tool" data-client-service="software-tool" data-client-service-state="active" aria-label="Software Tool active" /><span>Active</span></label>
-              <label><input type="checkbox" value="software-tool" data-client-service="software-tool" data-client-service-state="planned" aria-label="Software Tool planned" /><span>Planned</span></label>
+              <strong>Social Media Ads</strong>
+              <label><input type="checkbox" value="social-media-ads" data-client-service="social-media-ads" data-client-service-state="active" aria-label="Social Media Ads active" /><span>Active</span></label>
+              <label><input type="checkbox" value="social-media-ads" data-client-service="social-media-ads" data-client-service-state="planned" aria-label="Social Media Ads planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>Google Ads</strong>
+              <label><input type="checkbox" value="google-ads" data-client-service="google-ads" data-client-service-state="active" aria-label="Google Ads active" /><span>Active</span></label>
+              <label><input type="checkbox" value="google-ads" data-client-service="google-ads" data-client-service-state="planned" aria-label="Google Ads planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>SaaS Dev</strong>
+              <label><input type="checkbox" value="software-tool" data-client-service="software-tool" data-client-service-state="active" aria-label="SaaS Dev active" /><span>Active</span></label>
+              <label><input type="checkbox" value="software-tool" data-client-service="software-tool" data-client-service-state="planned" aria-label="SaaS Dev planned" /><span>Planned</span></label>
             </div>
             <div class="service-picker-row">
               <strong>Enterprise Platform</strong>
@@ -794,6 +821,11 @@
               <strong>AI Automation</strong>
               <label><input type="checkbox" value="ai-automation" data-client-service="ai-automation" data-client-service-state="active" aria-label="AI Automation active" /><span>Active</span></label>
               <label><input type="checkbox" value="ai-automation" data-client-service="ai-automation" data-client-service-state="planned" aria-label="AI Automation planned" /><span>Planned</span></label>
+            </div>
+            <div class="service-picker-row">
+              <strong>AI Chatbot</strong>
+              <label><input type="checkbox" value="ai-chatbot" data-client-service="ai-chatbot" data-client-service-state="active" aria-label="AI Chatbot active" /><span>Active</span></label>
+              <label><input type="checkbox" value="ai-chatbot" data-client-service="ai-chatbot" data-client-service-state="planned" aria-label="AI Chatbot planned" /><span>Planned</span></label>
             </div>
             <div class="service-picker-row">
               <strong>Mobile App</strong>
