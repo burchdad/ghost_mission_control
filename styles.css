@@ -3611,6 +3611,104 @@ display: grid;
   gap: 0.55rem;
 }
 
+.lead-intake-section {
+  display: none;
+  gap: 0.65rem;
+  border: 1px solid rgba(91, 227, 255, 0.2);
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(11, 33, 48, 0.82), rgba(8, 12, 26, 0.9));
+  padding: 0.72rem;
+}
+
+.lead-intake-mode .lead-intake-section {
+  display: grid;
+}
+
+.lead-intake-mode .client-ops-field {
+  display: none;
+}
+
+.lead-intake-heading {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.lead-intake-heading span,
+.lead-goal-picker legend {
+  color: var(--blue);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.lead-intake-heading strong {
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.lead-goal-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.lead-goal-picker legend {
+  grid-column: 1 / -1;
+  padding: 0;
+}
+
+.lead-goal-picker label {
+  position: relative;
+  min-height: 58px;
+  border: 1px solid rgba(145, 194, 220, 0.22);
+  border-radius: 8px;
+  background: rgba(17, 24, 44, 0.9);
+  padding: 0.62rem 0.72rem 0.62rem 2.05rem;
+  cursor: pointer;
+}
+
+.lead-goal-picker input {
+  position: absolute;
+  left: 0.72rem;
+  top: 0.72rem;
+  width: 0.95rem;
+  min-width: 0.95rem;
+  height: 0.95rem;
+  padding: 0;
+  accent-color: var(--blue);
+}
+
+.lead-goal-picker label:has(input:checked) {
+  border-color: rgba(91, 227, 255, 0.62);
+  background: rgba(19, 58, 76, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(91, 227, 255, 0.15);
+}
+
+.lead-goal-picker label span {
+  color: var(--text);
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.lead-intake-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+@media (max-width: 640px) {
+  .lead-intake-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .client-onboard-form label {
 display: grid;
   gap: 0.25rem;

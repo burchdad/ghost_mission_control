@@ -130,6 +130,16 @@ const elements = {
   clientStageInput: document.getElementById("clientStageInput"),
   clientLeadSourceInput: document.getElementById("clientLeadSourceInput"),
   clientLeadSourceDetailInput: document.getElementById("clientLeadSourceDetailInput"),
+  clientDesiredOutcomeInput: document.getElementById("clientDesiredOutcomeInput"),
+  clientOfferPathInput: document.getElementById("clientOfferPathInput"),
+  clientBusinessStageInput: document.getElementById("clientBusinessStageInput"),
+  clientTeamSizeInput: document.getElementById("clientTeamSizeInput"),
+  clientRevenueRangeInput: document.getElementById("clientRevenueRangeInput"),
+  clientInvestmentComfortInput: document.getElementById("clientInvestmentComfortInput"),
+  clientTimelineInput: document.getElementById("clientTimelineInput"),
+  clientCurrentProblemInput: document.getElementById("clientCurrentProblemInput"),
+  clientVisualDirectionInput: document.getElementById("clientVisualDirectionInput"),
+  clientExampleSitesInput: document.getElementById("clientExampleSitesInput"),
   clientLeadStageInput: document.getElementById("clientLeadStageInput"),
   clientRelationshipInput: document.getElementById("clientRelationshipInput"),
   clientPricingTierInput: document.getElementById("clientPricingTierInput"),
@@ -268,6 +278,7 @@ let commandMemory = [];
 let liveClients = null;
 let selectedClientId = "";
 let editingClientId = "";
+let clientModalMode = "client";
 let selectedLeadNotificationId = "";
 let draggingClientId = "";
 let lastClientDragAt = 0;
@@ -2080,6 +2091,101 @@ function getSelectedClientServiceState() {
   };
 }
 
+const leadOfferPathLabels = {
+  package: "Ongoing growth support",
+  "ala-carte": "One-time / a la carte project",
+  unsure: "Recommend the best fit"
+};
+
+function getSelectDisplayValue(select) {
+  if (!select) {
+    return "";
+  }
+
+  return select.selectedOptions?.[0]?.textContent?.trim() || select.value || "";
+}
+
+function getSelectedLeadGoals() {
+  if (!elements.clientOnboardForm) {
+    return [];
+  }
+
+  return [...elements.clientOnboardForm.querySelectorAll("input[data-lead-goal]:checked")].map((input) => ({
+    id: input.value,
+    label: input.closest("label")?.querySelector("span")?.textContent?.trim() || input.value,
+    service: input.dataset.service || ""
+  }));
+}
+
+function clearLeadIntakeFields() {
+  if (!elements.clientOnboardForm) {
+    return;
+  }
+
+  [...elements.clientOnboardForm.querySelectorAll("input[data-lead-goal]")].forEach((input) => {
+    input.checked = false;
+  });
+  [
+    elements.clientDesiredOutcomeInput,
+    elements.clientOfferPathInput,
+    elements.clientBusinessStageInput,
+    elements.clientTeamSizeInput,
+    elements.clientRevenueRangeInput,
+    elements.clientInvestmentComfortInput,
+    elements.clientTimelineInput,
+    elements.clientCurrentProblemInput,
+    elements.clientVisualDirectionInput,
+    elements.clientExampleSitesInput
+  ].forEach((field) => setFieldValue(field, ""));
+}
+
+function getLeadIntakeValues() {
+  const goals = getSelectedLeadGoals();
+  const offerPath = elements.clientOfferPathInput?.value || "";
+  return {
+    goals,
+    selectedServices: goals.map((goal) => goal.service).filter(Boolean),
+    desiredOutcome: elements.clientDesiredOutcomeInput?.value?.trim() || "",
+    offerPath,
+    offerPathLabel: leadOfferPathLabels[offerPath] || "",
+    businessStage: getSelectDisplayValue(elements.clientBusinessStageInput),
+    teamSize: getSelectDisplayValue(elements.clientTeamSizeInput),
+    revenueRange: getSelectDisplayValue(elements.clientRevenueRangeInput),
+    investmentComfort: getSelectDisplayValue(elements.clientInvestmentComfortInput),
+    timeline: getSelectDisplayValue(elements.clientTimelineInput),
+    currentProblem: elements.clientCurrentProblemInput?.value?.trim() || "",
+    visualDirection: elements.clientVisualDirectionInput?.value?.trim() || "",
+    exampleSites: elements.clientExampleSitesInput?.value?.trim() || ""
+  };
+}
+
+function buildLeadIntakeNoteBlock(intake) {
+  const lines = [
+    "Website-style lead intake",
+    `Goals: ${intake.goals.map((goal) => goal.label).join(", ") || "Not provided"}`,
+    `Preferred start: ${intake.offerPathLabel || "Not selected"}`,
+    `First outcome: ${intake.desiredOutcome || "Not provided"}`,
+    `Business stage: ${intake.businessStage || "Unknown"}`,
+    `Team size: ${intake.teamSize || "Unknown"}`,
+    `Revenue range: ${intake.revenueRange || "Unknown"}`,
+    `Investment comfort: ${intake.investmentComfort || "Unknown"}`,
+    `Timeline: ${intake.timeline || "Unknown"}`,
+    `Current problem: ${intake.currentProblem || "Not provided"}`,
+    `Style / systems direction: ${intake.visualDirection || "Not provided"}`,
+    `References: ${intake.exampleSites || "Not provided"}`
+  ];
+
+  return lines.join("\n");
+}
+
+function mergeLeadIntakeNotes(existingNotes, intakeBlock) {
+  const notes = String(existingNotes || "").trim();
+  if (!intakeBlock) {
+    return notes;
+  }
+  return notes ? `${intakeBlock}\n\nInternal notes:\n${notes}` : intakeBlock;
+}
+
 const clientModalModeDefaults = {
   client: {
     title: "New Client",
@@ -2092,13 +2198,14 @@ const clientModalModeDefaults = {
     plannedServices: []
   },
   lead: {
-    title: "New Lead / Proposal",
-    subtitle: "Capture the inquiry, proposal email, deposit invoice, agreement status, and first build notes.",
+    title: "New Lead Intake",
+    subtitle: "Capture the same core details from the website intake. Proposal, invoice, and build links can come later.",
     submitLabel: "Save Lead",
     stage: "lead",
-    leadSource: "",
-    leadStage: "",
-    services: ["website-build"],
+    leadSource: "other",
+    leadStage: "new-lead",
+    relationshipType: "prospect",
+    services: [],
     plannedServices: []
   }
 };
@@ -2109,18 +2216,22 @@ function getClientModalModeDefaults(mode) {
 
 function resetClientForm(mode = "client") {
   const defaults = getClientModalModeDefaults(mode);
+  clientModalMode = mode;
   elements.clientOnboardForm?.reset();
   editingClientId = "";
   setFieldValue(elements.clientEditIdInput, "");
-  setFieldChecked(elements.clientFinalDomainInput, true);
+  setFieldChecked(elements.clientFinalDomainInput, mode !== "lead");
   setFieldChecked(elements.clientDetailsPendingInput, false);
+  clearLeadIntakeFields();
+  elements.clientOnboardModal?.classList.toggle("lead-intake-mode", mode === "lead");
+  elements.clientOnboardModal?.classList.toggle("client-ops-mode", mode !== "lead");
   if (elements.clientStageInput) {
     elements.clientStageInput.value = defaults.stage;
   }
   setFieldValue(elements.clientLeadSourceInput, defaults.leadSource);
   setFieldValue(elements.clientLeadSourceDetailInput, "");
   setFieldValue(elements.clientLeadStageInput, defaults.leadStage);
-  setFieldValue(elements.clientRelationshipInput, "client");
+  setFieldValue(elements.clientRelationshipInput, defaults.relationshipType || "client");
   setFieldValue(elements.clientPricingTierInput, "standard");
   setClientServicePickerValues(defaults.services, defaults.plannedServices);
   if (elements.clientSubmitButton) {
@@ -2174,6 +2285,9 @@ function populateClientForm(client) {
   if (elements.clientSubmitButton) {
     elements.clientSubmitButton.textContent = "Save Client";
   }
+  elements.clientOnboardModal?.classList.remove("lead-intake-mode");
+  elements.clientOnboardModal?.classList.add("client-ops-mode");
+  clientModalMode = "client";
   elements.clientArchiveButton?.classList.remove("view-hidden");
   elements.clientDeleteButton?.classList.remove("view-hidden");
 }
@@ -6292,6 +6406,16 @@ async function submitClientOnboarding(event) {
     return;
   }
 
+  const isLeadIntake = clientModalMode === "lead" && !editingClientId;
+  const leadIntake = getLeadIntakeValues();
+  const serviceState = getSelectedClientServiceState();
+  if (isLeadIntake) {
+    serviceState.services = [];
+    serviceState.plannedServices = [...new Set([...serviceState.plannedServices, ...leadIntake.selectedServices])];
+  }
+  const leadIntakeNotes = isLeadIntake ? buildLeadIntakeNoteBlock(leadIntake) : "";
+  const rawNotes = elements.clientNotesInput?.value || "";
+
   const payload = {
     id: editingClientId || elements.clientEditIdInput?.value || undefined,
     clientName: elements.clientNameInput?.value || "",
@@ -6321,10 +6445,10 @@ async function submitClientOnboarding(event) {
     clientDetailsPending: Boolean(elements.clientDetailsPendingInput?.checked),
     businessEmail: elements.clientBusinessEmailInput?.value || "",
     businessPhone: elements.clientBusinessPhoneInput?.value || "",
-    plan: elements.clientPlanInput?.value || "",
-    ...getSelectedClientServiceState(),
-    contact: elements.clientContactInput?.value || "",
-    notes: elements.clientNotesInput?.value || ""
+    plan: isLeadIntake ? (leadIntake.offerPathLabel || "Lead intake") : elements.clientPlanInput?.value || "",
+    ...serviceState,
+    contact: elements.clientContactInput?.value || elements.clientNameInput?.value || "",
+    notes: mergeLeadIntakeNotes(rawNotes, leadIntakeNotes)
   };
 
   if (!payload.clientName.trim()) {

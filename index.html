@@ -492,7 +492,7 @@
             <span>Client Name</span>
             <input id="clientNameInput" name="clientName" type="text" placeholder="Acme Dental" required />
           </label>
-          <label>
+          <label class="client-ops-field">
             <span>Pipeline Stage</span>
             <select id="clientStageInput" name="stage">
               <option value="lead">Lead / Prospect</option>
@@ -524,7 +524,107 @@
             <span>Lead Source Detail</span>
             <input id="clientLeadSourceDetailInput" name="leadSourceDetail" type="text" placeholder="Facebook message, referral name, campaign, email thread..." />
           </label>
-          <label>
+          <section class="lead-intake-section" aria-label="Lead intake details">
+            <div class="lead-intake-heading">
+              <span>Fast Intake</span>
+              <strong>Match the website intake, then enrich later.</strong>
+            </div>
+            <fieldset class="lead-goal-picker">
+              <legend>What are they asking for?</legend>
+              <label><input type="checkbox" value="more-leads" data-lead-goal data-service="lead-funnel" /><span>More leads</span></label>
+              <label><input type="checkbox" value="website" data-lead-goal data-service="website-build" /><span>Website build / redesign</span></label>
+              <label><input type="checkbox" value="seo" data-lead-goal data-service="search-intelligence" /><span>SEO / AEO / GEO</span></label>
+              <label><input type="checkbox" value="ads" data-lead-goal data-service="paid-ads" /><span>Google or social ads</span></label>
+              <label><input type="checkbox" value="social" data-lead-goal data-service="content-social" /><span>Social / content</span></label>
+              <label><input type="checkbox" value="software" data-lead-goal data-service="software-tool" /><span>Software, app, or SaaS</span></label>
+              <label><input type="checkbox" value="automation" data-lead-goal data-service="ai-automation" /><span>AI automations / agents</span></label>
+              <label><input type="checkbox" value="strategy" data-lead-goal data-service="reporting" /><span>Fractional CTO / AI architect</span></label>
+              <label><input type="checkbox" value="not-sure" data-lead-goal /><span>Not sure yet</span></label>
+            </fieldset>
+            <label>
+              <span>First outcome they want</span>
+              <textarea id="clientDesiredOutcomeInput" name="desiredOutcome" rows="2" placeholder="Better leads, cleaner website, booked calls, automated follow-up..."></textarea>
+            </label>
+            <div class="lead-intake-grid">
+              <label>
+                <span>Preferred start</span>
+                <select id="clientOfferPathInput" name="offerPath">
+                  <option value="">Not selected</option>
+                  <option value="package">Ongoing growth support</option>
+                  <option value="ala-carte">One-time / a la carte project</option>
+                  <option value="unsure">Recommend the best fit</option>
+                </select>
+              </label>
+              <label>
+                <span>Business stage</span>
+                <select id="clientBusinessStageInput" name="businessStage">
+                  <option value="">Unknown</option>
+                  <option value="new">New business / pre-launch</option>
+                  <option value="early">Early traction</option>
+                  <option value="growing">Growing and improving systems</option>
+                  <option value="scaling">Scaling / multi-location</option>
+                  <option value="enterprise">Enterprise / complex ops</option>
+                </select>
+              </label>
+              <label>
+                <span>Team size</span>
+                <select id="clientTeamSizeInput" name="teamSize">
+                  <option value="">Unknown</option>
+                  <option value="solo">Solo</option>
+                  <option value="1-5">1-5</option>
+                  <option value="6-20">6-20</option>
+                  <option value="21-50">21-50</option>
+                  <option value="50+">50+</option>
+                </select>
+              </label>
+              <label>
+                <span>Revenue range</span>
+                <select id="clientRevenueRangeInput" name="revenueRange">
+                  <option value="">Unknown</option>
+                  <option value="under-100k">Under $100k</option>
+                  <option value="100k-250k">$100k-$250k</option>
+                  <option value="250k-2m">$250k-$2M</option>
+                  <option value="2m-10m">$2M-$10M</option>
+                  <option value="10m+">$10M+</option>
+                </select>
+              </label>
+              <label>
+                <span>Investment comfort</span>
+                <select id="clientInvestmentComfortInput" name="investmentComfort">
+                  <option value="">Unknown</option>
+                  <option value="under-500">Under $500</option>
+                  <option value="500-1500">$500-$1,500</option>
+                  <option value="1500-5000">$1,500-$5,000</option>
+                  <option value="5000-plus">$5,000+</option>
+                  <option value="custom">Custom / enterprise</option>
+                </select>
+              </label>
+              <label>
+                <span>Timeline</span>
+                <select id="clientTimelineInput" name="timeline">
+                  <option value="">Unknown</option>
+                  <option value="now">Ready now</option>
+                  <option value="30-days">Within 30 days</option>
+                  <option value="2-4-weeks">2-4 weeks</option>
+                  <option value="quarter">This quarter</option>
+                  <option value="exploring">Exploring options</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              <span>Current problem</span>
+              <textarea id="clientCurrentProblemInput" name="currentProblem" rows="2" placeholder="What feels missing, unclear, outdated, or not working right now?"></textarea>
+            </label>
+            <label>
+              <span>Style, systems, or direction</span>
+              <textarea id="clientVisualDirectionInput" name="visualDirection" rows="2" placeholder="Look, feel, workflow, automation, or reporting ideas they mentioned"></textarea>
+            </label>
+            <label>
+              <span>References</span>
+              <textarea id="clientExampleSitesInput" name="exampleSites" rows="2" placeholder="Example websites, competitors, apps, or notes"></textarea>
+            </label>
+          </section>
+          <label class="client-ops-field">
             <span>Lead Pipeline Stage</span>
             <select id="clientLeadStageInput" name="leadStage">
               <option value="">Auto from checklist</option>
@@ -536,7 +636,7 @@
               <option value="lost-not-now">Lost / Not Now</option>
             </select>
           </label>
-          <label>
+          <label class="client-ops-field">
             <span>Relationship</span>
             <select id="clientRelationshipInput" name="relationshipType">
               <option value="client">Client</option>
@@ -545,7 +645,7 @@
               <option value="prospect">Prospect</option>
             </select>
           </label>
-          <label>
+          <label class="client-ops-field">
             <span>Pricing Tier</span>
             <select id="clientPricingTierInput" name="pricingTier">
               <option value="standard">Standard</option>
@@ -558,31 +658,31 @@
             <span>Website URL</span>
             <input id="clientWebsiteInput" name="websiteUrl" type="url" placeholder="https://example.com" />
           </label>
-          <label>
+          <label class="client-ops-field">
             <span>GitHub Repo / URL</span>
             <input id="clientRepoInput" name="repo" type="text" placeholder="burchdad/client-site" />
           </label>
-          <label>
+          <label class="client-ops-field">
             <span>Railway Backend URL</span>
             <input id="clientRailwayInput" name="railwayUrl" type="url" placeholder="https://backend.up.railway.app" />
           </label>
-          <label>
+          <label class="client-ops-field">
             <span>Vercel URL</span>
             <input id="clientVercelInput" name="vercelUrl" type="url" placeholder="https://client-site.vercel.app" />
           </label>
-          <label>
+          <label class="client-ops-field">
             <span>Mobile App URL</span>
             <input id="clientMobileAppInput" name="mobileAppUrl" type="url" placeholder="https://apps.apple.com/app/..." />
           </label>
-          <label>
+          <label class="client-ops-field">
             <span>Google Business Profile</span>
             <input id="clientGoogleBusinessInput" name="googleBusinessUrl" type="url" placeholder="https://g.page/r/..." />
           </label>
-          <label>
+          <label class="client-ops-field">
             <span>Social URLs</span>
             <textarea id="clientSocialsInput" name="socialUrls" rows="3" placeholder="One Facebook, Instagram, LinkedIn, TikTok, or YouTube URL per line"></textarea>
           </label>
-          <div class="client-form-checks">
+          <div class="client-form-checks client-ops-field">
             <label>
               <input id="clientProposalSentInput" name="proposalSent" type="checkbox" />
               <span>Proposal sent</span>
@@ -624,7 +724,7 @@
             <span>Business Phone</span>
             <input id="clientBusinessPhoneInput" name="businessPhone" type="tel" placeholder="555-555-5555" />
           </label>
-          <label>
+          <label class="client-ops-field">
             <span>Plan</span>
             <select id="clientPlanInput" name="plan">
               <option>Launch + Care</option>
@@ -633,7 +733,7 @@
               <option>Full Growth Stack</option>
             </select>
           </label>
-          <fieldset id="clientServicesInput" class="client-service-picker">
+          <fieldset id="clientServicesInput" class="client-service-picker client-ops-field">
             <legend>Services</legend>
             <div class="service-picker-header" aria-hidden="true">
               <span>Service</span>
@@ -706,12 +806,12 @@
               <label><input type="checkbox" value="reporting" data-client-service="reporting" data-client-service-state="planned" aria-label="Client Reporting planned" /><span>Planned</span></label>
             </div>
           </fieldset>
-          <label>
+          <label class="client-ops-field">
             <span>Primary Contact</span>
             <input id="clientContactInput" name="contact" type="text" placeholder="Name, email, or phone" />
           </label>
           <label>
-            <span>Notes</span>
+            <span>Internal Notes</span>
             <textarea id="clientNotesInput" name="notes" rows="3" placeholder="Anything the agent should know first..."></textarea>
           </label>
           <div class="client-form-actions">
