@@ -3750,6 +3750,73 @@ display: grid;
   background: linear-gradient(135deg, rgba(12, 43, 56, 0.62), rgba(8, 12, 24, 0.9));
 }
 
+.proposal-detail-card,
+.proposal-discovery-brief {
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid rgba(91, 227, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(7, 12, 24, 0.82);
+  padding: 0.8rem;
+}
+
+.proposal-detail-card h4,
+.proposal-discovery-brief strong {
+  margin: 0;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.proposal-detail-card p,
+.proposal-discovery-brief p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.proposal-detail-meta,
+.client-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.proposal-detail-meta span,
+.proposal-discovery-brief span {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid rgba(244, 199, 96, 0.22);
+  border-radius: 999px;
+  background: rgba(244, 199, 96, 0.08);
+  color: #f7d27c;
+  padding: 0.32rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.client-detail-actions a,
+.client-detail-actions button {
+  border: 1px solid rgba(91, 227, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(91, 227, 255, 0.12);
+  color: var(--text);
+  cursor: pointer;
+  padding: 0.52rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.client-detail-muted {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.proposal-activity-timeline {
+  margin-top: 0.25rem;
+}
+
 .lead-intake-heading {
   display: grid;
   gap: 0.2rem;

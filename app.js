@@ -2301,6 +2301,17 @@ function getDiscoveryBriefValues() {
   };
 }
 
+function setDiscoveryBriefValues(discovery = {}) {
+  setFieldValue(elements.clientDiscoveryDateInput, discovery.date || "");
+  setFieldValue(elements.clientDiscoveryTypeInput, discovery.type || "");
+  setFieldValue(elements.clientDiscoveryNeedInput, discovery.need || "");
+  setFieldValue(elements.clientDiscoveryProblemInput, discovery.problem || "");
+  setFieldValue(elements.clientDiscoveryDecisionMakerInput, discovery.decisionMaker || "");
+  setFieldValue(elements.clientDiscoveryRecommendedPathInput, discovery.recommendedPath || "");
+  setFieldValue(elements.clientDiscoverySuccessInput, discovery.success || "");
+  setFieldValue(elements.clientDiscoveryNextStepInput, discovery.nextStep || "");
+}
+
 function hasDiscoveryBriefValues(discovery) {
   return Object.values(discovery || {}).some((value) => String(value || "").trim());
 }
@@ -2336,6 +2347,16 @@ function getProposalDraftValues() {
     clientNeeds: elements.clientProposalDraftClientNeedsInput?.value?.trim() || "",
     cta: elements.clientProposalDraftCtaInput?.value?.trim() || ""
   };
+}
+
+function setProposalDraftValues(proposal = {}) {
+  setFieldValue(elements.clientProposalDraftStatusInput, proposal.status || "");
+  setFieldValue(elements.clientProposalDraftTitleInput, proposal.title || "");
+  setFieldValue(elements.clientProposalDraftScopeInput, proposal.scope || "");
+  setFieldValue(elements.clientProposalDraftInvestmentInput, proposal.investment || "");
+  setFieldValue(elements.clientProposalDraftTimelineInput, proposal.timeline || "");
+  setFieldValue(elements.clientProposalDraftClientNeedsInput, proposal.clientNeeds || "");
+  setFieldValue(elements.clientProposalDraftCtaInput, proposal.cta || "");
 }
 
 function hasProposalDraftValues(proposal) {
@@ -2413,6 +2434,8 @@ function resetClientForm(mode = "client") {
   setFieldChecked(elements.clientFinalDomainInput, mode !== "lead");
   setFieldChecked(elements.clientDetailsPendingInput, false);
   clearLeadIntakeFields();
+  setDiscoveryBriefValues({});
+  setProposalDraftValues({});
   elements.clientOnboardModal?.classList.toggle("lead-intake-mode", mode === "lead");
   elements.clientOnboardModal?.classList.toggle("client-ops-mode", mode !== "lead");
   if (elements.clientStageInput) {
@@ -2472,6 +2495,8 @@ function populateClientForm(client) {
   setClientServicePickerValues(client.services || [], client.plannedServices || []);
   setFieldValue(elements.clientContactInput, client.contact);
   setFieldValue(elements.clientNotesInput, client.notes);
+  setDiscoveryBriefValues(client.discoveryBrief || {});
+  setProposalDraftValues((client.proposals || [])[0] || client.latestProposal || {});
   if (elements.clientSubmitButton) {
     elements.clientSubmitButton.textContent = "Save Client";
   }
@@ -2616,6 +2641,25 @@ async function copyAgentBuildPrompt() {
     if (elements.agentBuildResponse) {
       elements.agentBuildResponse.textContent = "Prompt selected. Copy it with Ctrl+C.";
     }
+  }
+}
+
+async function copyTextToClipboard(text, button = null) {
+  if (!text) {
+    return;
+  }
+
+  const originalText = button?.textContent || "";
+  try {
+    await navigator.clipboard.writeText(text);
+    if (button) {
+      button.textContent = "Copied";
+      setTimeout(() => {
+        button.textContent = originalText || "Copy";
+      }, 1400);
+    }
+  } catch {
+    window.prompt("Copy this link", text);
   }
 }
 
@@ -6086,6 +6130,7 @@ function openClientDetail(clientId) {
       <p id="clientProvisionResponse" class="command-response client-provision-response" aria-live="polite"></p>
     </div>
     ${renderClientLeadChecklist(client)}
+    ${renderClientProposalWorkspace(client)}
     <div class="client-detail-section">
       <h3>Connections</h3>
       <div class="connection-list">
@@ -6637,6 +6682,19 @@ async function submitClientOnboarding(event) {
     partnershipSigned: Boolean(elements.clientPartnershipInput?.checked),
     finalDomainPurchased: Boolean(elements.clientFinalDomainInput?.checked),
     clientDetailsPending: Boolean(elements.clientDetailsPendingInput?.checked),
+    discoveryBrief,
+    proposals: hasProposalDraftValues(proposalDraft)
+      ? [{
+          id: "primary",
+          status: proposalDraft.status || "draft",
+          title: proposalDraft.title,
+          scope: proposalDraft.scope,
+          investment: proposalDraft.investment,
+          timeline: proposalDraft.timeline,
+          clientNeeds: proposalDraft.clientNeeds,
+          cta: proposalDraft.cta
+        }]
+      : [],
     businessEmail: elements.clientBusinessEmailInput?.value || "",
     businessPhone: elements.clientBusinessPhoneInput?.value || "",
     plan: isLeadIntake ? (leadIntake.offerPathLabel || "Lead intake") : elements.clientPlanInput?.value || "",
@@ -7247,8 +7305,9 @@ function formatLeadActivityDate(value) {
 
 function getLeadActivityTimeline(client) {
   const stageId = getLeadDeskColumnId(client);
-  const hasDiscoveryBrief = /post-discovery brief/i.test(String(client.notes || ""));
-  const hasProposalDraft = /proposal draft/i.test(String(client.notes || ""));
+  const hasDiscoveryBrief = hasDiscoveryBriefValues(client.discoveryBrief || {}) || /post-discovery brief/i.test(String(client.notes || ""));
+  const proposal = (client.proposals || [])[0] || client.latestProposal || null;
+  const hasProposalDraft = Boolean(proposal) || /proposal draft/i.test(String(client.notes || ""));
   const activities = [
     {
       label: "Lead created",
@@ -7279,11 +7338,20 @@ function getLeadActivityTimeline(client) {
   if (hasProposalDraft) {
     activities.push({
       label: "Proposal draft",
-      detail: client.proposalSent ? "Draft used for sent proposal" : "Scope and investment prepared",
-      at: client.updatedAt,
+      detail: client.proposalSent ? "Draft used for sent proposal" : (proposal?.investment || "Scope and investment prepared"),
+      at: proposal?.updatedAt || client.updatedAt,
       status: client.proposalSent ? "complete" : "active"
     });
   }
+
+  (client.activityEvents || []).slice(-2).forEach((event) => {
+    activities.push({
+      label: event.label,
+      detail: event.detail || event.type,
+      at: event.at,
+      status: "complete"
+    });
+  });
 
   if (client.proposalSent || client.depositInvoiceSent || ["proposal-sent", "agreement-returned", "deposit-paid"].includes(stageId)) {
     activities.push({
@@ -7549,6 +7617,69 @@ function renderClientLeadChecklist(client) {
   return `<div class="client-detail-section client-detail-section-wide">
     <h3>Lead / Proposal Checklist</h3>
     ${renderLeadChecklistList(client)}
+  </div>`;
+}
+
+function getClientProposalUrl(client, proposal) {
+  const explicit = proposal?.url || client.latestProposal?.url || "";
+  if (explicit) {
+    return explicit;
+  }
+  const token = proposal?.token || client.latestProposal?.token || "";
+  return token ? `${window.location.origin}/proposal/${encodeURIComponent(token)}` : "";
+}
+
+function renderClientProposalWorkspace(client) {
+  if (!isLeadDeskClient(client) && !(client.proposals || []).length) {
+    return "";
+  }
+
+  const proposal = (client.proposals || [])[0] || client.latestProposal || null;
+  const discovery = client.discoveryBrief || {};
+  const proposalUrl = getClientProposalUrl(client, proposal);
+  const events = Array.isArray(client.activityEvents) ? client.activityEvents.slice(-6).reverse() : [];
+  const proposalSummary = proposal
+    ? `<div class="proposal-detail-card">
+        <div>
+          <span class="eyebrow">${escapeHtml(proposal.status || "draft")}</span>
+          <h4>${escapeHtml(proposal.title || "Proposal draft")}</h4>
+          <p>${escapeHtml(proposal.scope || "Scope is ready to shape from discovery.")}</p>
+        </div>
+        <div class="proposal-detail-meta">
+          <span>${escapeHtml(proposal.investment || "Investment TBD")}</span>
+          <span>${escapeHtml(proposal.timeline || "Timeline TBD")}</span>
+        </div>
+      </div>`
+    : `<div class="pipeline-empty">No proposal draft yet. Add scope, investment, and timeline in Edit Lead.</div>`;
+  const proposalActions = proposalUrl
+    ? `<div class="client-detail-actions">
+        <a href="${escapeHtml(proposalUrl)}" target="_blank" rel="noopener">Open Proposal</a>
+        <button type="button" data-copy-proposal-link="${escapeHtml(proposalUrl)}">Copy Link</button>
+      </div>`
+    : `<p class="client-detail-muted">Save a proposal draft to generate a share link.</p>`;
+  const discoverySummary = hasDiscoveryBriefValues(discovery)
+    ? `<div class="proposal-discovery-brief">
+        <strong>${escapeHtml(discovery.need || "Discovery need captured")}</strong>
+        <p>${escapeHtml(discovery.problem || discovery.recommendedPath || "Post-call details are saved on this lead.")}</p>
+        <span>${escapeHtml(discovery.nextStep || "Next step pending")}</span>
+      </div>`
+    : `<div class="pipeline-empty">Discovery brief not captured yet.</div>`;
+  const activity = events.length
+    ? `<div class="lead-activity-timeline proposal-activity-timeline">
+        ${events.map((event) => `<div class="lead-activity-item is-complete">
+          <span>${escapeHtml(formatLeadActivityDate(event.at))}</span>
+          <strong>${escapeHtml(event.label)}</strong>
+          <p>${escapeHtml(event.detail || event.type)}</p>
+        </div>`).join("")}
+      </div>`
+    : `<div class="pipeline-empty">Proposal activity appears here after discovery or draft saves.</div>`;
+
+  return `<div class="client-detail-section client-detail-section-wide">
+    <h3>Discovery + Proposal Workspace</h3>
+    ${discoverySummary}
+    ${proposalSummary}
+    ${proposalActions}
+    ${activity}
   </div>`;
 }
 
@@ -9838,6 +9969,12 @@ async function init() {
     updateClientStage(clientId, stageId);
   });
   elements.clientDetailDrawer?.addEventListener("click", (event) => {
+    const proposalLinkTarget = event.target.closest("[data-copy-proposal-link]");
+    if (proposalLinkTarget) {
+      copyTextToClipboard(proposalLinkTarget.dataset.copyProposalLink || "", proposalLinkTarget);
+      return;
+    }
+
     const upsellTarget = event.target.closest("[data-client-upsell-email][data-client-upsell-service]");
     if (upsellTarget) {
       openUpsellEmailAgent(upsellTarget.dataset.clientUpsellEmail, upsellTarget.dataset.clientUpsellService);

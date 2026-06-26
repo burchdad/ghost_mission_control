@@ -1503,6 +1503,9 @@ async function ensureClientStoreTable() {
         partnership_signed boolean NOT NULL DEFAULT false,
         deposit_paid boolean NOT NULL DEFAULT false,
         final_payment_paid boolean NOT NULL DEFAULT false,
+        discovery_brief jsonb NOT NULL DEFAULT '{}'::jsonb,
+        proposals jsonb NOT NULL DEFAULT '[]'::jsonb,
+        activity_events jsonb NOT NULL DEFAULT '[]'::jsonb,
         business_email text NOT NULL DEFAULT '',
         business_phone text NOT NULL DEFAULT '',
         plan text NOT NULL DEFAULT 'Startup - $997-$1,997/mo + $500 setup',
@@ -1520,6 +1523,13 @@ async function ensureClientStoreTable() {
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS pricing_tier text NOT NULL DEFAULT 'standard';
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS proposal_sent boolean NOT NULL DEFAULT false;
       ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS deposit_invoice_sent boolean NOT NULL DEFAULT false;
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS proposal_signed boolean NOT NULL DEFAULT false;
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS partnership_signed boolean NOT NULL DEFAULT false;
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS deposit_paid boolean NOT NULL DEFAULT false;
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS final_payment_paid boolean NOT NULL DEFAULT false;
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS discovery_brief jsonb NOT NULL DEFAULT '{}'::jsonb;
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS proposals jsonb NOT NULL DEFAULT '[]'::jsonb;
+      ALTER TABLE mission_clients ADD COLUMN IF NOT EXISTS activity_events jsonb NOT NULL DEFAULT '[]'::jsonb;
       CREATE INDEX IF NOT EXISTS mission_clients_updated_at_idx ON mission_clients (updated_at DESC);
     `)
     .then(() => {
@@ -2629,6 +2639,38 @@ function buildClientSupportUrl(client, request = null) {
   return `${base.replace(/\/+$/, "")}/mission/web-helper-support?clientId=${encodeURIComponent(client.id)}&token=${encodeURIComponent(token)}`;
 }
 
+function getRequestBaseUrl(request = null) {
+  const host = request?.headers?.host || "";
+  const protocol = host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https";
+  return host ? `${protocol}://${host}` : buildMissionControlUrl("");
+}
+
+function buildProposalUrl(client, proposal, request = null) {
+  const base = getRequestBaseUrl(request);
+  const token = proposal?.token || (client?.id ? buildProposalToken(client.id, proposal?.id || "proposal-1") : "");
+  if (!base || !token) {
+    return "";
+  }
+  return `${base.replace(/\/+$/, "")}/proposal/${encodeURIComponent(token)}`;
+}
+
+function findProposalByToken(token) {
+  const normalizedToken = String(token || "").trim();
+  if (!normalizedToken) {
+    return null;
+  }
+
+  for (const client of getAllClients()) {
+    const proposals = normalizeProposalList(client.proposals || [], client.id);
+    const proposal = proposals.find((entry) => entry.token === normalizedToken);
+    if (proposal) {
+      return { client, proposal };
+    }
+  }
+
+  return null;
+}
+
 function escapeEmailHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -2711,6 +2753,103 @@ function renderClientSupportForm(client, supportUrl, message = "") {
 
 function renderClientSupportSuccess(client, ticket) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Support Request Sent</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#050706;color:#f7fff6;font-family:Inter,system-ui,sans-serif}main{width:min(680px,calc(100vw - 32px));border:1px solid rgba(105,255,143,.25);border-radius:16px;background:#080d09;padding:30px}h1{font-size:clamp(2rem,5vw,3.4rem);margin:0}p{color:#aebaaa;line-height:1.55}.ticket{color:#69ff8f;font-weight:800}</style></head><body><main><h1>Request Sent</h1><p>Your support request for ${escapeEmailHtml(client.clientName)} was sent to Ghost Mission Control for review.</p><p>Ticket: <span class="ticket">${escapeEmailHtml(ticket.id || "")}</span></p><p>You can close this page.</p></main></body></html>`;
+}
+
+function getServiceCatalogEntry(serviceId) {
+  return getServiceCatalog().find((service) => service.id === serviceId) || {
+    id: serviceId,
+    name: titleFromSlug(serviceId || "Custom Service"),
+    pricingLabel: "Custom quote",
+    description: "Custom scope defined from discovery.",
+    nextActions: ["Confirm scope", "Approve proposal", "Schedule kickoff"]
+  };
+}
+
+function renderProposalPage(client, proposal) {
+  const selectedServices = uniq([...(client.services || []), ...(client.plannedServices || [])])
+    .map(getServiceCatalogEntry)
+    .slice(0, 8);
+  const safeClientName = escapeEmailHtml(client.clientName || "Your Business");
+  const safeTitle = escapeEmailHtml(proposal.title || `${client.clientName || "Your Business"} Growth Plan`);
+  const safeScope = escapeEmailHtml(proposal.scope || "Ghost AI Solutions will confirm the right starting scope after reviewing discovery notes.");
+  const safeInvestment = escapeEmailHtml(proposal.investment || client.plan || "Investment to be confirmed.");
+  const safeTimeline = escapeEmailHtml(proposal.timeline || "Timeline to be confirmed after approval.");
+  const safeClientNeeds = escapeEmailHtml(proposal.clientNeeds || "We will confirm the exact assets, access, and approval contact before kickoff.");
+  const safeCta = escapeEmailHtml(proposal.cta || "Approve this plan or request changes.");
+  const safeStatus = escapeEmailHtml(proposal.status || "draft");
+  const serviceCards = selectedServices.length
+    ? selectedServices.map((service) => `<article><span>${escapeEmailHtml(service.category || "service")}</span><h3>${escapeEmailHtml(service.name)}</h3><p>${escapeEmailHtml(service.description || "")}</p><strong>${escapeEmailHtml(service.pricingLabel || "Pricing TBD")}</strong></article>`).join("")
+    : `<article><span>scope</span><h3>Custom Growth Scope</h3><p>Services will be finalized from the proposal notes.</p><strong>${safeInvestment}</strong></article>`;
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${safeTitle} - Ghost AI Solutions</title>
+  <style>
+    :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#07111f;color:#f8fbff}
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 75% 4%,rgba(103,232,249,.16),transparent 33%),linear-gradient(180deg,#081425,#050914);color:#f8fbff}
+    main{width:min(1120px,calc(100vw - 32px));margin:0 auto;padding:42px 0 64px}
+    header{min-height:52vh;display:grid;align-items:center;border-bottom:1px solid rgba(255,255,255,.1)}
+    .eyebrow{color:#67e8f9;text-transform:uppercase;letter-spacing:.18em;font-size:.78rem;font-weight:800}
+    h1{font-size:clamp(2.5rem,7vw,6rem);line-height:.96;margin:.4em 0 0;letter-spacing:0}
+    h2{font-size:clamp(1.7rem,4vw,3rem);margin:0 0 14px}
+    h3{margin:8px 0 8px;font-size:1.15rem}
+    p{color:#c7d2e1;line-height:1.65;font-size:1rem}
+    .hero-grid{display:grid;gap:28px;grid-template-columns:minmax(0,1.1fr) minmax(280px,.7fr);align-items:end}
+    .status-card,.panel,article{border:1px solid rgba(255,255,255,.12);background:rgba(15,23,42,.72);border-radius:18px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.26)}
+    .status-card strong{display:block;font-size:2rem;color:#fde68a;margin-top:8px}
+    .grid{display:grid;gap:18px}
+    .two{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .three{grid-template-columns:repeat(3,minmax(0,1fr))}
+    section{padding:34px 0}
+    article span{color:#67e8f9;text-transform:uppercase;letter-spacing:.14em;font-size:.72rem;font-weight:800}
+    article strong{display:inline-block;margin-top:10px;color:#fde68a}
+    .cta{border-color:rgba(103,232,249,.35);background:rgba(8,47,73,.62)}
+    .cta strong{display:block;color:#fff;font-size:1.4rem;margin-top:0}
+    footer{padding-top:28px;color:#94a3b8;border-top:1px solid rgba(255,255,255,.1)}
+    @media (max-width:820px){.hero-grid,.two,.three{grid-template-columns:1fr} header{min-height:auto;padding:54px 0}}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="hero-grid">
+        <div>
+          <div class="eyebrow">Ghost AI Solutions Proposal</div>
+          <h1>${safeTitle}</h1>
+          <p>Prepared for ${safeClientName}. This scrollable plan summarizes the recommended path, services, investment, timeline, and what we need to begin.</p>
+        </div>
+        <div class="status-card">
+          <span class="eyebrow">Proposal Status</span>
+          <strong>${safeStatus}</strong>
+          <p>${safeCta}</p>
+        </div>
+      </div>
+    </header>
+    <section class="grid two">
+      <div class="panel"><span class="eyebrow">Recommended Scope</span><h2>What We Build First</h2><p>${safeScope}</p></div>
+      <div class="panel"><span class="eyebrow">Investment</span><h2>Commercial Snapshot</h2><p>${safeInvestment}</p></div>
+    </section>
+    <section>
+      <span class="eyebrow">Included Services</span>
+      <h2>What This Covers</h2>
+      <div class="grid three">${serviceCards}</div>
+    </section>
+    <section class="grid two">
+      <div class="panel"><span class="eyebrow">Timeline</span><h2>Expected Motion</h2><p>${safeTimeline}</p></div>
+      <div class="panel"><span class="eyebrow">Client Inputs</span><h2>What We Need</h2><p>${safeClientNeeds}</p></div>
+    </section>
+    <section class="panel cta">
+      <span class="eyebrow">Next Step</span>
+      <strong>${safeCta}</strong>
+      <p>Reply to your Ghost AI Solutions contact with approval, requested edits, or any access/assets needed for kickoff.</p>
+    </section>
+    <footer>Ghost AI Solutions - Proposal generated from Mission Control.</footer>
+  </main>
+</body>
+</html>`;
 }
 
 function getTicketRequesterEmail(ticket) {
@@ -3153,6 +3292,23 @@ function parsePostgresJsonList(value) {
   return [];
 }
 
+function parsePostgresJsonObject(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
 function postgresTimestampToIso(value) {
   if (!value) {
     return new Date().toISOString();
@@ -3199,6 +3355,9 @@ function dbRowToClient(row) {
     partnershipSigned: row.partnership_signed,
     depositPaid: row.deposit_paid,
     finalPaymentPaid: row.final_payment_paid,
+    discoveryBrief: parsePostgresJsonObject(row.discovery_brief),
+    proposals: parsePostgresJsonList(row.proposals),
+    activityEvents: parsePostgresJsonList(row.activity_events),
     businessEmail: row.business_email,
     businessPhone: row.business_phone,
     plan: row.plan,
@@ -3249,6 +3408,9 @@ function clientToPostgresValues(client) {
     Boolean(normalized.partnershipSigned),
     Boolean(normalized.depositPaid),
     Boolean(normalized.finalPaymentPaid),
+    JSON.stringify(normalized.discoveryBrief || {}),
+    JSON.stringify(normalized.proposals || []),
+    JSON.stringify(normalized.activityEvents || []),
     normalized.businessEmail,
     normalized.businessPhone,
     normalized.plan,
@@ -3303,6 +3465,9 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         partnership_signed,
         deposit_paid,
         final_payment_paid,
+        discovery_brief,
+        proposals,
+        activity_events,
         business_email,
         business_phone,
         plan,
@@ -3314,8 +3479,9 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-        $31, $32, $33, $34, $35::timestamptz, $36::timestamptz
+        $21, $22, $23, $24, $25, $26, $27, $28,
+        $29::jsonb, $30::jsonb, $31::jsonb, $32, $33, $34, $35, $36,
+        $37, $38, $39::timestamptz, $40::timestamptz
       )
       ON CONFLICT (id) DO UPDATE SET
         client_name = EXCLUDED.client_name,
@@ -3345,6 +3511,9 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         partnership_signed = EXCLUDED.partnership_signed,
         deposit_paid = EXCLUDED.deposit_paid,
         final_payment_paid = EXCLUDED.final_payment_paid,
+        discovery_brief = EXCLUDED.discovery_brief,
+        proposals = EXCLUDED.proposals,
+        activity_events = EXCLUDED.activity_events,
         business_email = EXCLUDED.business_email,
         business_phone = EXCLUDED.business_phone,
         plan = EXCLUDED.plan,
@@ -3442,8 +3611,15 @@ function buildClientResponsePayload(storageWrite, status = 200, extra = {}) {
 }
 
 function buildClientResponseRecord(client) {
+  const latestProposal = (client.proposals || [])[0] || null;
   return {
     ...client,
+    latestProposal: latestProposal
+      ? {
+          ...latestProposal,
+          url: buildProposalUrl(client, latestProposal)
+        }
+      : null,
     webHelperActivation: getWebHelperActivationSummary(client.id),
     supportUrl: buildClientSupportUrl(client),
     actions: getClientDerivedActions(client)
@@ -6440,6 +6616,132 @@ function deriveLeadStage(client) {
   return "new-lead";
 }
 
+function normalizeDiscoveryBrief(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const brief = {
+    date: String(value.date || value.callDate || "").trim(),
+    type: String(value.type || value.meetingType || "").trim(),
+    need: String(value.need || value.statedNeed || "").trim(),
+    problem: String(value.problem || value.businessProblem || "").trim(),
+    decisionMaker: String(value.decisionMaker || "").trim(),
+    recommendedPath: String(value.recommendedPath || "").trim(),
+    success: String(value.success || value.successCriteria || "").trim(),
+    nextStep: String(value.nextStep || value.promisedNextStep || "").trim(),
+    updatedAt: value.updatedAt || new Date().toISOString()
+  };
+
+  return Object.values(brief).some((entry) => String(entry || "").trim()) ? brief : {};
+}
+
+function hasDiscoveryBrief(value) {
+  return Boolean(value && typeof value === "object" && Object.entries(value).some(([key, entry]) => key !== "updatedAt" && String(entry || "").trim()));
+}
+
+function buildProposalToken(clientId, proposalId = "primary") {
+  return crypto
+    .createHash("sha256")
+    .update(`proposal:${canonicalClientId(clientId)}:${proposalId}:${CODEX_BUILD_WEBHOOK_SECRET || GHOST_WEB_HELPER_WEBHOOK_SECRET || "ghost-proposal"}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+function normalizeProposalRecord(value, clientId, index = 0) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const id = String(value.id || `proposal-${index + 1}`).trim();
+  const token = String(value.token || buildProposalToken(clientId, id)).trim();
+  const status = String(value.status || "draft").trim() || "draft";
+  const proposal = {
+    id,
+    token,
+    status,
+    title: String(value.title || "").trim(),
+    scope: String(value.scope || "").trim(),
+    investment: String(value.investment || "").trim(),
+    timeline: String(value.timeline || "").trim(),
+    clientNeeds: String(value.clientNeeds || "").trim(),
+    cta: String(value.cta || "Approve this plan or request changes.").trim(),
+    createdAt: value.createdAt || new Date().toISOString(),
+    updatedAt: value.updatedAt || new Date().toISOString(),
+    sentAt: value.sentAt || (status === "sent" ? new Date().toISOString() : "")
+  };
+
+  const hasContent = [
+    proposal.title,
+    proposal.scope,
+    proposal.investment,
+    proposal.timeline,
+    proposal.clientNeeds,
+    proposal.cta
+  ].some((entry) => String(entry || "").trim());
+
+  return hasContent ? proposal : null;
+}
+
+function normalizeProposalList(value, clientId) {
+  const proposals = Array.isArray(value) ? value : [];
+  return proposals
+    .map((proposal, index) => normalizeProposalRecord(proposal, clientId, index))
+    .filter(Boolean);
+}
+
+function normalizeActivityEvents(value) {
+  const events = Array.isArray(value) ? value : [];
+  return events
+    .map((event, index) => ({
+      id: String(event?.id || `event-${index + 1}`).trim(),
+      type: String(event?.type || "note").trim(),
+      label: String(event?.label || event?.title || "Activity").trim(),
+      detail: String(event?.detail || event?.message || "").trim(),
+      at: event?.at || event?.createdAt || new Date().toISOString(),
+      actor: String(event?.actor || "mission_control").trim()
+    }))
+    .filter((event) => event.label);
+}
+
+function buildLeadActivityEvents(client) {
+  const existing = normalizeActivityEvents(client.activityEvents || client.activity_events);
+  const eventKeys = new Set(existing.map((event) => `${event.type}:${event.label}`));
+  const events = [...existing];
+  const pushEvent = (type, label, detail, at = client.updatedAt || new Date().toISOString()) => {
+    const key = `${type}:${label}`;
+    if (eventKeys.has(key)) {
+      return;
+    }
+    eventKeys.add(key);
+    events.push({
+      id: `${type}-${crypto.randomBytes(4).toString("hex")}`,
+      type,
+      label,
+      detail,
+      at,
+      actor: "mission_control"
+    });
+  };
+
+  if (hasDiscoveryBrief(client.discoveryBrief)) {
+    pushEvent("discovery", "Discovery brief captured", client.discoveryBrief.nextStep || client.discoveryBrief.recommendedPath || "Post-call context saved.");
+  }
+
+  const proposal = (client.proposals || [])[0];
+  if (proposal) {
+    pushEvent("proposal", "Proposal draft created", proposal.title || "Scrollable proposal prepared.", proposal.createdAt);
+    if (proposal.status === "ready") {
+      pushEvent("proposal_ready", "Proposal ready to send", proposal.investment || "Proposal needs owner send-off.", proposal.updatedAt);
+    }
+    if (proposal.status === "sent" || client.proposalSent) {
+      pushEvent("proposal_sent", "Proposal sent", proposal.investment || "Proposal link sent to lead.", proposal.sentAt || proposal.updatedAt);
+    }
+  }
+
+  return events.sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(-24);
+}
+
 function isLeadDeskClient(client) {
   return Boolean(deriveLeadStage(client));
 }
@@ -6465,8 +6767,10 @@ function normalizeClient(client) {
   const stage = normalizeClientStage(client.stage || client.pipelineStage || client.status);
   const relationshipType = normalizeClientRelationship(client.relationshipType || client.relationship_type);
   const now = new Date().toISOString();
+  const discoveryBrief = normalizeDiscoveryBrief(client.discoveryBrief || client.discovery_brief);
+  const proposals = normalizeProposalList(client.proposals || client.proposalDrafts || client.proposal_drafts, id);
 
-  return repairKnownClientIdentity({
+  const normalized = repairKnownClientIdentity({
     id,
     clientName,
     websiteUrl,
@@ -6495,6 +6799,9 @@ function normalizeClient(client) {
     partnershipSigned: normalizeBoolean(client.partnershipSigned),
     depositPaid: normalizeBoolean(client.depositPaid),
     finalPaymentPaid: normalizeBoolean(client.finalPaymentPaid),
+    discoveryBrief,
+    proposals,
+    activityEvents: normalizeActivityEvents(client.activityEvents || client.activity_events),
     businessEmail: String(client.businessEmail || "").trim(),
     businessPhone: String(client.businessPhone || "").trim(),
     plan: String(client.plan || DEFAULT_CLIENT_PLAN).trim(),
@@ -6508,6 +6815,12 @@ function normalizeClient(client) {
     updatedAt: client.updatedAt || now,
     source: client.source || "configured"
   });
+
+  if (normalized) {
+    normalized.activityEvents = buildLeadActivityEvents(normalized);
+  }
+
+  return normalized;
 }
 
 function repairKnownClientIdentity(client) {
@@ -6703,6 +7016,9 @@ function mergeClientRecords(existing, incoming) {
     partnershipSigned: pickBoolean("partnershipSigned"),
     depositPaid: pickBoolean("depositPaid"),
     finalPaymentPaid: pickBoolean("finalPaymentPaid"),
+    discoveryBrief: isRuntimeOverride ? incoming.discoveryBrief || {} : (Object.keys(incoming.discoveryBrief || {}).length ? incoming.discoveryBrief : existing.discoveryBrief || {}),
+    proposals: isRuntimeOverride ? incoming.proposals || [] : (incoming.proposals?.length ? incoming.proposals : existing.proposals || []),
+    activityEvents: isRuntimeOverride ? incoming.activityEvents || [] : [...(existing.activityEvents || []), ...(incoming.activityEvents || [])],
     businessEmail: pick("businessEmail"),
     businessPhone: pick("businessPhone"),
     plan: pick("plan"),
@@ -10010,6 +10326,51 @@ const server = http.createServer((request, response) => {
       .catch((error) => {
         sendJson(request, response, 500, {
           error: "Unable to load clients",
+          detail: String(error?.message || error)
+        });
+      });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname.startsWith("/proposal/")) {
+    const token = decodeURIComponent(url.pathname.replace(/^\/proposal\//, "").split("/")[0] || "");
+    syncClientStore(url.searchParams.get("refresh") === "true")
+      .then(() => {
+        const match = findProposalByToken(token);
+        if (!match) {
+          sendHtml(request, response, 404, "<!doctype html><title>Proposal not found</title><body style=\"font-family:system-ui;background:#07111f;color:#f8fbff;padding:40px\"><h1>Proposal not found</h1><p>Please request a fresh proposal link from Ghost AI Solutions.</p></body>");
+          return;
+        }
+        sendHtml(request, response, 200, renderProposalPage(match.client, match.proposal));
+      })
+      .catch((error) => {
+        sendHtml(request, response, 500, `<!doctype html><title>Proposal unavailable</title><body style="font-family:system-ui;background:#07111f;color:#f8fbff;padding:40px"><h1>Proposal unavailable</h1><p>${escapeEmailHtml(String(error?.message || error || "Unable to load proposal."))}</p></body>`);
+      });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/proposal") {
+    const token = url.searchParams.get("token") || "";
+    syncClientStore(url.searchParams.get("refresh") === "true")
+      .then(() => {
+        const match = findProposalByToken(token);
+        if (!match) {
+          sendJson(request, response, 404, { ok: false, error: "Proposal not found." });
+          return;
+        }
+        sendJson(request, response, 200, {
+          ok: true,
+          client: buildClientResponseRecord(match.client),
+          proposal: {
+            ...match.proposal,
+            url: buildProposalUrl(match.client, match.proposal, request)
+          }
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          ok: false,
+          error: "Unable to load proposal",
           detail: String(error?.message || error)
         });
       });
