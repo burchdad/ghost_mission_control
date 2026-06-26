@@ -45,6 +45,10 @@ const CLIENT_STORE_BRANCH = String(process.env.CLIENT_STORE_BRANCH || "main").tr
 const CLIENT_STORE_GITHUB_SYNC = String(process.env.CLIENT_STORE_GITHUB_SYNC || "true").toLowerCase() !== "false";
 const CLIENT_STORE_POSTGRES_ENABLED = String(process.env.CLIENT_STORE_POSTGRES_ENABLED || "true").toLowerCase() !== "false";
 const CLIENT_STORE_CACHE_TTL_MS = Number(process.env.CLIENT_STORE_CACHE_TTL_MS || 30000);
+const CLIENT_PORTAL_ACCESS_KEYS_RAW = String(process.env.CLIENT_PORTAL_ACCESS_KEYS || "").trim();
+const CLIENT_PORTAL_ALLOW_CLIENT_ID_KEYS = String(
+  process.env.CLIENT_PORTAL_ALLOW_CLIENT_ID_KEYS || (process.env.NODE_ENV === "production" ? "false" : "true")
+).toLowerCase() === "true";
 const DATABASE_URL = String(process.env.DATABASE_URL || process.env.POSTGRES_URL || "").trim();
 const DATABASE_SSL = String(process.env.DATABASE_SSL || "auto").toLowerCase();
 const WEB_HELPER_AUTO_ACTIVATE = parseBool(process.env.WEB_HELPER_AUTO_ACTIVATE, true);
@@ -3443,6 +3447,210 @@ function buildClientResponseRecord(client) {
     webHelperActivation: getWebHelperActivationSummary(client.id),
     supportUrl: buildClientSupportUrl(client),
     actions: getClientDerivedActions(client)
+  };
+}
+
+function parseClientPortalAccessKeys() {
+  if (!CLIENT_PORTAL_ACCESS_KEYS_RAW) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(CLIENT_PORTAL_ACCESS_KEYS_RAW);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return Object.fromEntries(
+        Object.entries(parsed)
+          .map(([key, clientId]) => [String(key || "").trim(), canonicalClientId(clientId)])
+          .filter(([key, clientId]) => key && clientId)
+      );
+    }
+  } catch {
+    // Fall back to comma syntax below.
+  }
+
+  return Object.fromEntries(
+    CLIENT_PORTAL_ACCESS_KEYS_RAW
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const [key, clientId] = entry.split(":");
+        return [String(key || "").trim(), canonicalClientId(clientId || "")];
+      })
+      .filter(([key, clientId]) => key && clientId)
+  );
+}
+
+function resolveClientPortalClientId(accessKey) {
+  const key = String(accessKey || "").trim();
+  if (!key) {
+    return "";
+  }
+
+  const accessKeys = parseClientPortalAccessKeys();
+  if (accessKeys[key]) {
+    return accessKeys[key];
+  }
+
+  return CLIENT_PORTAL_ALLOW_CLIENT_ID_KEYS ? canonicalClientId(key) : "";
+}
+
+function getPortalServiceMeta(serviceId) {
+  const service = getServiceCatalog().find((entry) => entry.id === serviceId);
+  return service || {
+    id: serviceId,
+    name: String(serviceId || "Service").replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()),
+    pricingLabel: "",
+    description: "Mapped Ghost AI Solutions service.",
+    nextActions: []
+  };
+}
+
+function getClientPortalServices(client) {
+  const active = new Set(normalizeServiceList(client.services));
+  return uniq([...(client.services || []), ...(client.plannedServices || [])]).map((serviceId) => {
+    const service = getPortalServiceMeta(serviceId);
+    const isActive = active.has(serviceId);
+    return {
+      id: serviceId,
+      name: service.name,
+      status: isActive ? "Active" : "Planned",
+      result: isActive ? "Managed by Ghost" : "Queued for next phase",
+      pricingLabel: service.pricingLabel || "",
+      description: service.description || "",
+      metrics: [
+        isActive ? "Active" : "Planned",
+        service.category ? String(service.category).replace(/-/g, " ") : "service",
+        service.owner || "Ghost"
+      ].filter(Boolean).slice(0, 3)
+    };
+  });
+}
+
+function getClientPortalProgress(client) {
+  const hasWebsite = Boolean(client.websiteUrl);
+  const hasServices = Boolean((client.services || []).length || (client.plannedServices || []).length);
+  const webHelper = getWebHelperActivationSummary(client.id);
+  return [
+    { title: "Client profile", status: client.contact || client.businessEmail ? "Complete" : "Needs details", percent: client.contact || client.businessEmail ? 100 : 45 },
+    { title: "Service map", status: hasServices ? "Complete" : "Needs scope", percent: hasServices ? 100 : 35 },
+    { title: "Website connection", status: hasWebsite ? "Connected" : "Not connected", percent: hasWebsite ? 100 : 20 },
+    { title: "Web Helper support", status: webHelper?.status === "active" ? "Active" : "Prepared", percent: webHelper?.status === "active" ? 100 : 55 },
+    { title: "Monthly growth reporting", status: (client.services || []).includes("reporting") ? "Active" : "Recommended", percent: (client.services || []).includes("reporting") ? 100 : 40 }
+  ];
+}
+
+function getClientPortalMoneyRows(client) {
+  const serviceCount = Math.max(1, (client.services || []).length + (client.plannedServices || []).length);
+  const requestedValue = typeof getLeadRequestedValue === "function" ? getLeadRequestedValue(client) : null;
+  return [
+    {
+      source: "Active Ghost services",
+      leads: serviceCount,
+      won: client.depositPaid || client.finalPaymentPaid ? 1 : 0,
+      value: requestedValue?.label || client.plan || "Mapped",
+      note: "Services currently tied to this client record."
+    },
+    {
+      source: "Website / portal requests",
+      leads: client.websiteUrl ? 1 : 0,
+      won: client.finalDomainPurchased ? 1 : 0,
+      value: client.websiteUrl ? "Connected" : "Pending",
+      note: client.websiteUrl || "Website URL not yet attached."
+    },
+    {
+      source: "Growth opportunities",
+      leads: (client.plannedServices || []).length,
+      won: 0,
+      value: (client.plannedServices || []).length ? "Planned" : "None yet",
+      note: "Planned services and expansion paths."
+    }
+  ];
+}
+
+function getClientPortalRecommendations(client) {
+  const services = new Set([...(client.services || []), ...(client.plannedServices || [])]);
+  const recommendations = [];
+  if (!services.has("search-intelligence")) {
+    recommendations.push({
+      title: "Add SEO / AEO / GEO tracking",
+      impact: "Show visibility gains and AI-search readiness",
+      reason: "Search intelligence helps connect website improvements to measurable discovery."
+    });
+  }
+  if (!services.has("lead-funnel") && !services.has("crm-setup") && !services.has("ghl-setup")) {
+    recommendations.push({
+      title: "Connect lead funnel and CRM reporting",
+      impact: "Track leads, booked calls, won deals, and follow-up speed",
+      reason: "This is the cleanest path to proving what Ghost is making money for the client."
+    });
+  }
+  if (!services.has("reporting")) {
+    recommendations.push({
+      title: "Add monthly growth reporting",
+      impact: "Improve retention with a clear monthly value story",
+      reason: "Clients should see what was done, what moved, and what Ghost recommends next."
+    });
+  }
+  return recommendations.slice(0, 3);
+}
+
+function buildClientPortalPayload(client, request = null) {
+  const services = getClientPortalServices(client);
+  const progress = getClientPortalProgress(client);
+  const supportUrl = buildClientSupportUrl(client, request);
+  const updatedAt = client.updatedAt || new Date().toISOString();
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    updatedAt,
+    client: {
+      id: client.id,
+      name: client.clientName,
+      contact: client.contact || "",
+      websiteUrl: client.websiteUrl || "",
+      plan: client.plan || "",
+      stage: client.stage || client.status || "",
+      stageLabel: CLIENT_PIPELINE_STAGES.find((stage) => stage.id === client.stage)?.label || client.stage || "Client"
+    },
+    snapshot: {
+      greeting: `Good Morning, ${client.clientName}`,
+      mode: "Connected Mission Control data",
+      monthLabel: "Current Snapshot",
+      revenueInfluenced: client.plan || "Mapped",
+      growthScore: Math.min(98, 64 + services.filter((service) => service.status === "Active").length * 7 + (client.websiteUrl ? 8 : 0)),
+      leadsGenerated: client.stage === "lead" ? 1 : services.length,
+      activeServices: services.filter((service) => service.status === "Active").length,
+      plannedServices: services.filter((service) => service.status === "Planned").length
+    },
+    highlights: [
+      client.websiteUrl ? `Website connected: ${client.websiteUrl}` : "Website connection is pending",
+      services.length ? `${services.length} service lane(s) mapped in Mission Control` : "Service map needs setup",
+      client.stage === "lead" ? "Lead is still in proposal / onboarding flow" : `Current stage: ${client.stage || "client"}`,
+      supportUrl ? "Support request link is ready" : "Support request link needs configuration"
+    ],
+    services,
+    moneyRows: getClientPortalMoneyRows(client),
+    progress,
+    support: {
+      supportUrl,
+      actions: [
+        "Request a website update",
+        "Ask for a campaign change",
+        "Send a new offer or service",
+        "Request a monthly report",
+        "Book a growth review",
+        "Ask the AI helper"
+      ],
+      openRequests: progress
+        .filter((item) => item.percent < 100)
+        .map((item) => ({
+          title: item.title,
+          status: item.status,
+          detail: "Tracked from the Mission Control client profile."
+        }))
+    },
+    recommendations: getClientPortalRecommendations(client)
   };
 }
 
@@ -9802,6 +10010,39 @@ const server = http.createServer((request, response) => {
       .catch((error) => {
         sendJson(request, response, 500, {
           error: "Unable to load clients",
+          detail: String(error?.message || error)
+        });
+      });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/client-portal") {
+    const clientId = resolveClientPortalClientId(url.searchParams.get("key"));
+    if (!clientId) {
+      sendJson(request, response, 401, {
+        ok: false,
+        error: "Client portal access key is required."
+      });
+      return;
+    }
+
+    syncClientStore(url.searchParams.get("refresh") === "true")
+      .then(() => {
+        const client = getAllClients().find((entry) => canonicalClientId(entry.id) === clientId);
+        if (!client) {
+          sendJson(request, response, 404, {
+            ok: false,
+            error: "Client portal record not found."
+          });
+          return;
+        }
+
+        sendJson(request, response, 200, buildClientPortalPayload(client, request));
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          ok: false,
+          error: "Unable to load client portal data",
           detail: String(error?.message || error)
         });
       });
