@@ -3775,6 +3775,108 @@ function generateClientPortalKey(prefix = "cp") {
   return `${prefix}_${crypto.randomBytes(18).toString("base64url")}`;
 }
 
+async function registerMarketingProposalApproval({ approvalId, signer = {}, selectedServices = [], monthlyTotal = 0, signedAt = "" }) {
+  const init = await ensureClientPortalAccountTables();
+  if (!init.ok) {
+    throw new Error(init.error || init.reason || "Client portal account tables are unavailable.");
+  }
+
+  const normalizedApprovalId = String(approvalId || "").trim();
+  if (!normalizedApprovalId) {
+    throw new Error("Approval ID is required.");
+  }
+
+  const clientId = canonicalClientId(`marketing-${normalizedApprovalId}`);
+  const signerEmail = normalizePortalEmail(signer.email);
+  const clientName = String(signer.company || signer.name || "Marketing Client").trim();
+  const selected = Array.isArray(selectedServices) ? selectedServices : [];
+  const serviceIds = selected.map((service) => String(service.id || "").trim()).filter(Boolean);
+  const approvedAt = signedAt || new Date().toISOString();
+  const total = Number(monthlyTotal || 0);
+  const client = normalizeClient({
+    id: clientId,
+    clientName,
+    stage: "lead",
+    leadStage: "agreement-returned",
+    leadSource: "marketing-proposal",
+    leadSourceDetail: `Approved marketing proposal ${normalizedApprovalId}`,
+    relationshipType: "client",
+    pricingTier: "marketing-custom",
+    proposalSent: true,
+    proposalSigned: true,
+    services: [],
+    plannedServices: serviceIds,
+    businessEmail: signerEmail,
+    plan: total ? `$${total.toLocaleString("en-US")}/mo marketing scope` : "Marketing proposal approved",
+    contact: [signer.name, signerEmail].filter(Boolean).join(" / "),
+    notes: [
+      `Marketing proposal approved: ${normalizedApprovalId}`,
+      `Signer: ${signer.name || "Not provided"} <${signerEmail || "no email"}>`,
+      `Selected services: ${selected.map((service) => service.title || service.id).filter(Boolean).join(", ") || "Not provided"}`,
+      signer.notes ? `Notes: ${signer.notes}` : ""
+    ].filter(Boolean).join("\n"),
+    proposals: [
+      {
+        id: "marketing-proposal",
+        token: normalizedApprovalId,
+        status: "approved",
+        title: `${clientName} Marketing Scope`,
+        scope: selected.map((service) => `${service.title || service.id} - $${Number(service.price || 0).toLocaleString("en-US")}/mo`).join("\n"),
+        investment: total ? `$${total.toLocaleString("en-US")}/mo` : "Marketing scope approved",
+        timeline: "Marketing onboarding after portal activation",
+        clientNeeds: "Portal account, billing setup, kickoff assets, approval contact.",
+        cta: "Create client portal account and begin onboarding.",
+        createdAt: approvedAt,
+        updatedAt: approvedAt,
+        sentAt: approvedAt
+      }
+    ],
+    activityEvents: [
+      {
+        id: `marketing-approved-${normalizedApprovalId}`,
+        type: "proposal_signed",
+        label: "Marketing proposal approved",
+        detail: total ? `$${total.toLocaleString("en-US")}/mo scope approved.` : "Marketing scope approved.",
+        at: approvedAt,
+        actor: "proposal_site"
+      }
+    ],
+    createdAt: approvedAt,
+    updatedAt: new Date().toISOString()
+  });
+
+  const saved = await persistRuntimeClientToPostgres(client);
+  if (!saved.ok) {
+    throw new Error(saved.error || saved.reason || "Unable to save marketing proposal client.");
+  }
+
+  const inviteId = `cpi_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
+  await getClientStorePgPool().query(
+    `
+    INSERT INTO mission_client_portal_invites (
+      id, client_id, email, invite_key_hash, status, source, metadata, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, 'open', 'marketing_proposal', $5::jsonb, now(), now())
+    ON CONFLICT (invite_key_hash) DO UPDATE SET
+      client_id = EXCLUDED.client_id,
+      email = EXCLUDED.email,
+      status = CASE WHEN mission_client_portal_invites.status = 'used' THEN 'used' ELSE 'open' END,
+      source = EXCLUDED.source,
+      metadata = EXCLUDED.metadata,
+      updated_at = now()
+    RETURNING id;
+    `,
+    [
+      inviteId,
+      clientId,
+      signerEmail,
+      hashClientPortalSecret(normalizedApprovalId, "invite"),
+      JSON.stringify({ approvalId: normalizedApprovalId, selectedServices: selected, monthlyTotal: total })
+    ]
+  );
+
+  return { ok: true, client, inviteKey: normalizedApprovalId };
+}
+
 function validateClientPortalPassword(password) {
   const value = String(password || "");
   if (value.length < 10) {
@@ -11027,6 +11129,42 @@ const server = http.createServer((request, response) => {
         sendJson(request, response, 400, {
           ok: false,
           error: String(error?.message || error || "Unable to create client portal account.")
+        });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/marketing-proposal-approval") {
+    readJsonBody(request)
+      .then(async (body) => {
+        const requiredSecret = String(process.env.CLIENT_PORTAL_PROPOSAL_WEBHOOK_SECRET || "").trim();
+        if (requiredSecret) {
+          const providedSecret = String(request.headers["x-ghost-webhook-secret"] || "").trim();
+          if (providedSecret !== requiredSecret) {
+            sendJson(request, response, 401, { ok: false, error: "Invalid webhook secret." });
+            return;
+          }
+        }
+
+        const result = await registerMarketingProposalApproval({
+          approvalId: body.approvalId,
+          signer: body.signer || {},
+          selectedServices: body.selectedServices || [],
+          monthlyTotal: body.monthlyTotal || 0,
+          signedAt: body.signedAt || ""
+        });
+
+        sendJson(request, response, 200, {
+          ok: true,
+          clientId: result.client.id,
+          inviteKey: result.inviteKey,
+          portalCreateUrl: `${getClientPortalBaseUrl()}/create-account?invite=${encodeURIComponent(result.inviteKey)}${result.client.businessEmail ? `&email=${encodeURIComponent(result.client.businessEmail)}` : ""}`
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, {
+          ok: false,
+          error: String(error?.message || error || "Unable to register marketing proposal approval.")
         });
       });
     return;
