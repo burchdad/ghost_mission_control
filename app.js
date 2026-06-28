@@ -371,6 +371,12 @@ const leadSourceDefinitions = [
     status: "active"
   },
   {
+    id: "geo-client",
+    label: "GEO Client",
+    detail: "G.E.O. onboarding, visibility audit, AI-search optimization, and reporting client.",
+    status: "active"
+  },
+  {
     id: "ai-outreach",
     label: "AI Outreach",
     detail: "Future outbound AI outreach and follow-up campaigns.",
@@ -7267,7 +7273,7 @@ function isMarketingLeadClient(client) {
   const hasMarketingService = services.some((service) =>
     ["content-social", "paid-ads", "social-media-ads", "google-ads", "search-intelligence", "google-business-profile", "reporting"].includes(service)
   );
-  return client?.leadSource === "marketing-proposal" || (hasMarketingService && !hasWebsiteService);
+  return ["marketing-proposal", "geo-client"].includes(client?.leadSource) || (hasMarketingService && !hasWebsiteService);
 }
 
 function getMarketingProposalMonthlyValue(client) {

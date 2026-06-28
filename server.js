@@ -134,6 +134,7 @@ const LEAD_SOURCE_DEFINITIONS = [
   { id: "digital-business-card", label: "Digital Business Card" },
   { id: "email", label: "Email" },
   { id: "marketing-proposal", label: "Marketing Proposal" },
+  { id: "geo-client", label: "GEO Client" },
   { id: "ai-outreach", label: "AI Outreach" },
   { id: "other", label: "Other / Manual" }
 ];
@@ -3886,6 +3887,130 @@ function buildMarketingProposalClient({ approvalId, signer = {}, selectedService
   });
 }
 
+function summarizeGeoPayload(payload = {}) {
+  const client = payload.client || {};
+  const audit = payload.audit || {};
+  const research = payload.research || {};
+  const report = payload.report || {};
+  const opportunities = Array.isArray(payload.opportunities) ? payload.opportunities : [];
+  const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+  const managedPages = [payload.homepage, ...(Array.isArray(report.managedPages) ? report.managedPages : [])].filter(Boolean);
+  const uniquePages = uniq(managedPages.map((page) => page?.url || page?.title).filter(Boolean));
+  return {
+    source: "geo",
+    geoClientId: client.id || payload.clientId || "",
+    website: client.website || payload.website || audit.url || "",
+    market: client.market || payload.market || "",
+    targetAudience: client.targetAudience || payload.targetAudience || "",
+    plan: client.plan || payload.plan || "geo",
+    billingStatus: client.billingStatus || payload.billingStatus || "",
+    visibilityScore: audit.scores?.overall ?? report.summary?.visibilityScore ?? null,
+    engineScores: audit.scores || report.audit?.scores || {},
+    competitorCount: report.summary?.competitorCount ?? research.competitors?.length ?? 0,
+    questionCount: report.summary?.questionCount ?? research.questions?.length ?? research.buyerQuestions?.length ?? 0,
+    opportunityCount: report.summary?.opportunityCount ?? opportunities.length,
+    taskCount: tasks.length,
+    managedPageCount: report.summary?.managedPageCount ?? uniquePages.length,
+    contentCalendarCount: report.summary?.contentCalendarCount ?? report.contentCalendar?.length ?? 0,
+    latestReportId: report.id || "",
+    latestReportTitle: report.title || "",
+    latestAuditId: audit.id || "",
+    latestResearchId: research.id || "",
+    topRecommendations: (audit.recommendations || report.audit?.recommendations || []).slice(0, 5),
+    topOpportunities: opportunities.slice(0, 8).map((opportunity) => ({
+      title: opportunity.title || opportunity.pageTitle || "Visibility opportunity",
+      priority: opportunity.priority || "medium",
+      status: opportunity.status || "open",
+      category: opportunity.category || opportunity.sourceType || "GEO"
+    })),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function buildGeoClientRecord(payload = {}) {
+  const geo = summarizeGeoPayload(payload);
+  const client = payload.client || {};
+  const email = normalizePortalEmail(payload.email || payload.contactEmail || client.email || client.contactEmail);
+  const website = getClientWebsiteUrl(geo.website);
+  const idSource = client.id || website || client.name || payload.name || payload.company || `geo-${Date.now()}`;
+  const clientId = canonicalClientId(`geo-${idSource}`);
+  const clientName = String(client.name || payload.name || payload.company || website || "GEO Client").trim();
+  const createdAt = client.createdAt || payload.createdAt || new Date().toISOString();
+  const scoreLine = Number.isFinite(Number(geo.visibilityScore)) ? `Visibility score: ${geo.visibilityScore}` : "Visibility score pending";
+  const scopeLines = [
+    scoreLine,
+    `Managed pages: ${geo.managedPageCount}`,
+    `Opportunities: ${geo.opportunityCount}`,
+    `Agent tasks: ${geo.taskCount}`,
+    `Competitors tracked: ${geo.competitorCount}`,
+    `Buyer questions: ${geo.questionCount}`
+  ];
+
+  return normalizeClient({
+    id: clientId,
+    clientName,
+    stage: "lead",
+    leadStage: "agreement-returned",
+    leadSource: "geo-client",
+    leadSourceDetail: geo.latestReportTitle || `GEO onboarding for ${website || clientName}`,
+    relationshipType: "client",
+    pricingTier: "custom",
+    proposalSent: true,
+    depositInvoiceSent: true,
+    proposalSigned: true,
+    services: [],
+    plannedServices: uniq(["search-intelligence", "reporting"]),
+    websiteUrl: website,
+    businessEmail: email,
+    plan: client.plan || payload.plan || "GEO visibility client",
+    contact: [payload.contactName || client.contactName || clientName, email].filter(Boolean).join(" / "),
+    notes: [
+      "GEO client onboarded from geo.ghostai.solutions.",
+      `Website: ${website || "Not provided"}`,
+      `Market: ${geo.market || "Not provided"}`,
+      `Audience: ${geo.targetAudience || "Not provided"}`,
+      scopeLines.join(" | ")
+    ].join("\n"),
+    proposals: [
+      {
+        id: "geo-onboarding",
+        token: geo.geoClientId || clientId,
+        status: "approved",
+        title: `${clientName} GEO Visibility Workspace`,
+        scope: scopeLines.join("\n"),
+        investment: client.plan || payload.plan || "GEO visibility scope",
+        timeline: "GEO onboarding, audit, research, implementation packet, and reporting.",
+        clientNeeds: geo.topOpportunities.map((item) => item.title).join("\n") || "Visibility opportunities will populate after audit and research.",
+        cta: "Review the unified Ghost Growth Portal.",
+        metadata: { geo },
+        createdAt,
+        updatedAt: geo.updatedAt,
+        sentAt: createdAt
+      }
+    ],
+    activityEvents: [
+      {
+        id: `geo-onboarded-${clientId}`,
+        type: "geo_onboarded",
+        label: "GEO client onboarded",
+        detail: scoreLine,
+        at: createdAt,
+        actor: "geo_ghostai"
+      },
+      {
+        id: `geo-services-${clientId}`,
+        type: "services_mapped",
+        label: "GEO services mapped",
+        detail: "SEO / AEO / GEO and Client Reporting mapped into the unified portal.",
+        at: geo.updatedAt,
+        actor: "mission_control"
+      }
+    ],
+    createdAt,
+    updatedAt: geo.updatedAt
+  });
+}
+
 async function registerMarketingProposalApproval({ approvalId, signer = {}, selectedServices = [], monthlyTotal = 0, signedAt = "" }) {
   const init = await ensureClientPortalAccountTables();
   if (!init.ok) {
@@ -3933,6 +4058,50 @@ async function registerMarketingProposalApproval({ approvalId, signer = {}, sele
   );
 
   return { ok: true, client, inviteKey: normalizedApprovalId };
+}
+
+async function registerGeoClientPortalRecord(payload = {}) {
+  const init = await ensureClientPortalAccountTables();
+  if (!init.ok) {
+    throw new Error(init.error || init.reason || "Client portal account tables are unavailable.");
+  }
+
+  const client = buildGeoClientRecord(payload);
+  const saved = await persistRuntimeClientToPostgres(client);
+  if (!saved.ok) {
+    throw new Error(saved.error || saved.reason || "Unable to save GEO client.");
+  }
+
+  const geo = client.proposals?.find((proposal) => proposal.id === "geo-onboarding")?.metadata?.geo || {};
+  const inviteKey = String(payload.inviteKey || geo.geoClientId || client.id).trim();
+  const email = normalizePortalEmail(payload.email || payload.contactEmail || payload.client?.email || payload.client?.contactEmail || client.businessEmail);
+  if (inviteKey && email) {
+    const inviteId = `cpi_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
+    await getClientStorePgPool().query(
+      `
+      INSERT INTO mission_client_portal_invites (
+        id, client_id, email, invite_key_hash, status, source, metadata, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, 'open', 'geo_client', $5::jsonb, now(), now())
+      ON CONFLICT (invite_key_hash) DO UPDATE SET
+        client_id = EXCLUDED.client_id,
+        email = EXCLUDED.email,
+        status = CASE WHEN mission_client_portal_invites.status = 'used' THEN 'used' ELSE 'open' END,
+        source = EXCLUDED.source,
+        metadata = EXCLUDED.metadata,
+        updated_at = now()
+      RETURNING id;
+      `,
+      [
+        inviteId,
+        client.id,
+        email,
+        hashClientPortalSecret(inviteKey, "invite"),
+        JSON.stringify({ source: "geo", geoClientId: geo.geoClientId || "", website: geo.website || "", score: geo.visibilityScore ?? null })
+      ]
+    );
+  }
+
+  return { ok: true, client, inviteKey: inviteKey || client.id };
 }
 
 function validateClientPortalPassword(password) {
@@ -4360,14 +4529,20 @@ function getPortalServiceMeta(serviceId) {
 
 function getClientPortalServices(client) {
   const active = new Set(normalizeServiceList(client.services));
+  const geo = getClientPortalGeoSummary(client);
   return uniq([...(client.services || []), ...(client.plannedServices || [])]).map((serviceId) => {
     const service = getPortalServiceMeta(serviceId);
     const isActive = active.has(serviceId);
+    const geoResult = serviceId === "search-intelligence" && geo
+      ? geo.visibilityScore !== null && geo.visibilityScore !== undefined
+        ? `Visibility score ${geo.visibilityScore}`
+        : `${geo.opportunityCount || 0} GEO opportunities`
+      : "";
     return {
       id: serviceId,
       name: service.name,
       status: isActive ? "Active" : "Planned",
-      result: isActive ? "Managed by Ghost" : "Queued for next phase",
+      result: geoResult || (isActive ? "Managed by Ghost" : "Queued for next phase"),
       pricingLabel: service.pricingLabel || "",
       description: service.description || "",
       metrics: [
@@ -4379,9 +4554,25 @@ function getClientPortalServices(client) {
   });
 }
 
+function getClientPortalGeoSummary(client) {
+  const proposal = (client.proposals || []).find((entry) => entry?.metadata?.geo);
+  const geo = proposal?.metadata?.geo;
+  if (!geo) {
+    return null;
+  }
+  return {
+    ...geo,
+    visibilityScore: geo.visibilityScore === null || geo.visibilityScore === undefined ? null : Number(geo.visibilityScore),
+    engineScores: geo.engineScores || {},
+    topOpportunities: Array.isArray(geo.topOpportunities) ? geo.topOpportunities : [],
+    topRecommendations: Array.isArray(geo.topRecommendations) ? geo.topRecommendations : []
+  };
+}
+
 function getClientPortalProgress(client) {
   const hasWebsite = Boolean(client.websiteUrl);
   const services = new Set([...(client.services || []), ...(client.plannedServices || [])]);
+  const geo = getClientPortalGeoSummary(client);
   const hasServices = Boolean(services.size);
   const hasWebsiteBuild = services.has("website-build") || services.has("web-helper-care");
   const hasMarketingServices = ["content-social", "paid-ads", "social-media-ads", "google-ads", "search-intelligence", "google-business-profile", "reporting"].some((service) => services.has(service));
@@ -4398,8 +4589,14 @@ function getClientPortalProgress(client) {
   }
   if (hasMarketingServices) {
     rows.push(
-      { title: "Marketing onboarding", status: client.proposalSigned ? "Scope approved" : "Preparing", percent: client.proposalSigned ? 80 : 45 },
+      { title: geo ? "GEO onboarding" : "Marketing onboarding", status: client.proposalSigned ? "Scope approved" : "Preparing", percent: client.proposalSigned ? 80 : 45 },
       { title: "Monthly growth reporting", status: services.has("reporting") ? "Mapped" : "Recommended", percent: services.has("reporting") ? 75 : 40 }
+    );
+  }
+  if (geo) {
+    rows.push(
+      { title: "Visibility audit", status: geo.latestAuditId ? "Complete" : "Queued", percent: geo.latestAuditId ? 100 : 35 },
+      { title: "Opportunity queue", status: geo.opportunityCount ? `${geo.opportunityCount} mapped` : "Pending", percent: geo.opportunityCount ? 80 : 30 }
     );
   }
   return rows;
@@ -4435,7 +4632,17 @@ function getClientPortalMoneyRows(client) {
 
 function getClientPortalRecommendations(client) {
   const services = new Set([...(client.services || []), ...(client.plannedServices || [])]);
+  const geo = getClientPortalGeoSummary(client);
   const recommendations = [];
+  if (geo?.topOpportunities?.length) {
+    geo.topOpportunities.slice(0, 2).forEach((opportunity) => {
+      recommendations.push({
+        title: opportunity.title,
+        impact: `${opportunity.priority || "Medium"} priority GEO opportunity`,
+        reason: `Status: ${opportunity.status || "open"}. Category: ${opportunity.category || "Visibility"}.`
+      });
+    });
+  }
   if (!services.has("search-intelligence")) {
     recommendations.push({
       title: "Add SEO / AEO / GEO tracking",
@@ -4465,6 +4672,7 @@ function buildClientPortalPayload(client, request = null) {
   const progress = getClientPortalProgress(client);
   const supportUrl = buildClientSupportUrl(client, request);
   const updatedAt = client.updatedAt || new Date().toISOString();
+  const geo = getClientPortalGeoSummary(client);
   const hasWebsiteService = services.some((service) => ["website-build", "web-helper-care"].includes(service.id));
   const primaryServiceNames = services.slice(0, 3).map((service) => service.name).join(", ");
   return {
@@ -4485,12 +4693,13 @@ function buildClientPortalPayload(client, request = null) {
       mode: "Connected Mission Control data",
       monthLabel: "Current Snapshot",
       revenueInfluenced: client.plan || "Mapped",
-      growthScore: Math.min(98, 64 + services.filter((service) => service.status === "Active").length * 7 + (client.websiteUrl ? 8 : 0)),
+      growthScore: geo?.visibilityScore ?? Math.min(98, 64 + services.filter((service) => service.status === "Active").length * 7 + (client.websiteUrl ? 8 : 0)),
       leadsGenerated: client.stage === "lead" ? 1 : services.length,
       activeServices: services.filter((service) => service.status === "Active").length,
       plannedServices: services.filter((service) => service.status === "Planned").length
     },
     highlights: [
+      geo ? `GEO visibility score: ${geo.visibilityScore ?? "pending"}` : "",
       client.websiteUrl
         ? `Website connected: ${client.websiteUrl}`
         : hasWebsiteService
@@ -4500,8 +4709,9 @@ function buildClientPortalPayload(client, request = null) {
       primaryServiceNames ? `Focus areas: ${primaryServiceNames}` : "Focus areas need confirmation",
       client.stage === "lead" ? "Lead is still in proposal / onboarding flow" : `Current stage: ${client.stage || "client"}`,
       supportUrl ? "Support request link is ready" : "Support request link needs configuration"
-    ].slice(0, 4),
+    ].filter(Boolean).slice(0, 4),
     services,
+    geo,
     moneyRows: getClientPortalMoneyRows(client),
     progress,
     support: {
@@ -7235,6 +7445,11 @@ function normalizeLeadSource(value) {
     "marketing-proposal": "marketing-proposal",
     proposal: "marketing-proposal",
     "proposal-site": "marketing-proposal",
+    geo: "geo-client",
+    "geo-client": "geo-client",
+    "geo-portal": "geo-client",
+    "geo-onboarding": "geo-client",
+    "ghost-engine-optimization": "geo-client",
     "ai-outreach": "ai-outreach",
     ai: "ai-outreach",
     outreach: "ai-outreach",
@@ -7367,6 +7582,7 @@ function normalizeProposalRecord(value, clientId, index = 0) {
     timeline: String(value.timeline || "").trim(),
     clientNeeds: String(value.clientNeeds || "").trim(),
     cta: String(value.cta || "Approve this plan or request changes.").trim(),
+    metadata: value.metadata && typeof value.metadata === "object" && !Array.isArray(value.metadata) ? value.metadata : {},
     createdAt: value.createdAt || new Date().toISOString(),
     updatedAt: value.updatedAt || new Date().toISOString(),
     sentAt: value.sentAt || (status === "sent" ? new Date().toISOString() : "")
@@ -11206,6 +11422,38 @@ const server = http.createServer((request, response) => {
         sendJson(request, response, 400, {
           ok: false,
           error: String(error?.message || error || "Unable to register marketing proposal approval.")
+        });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/geo-client") {
+    readJsonBody(request)
+      .then(async (body) => {
+        const requiredSecret = String(process.env.CLIENT_PORTAL_GEO_WEBHOOK_SECRET || process.env.CLIENT_PORTAL_PROPOSAL_WEBHOOK_SECRET || "").trim();
+        if (requiredSecret) {
+          const providedSecret = String(request.headers["x-ghost-webhook-secret"] || "").trim();
+          if (providedSecret !== requiredSecret) {
+            sendJson(request, response, 401, { ok: false, error: "Invalid webhook secret." });
+            return;
+          }
+        }
+
+        const result = await registerGeoClientPortalRecord(body || {});
+        const email = normalizePortalEmail(body.email || body.contactEmail || body.client?.email || body.client?.contactEmail || result.client.businessEmail);
+        const portalCreateUrl = `${getClientPortalBaseUrl()}/create-account?invite=${encodeURIComponent(result.inviteKey)}${email ? `&email=${encodeURIComponent(email)}` : ""}`;
+        sendJson(request, response, 200, {
+          ok: true,
+          clientId: result.client.id,
+          inviteKey: result.inviteKey,
+          portalCreateUrl
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          ok: false,
+          error: "Unable to register GEO client",
+          detail: String(error?.message || error)
         });
       });
     return;
