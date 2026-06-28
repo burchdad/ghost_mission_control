@@ -1547,6 +1547,53 @@ async function ensureClientStoreTable() {
   return clientStorePgInitPromise;
 }
 
+async function ensureClientPortalAccountTables() {
+  const clientStoreInit = await ensureClientStoreTable();
+  if (!clientStoreInit.ok) {
+    return clientStoreInit;
+  }
+
+  try {
+    await getClientStorePgPool().query(`
+      CREATE TABLE IF NOT EXISTS mission_client_portal_accounts (
+        id text PRIMARY KEY,
+        client_id text NOT NULL REFERENCES mission_clients(id) ON DELETE CASCADE,
+        email text NOT NULL,
+        name text NOT NULL DEFAULT '',
+        portal_key_hash text NOT NULL UNIQUE,
+        status text NOT NULL DEFAULT 'active',
+        source text NOT NULL DEFAULT 'manual',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        last_login_at timestamptz
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS mission_client_portal_accounts_client_email_idx
+        ON mission_client_portal_accounts (client_id, lower(email));
+      CREATE INDEX IF NOT EXISTS mission_client_portal_accounts_client_id_idx
+        ON mission_client_portal_accounts (client_id);
+
+      CREATE TABLE IF NOT EXISTS mission_client_portal_invites (
+        id text PRIMARY KEY,
+        client_id text NOT NULL REFERENCES mission_clients(id) ON DELETE CASCADE,
+        email text NOT NULL DEFAULT '',
+        invite_key_hash text NOT NULL UNIQUE,
+        status text NOT NULL DEFAULT 'open',
+        source text NOT NULL DEFAULT 'manual',
+        metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+        expires_at timestamptz,
+        used_at timestamptz,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS mission_client_portal_invites_client_id_idx
+        ON mission_client_portal_invites (client_id);
+    `);
+    return { ok: true, target: "postgres", table: "mission_client_portal_accounts" };
+  } catch (error) {
+    return { ok: false, target: "postgres", error: String(error?.message || error) };
+  }
+}
+
 async function ensureWebHelperRequestTable() {
   const pool = getClientStorePgPool();
   if (!pool) {
@@ -3669,6 +3716,198 @@ function resolveClientPortalClientId(accessKey) {
   }
 
   return CLIENT_PORTAL_ALLOW_CLIENT_ID_KEYS ? canonicalClientId(key) : "";
+}
+
+function normalizePortalEmail(value) {
+  return String(value || "").trim().toLowerCase().slice(0, 240);
+}
+
+function hashClientPortalSecret(value, purpose = "portal") {
+  const secret = CODEX_BUILD_WEBHOOK_SECRET || GHOST_WEB_HELPER_WEBHOOK_SECRET || GHOST_MISSION_CONTROL_WEBHOOK_SECRET || "ghost-client-portal";
+  return crypto
+    .createHash("sha256")
+    .update(`${purpose}:${String(value || "").trim()}:${secret}`)
+    .digest("hex");
+}
+
+function generateClientPortalKey(prefix = "cp") {
+  return `${prefix}_${crypto.randomBytes(18).toString("base64url")}`;
+}
+
+async function resolveClientPortalClientIdFromStore(accessKey) {
+  const envClientId = resolveClientPortalClientId(accessKey);
+  if (envClientId) {
+    return envClientId;
+  }
+
+  const key = String(accessKey || "").trim();
+  if (!key) {
+    return "";
+  }
+
+  const init = await ensureClientPortalAccountTables();
+  if (!init.ok) {
+    return "";
+  }
+
+  const result = await getClientStorePgPool().query(
+    `
+    UPDATE mission_client_portal_accounts
+    SET last_login_at = now(), updated_at = now()
+    WHERE portal_key_hash = $1 AND status = 'active'
+    RETURNING client_id;
+    `,
+    [hashClientPortalSecret(key, "portal")]
+  );
+
+  return canonicalClientId(result.rows[0]?.client_id || "");
+}
+
+async function findClientPortalInviteClient(inviteKey) {
+  const key = String(inviteKey || "").trim();
+  if (!key) {
+    return null;
+  }
+
+  const proposalMatch = findProposalByToken(key);
+  if (proposalMatch?.client) {
+    return {
+      client: proposalMatch.client,
+      source: "proposal",
+      proposal: proposalMatch.proposal,
+      inviteId: ""
+    };
+  }
+
+  const init = await ensureClientPortalAccountTables();
+  if (!init.ok) {
+    throw new Error(init.error || init.reason || "Client portal account tables are unavailable.");
+  }
+
+  const result = await getClientStorePgPool().query(
+    `
+    SELECT invite.*, client.*
+    FROM mission_client_portal_invites invite
+    JOIN mission_clients client ON client.id = invite.client_id
+    WHERE invite.invite_key_hash = $1
+      AND invite.status IN ('open', 'sent')
+      AND (invite.expires_at IS NULL OR invite.expires_at > now())
+    LIMIT 1;
+    `,
+    [hashClientPortalSecret(key, "invite")]
+  );
+
+  if (!result.rows[0]) {
+    return null;
+  }
+
+  return {
+    client: dbRowToClient(result.rows[0]),
+    source: "invite",
+    inviteId: result.rows[0].id
+  };
+}
+
+async function createOrLoadClientPortalAccount({ client, email, name = "", source = "manual", inviteId = "" }) {
+  const init = await ensureClientPortalAccountTables();
+  if (!init.ok) {
+    throw new Error(init.error || init.reason || "Client portal account tables are unavailable.");
+  }
+
+  const normalizedEmail = normalizePortalEmail(email);
+  if (!client?.id) {
+    throw new Error("Client record is required.");
+  }
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    throw new Error("A valid email address is required.");
+  }
+
+  const existing = await getClientStorePgPool().query(
+    `
+    SELECT * FROM mission_client_portal_accounts
+    WHERE client_id = $1 AND lower(email) = $2 AND status = 'active'
+    LIMIT 1;
+    `,
+    [client.id, normalizedEmail]
+  );
+
+  if (existing.rows[0]) {
+    if (inviteId) {
+      await getClientStorePgPool().query(
+        "UPDATE mission_client_portal_invites SET status = 'used', used_at = now(), updated_at = now() WHERE id = $1",
+        [inviteId]
+      );
+    }
+    return {
+      ok: true,
+      accountId: existing.rows[0].id,
+      clientId: existing.rows[0].client_id,
+      email: existing.rows[0].email,
+      existing: true,
+      accessKey: ""
+    };
+  }
+
+  const accountId = `cpa_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
+  const accessKey = generateClientPortalKey("cp");
+
+  const result = await getClientStorePgPool().query(
+    `
+    INSERT INTO mission_client_portal_accounts (
+      id, client_id, email, name, portal_key_hash, status, source, created_at, updated_at, last_login_at
+    ) VALUES ($1, $2, $3, $4, $5, 'active', $6, now(), now(), now())
+    RETURNING *;
+    `,
+    [
+      accountId,
+      client.id,
+      normalizedEmail,
+      String(name || client.contact || "").trim().slice(0, 160),
+      hashClientPortalSecret(accessKey, "portal"),
+      source
+    ]
+  );
+
+  if (inviteId) {
+    await getClientStorePgPool().query(
+      "UPDATE mission_client_portal_invites SET status = 'used', used_at = now(), updated_at = now() WHERE id = $1",
+      [inviteId]
+    );
+  }
+
+  return {
+    ok: true,
+    accountId: result.rows[0].id,
+    clientId: result.rows[0].client_id,
+    email: result.rows[0].email,
+    existing: false,
+    accessKey
+  };
+}
+
+async function signInClientPortalAccount({ email, accessKey }) {
+  const init = await ensureClientPortalAccountTables();
+  if (!init.ok) {
+    throw new Error(init.error || init.reason || "Client portal account tables are unavailable.");
+  }
+
+  const normalizedEmail = normalizePortalEmail(email);
+  const key = String(accessKey || "").trim();
+  if (!normalizedEmail || !key) {
+    throw new Error("Email and portal access key are required.");
+  }
+
+  const result = await getClientStorePgPool().query(
+    `
+    UPDATE mission_client_portal_accounts
+    SET last_login_at = now(), updated_at = now()
+    WHERE lower(email) = $1 AND portal_key_hash = $2 AND status = 'active'
+    RETURNING id, client_id, email;
+    `,
+    [normalizedEmail, hashClientPortalSecret(key, "portal")]
+  );
+
+  return result.rows[0] ? { ok: true, ...result.rows[0] } : { ok: false };
 }
 
 function getPortalServiceMeta(serviceId) {
@@ -10378,17 +10617,19 @@ const server = http.createServer((request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/mission/client-portal") {
-    const clientId = resolveClientPortalClientId(url.searchParams.get("key"));
-    if (!clientId) {
-      sendJson(request, response, 401, {
-        ok: false,
-        error: "Client portal access key is required."
-      });
-      return;
-    }
+    Promise.all([
+      resolveClientPortalClientIdFromStore(url.searchParams.get("key")),
+      syncClientStore(url.searchParams.get("refresh") === "true")
+    ])
+      .then(([clientId]) => {
+        if (!clientId) {
+          sendJson(request, response, 401, {
+            ok: false,
+            error: "Client portal access key is required."
+          });
+          return;
+        }
 
-    syncClientStore(url.searchParams.get("refresh") === "true")
-      .then(() => {
         const client = getAllClients().find((entry) => canonicalClientId(entry.id) === clientId);
         if (!client) {
           sendJson(request, response, 404, {
@@ -10405,6 +10646,84 @@ const server = http.createServer((request, response) => {
           ok: false,
           error: "Unable to load client portal data",
           detail: String(error?.message || error)
+        });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/create-account") {
+    readJsonBody(request)
+      .then(async (body) => {
+        await syncClientStore(url.searchParams.get("refresh") === "true");
+        const inviteKey = String(body.inviteKey || body.key || body.proposalToken || "").trim();
+        const invite = await findClientPortalInviteClient(inviteKey);
+        if (!invite?.client) {
+          sendJson(request, response, 404, {
+            ok: false,
+            error: "Client portal invite not found. Please request a fresh portal invite from Ghost AI Solutions."
+          });
+          return;
+        }
+
+        const account = await createOrLoadClientPortalAccount({
+          client: invite.client,
+          email: body.email,
+          name: body.name,
+          source: invite.source === "proposal" ? "proposal_acceptance" : "invite",
+          inviteId: invite.inviteId
+        });
+
+        sendJson(request, response, 200, {
+          ok: true,
+          account: {
+            id: account.accountId,
+            clientId: account.clientId,
+            email: account.email,
+            existing: account.existing
+          },
+          accessKey: account.accessKey,
+          client: buildClientResponseRecord(invite.client),
+          portalPath: account.accessKey ? `/client-portal?key=${encodeURIComponent(account.accessKey)}` : ""
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, {
+          ok: false,
+          error: String(error?.message || error || "Unable to create client portal account.")
+        });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/sign-in") {
+    readJsonBody(request)
+      .then(async (body) => {
+        const email = body.email;
+        const accessKey = body.accessKey || body.key;
+        const signIn = await signInClientPortalAccount({ email, accessKey });
+        if (!signIn.ok) {
+          sendJson(request, response, 401, {
+            ok: false,
+            error: "Portal account not found. Check the email and access key, or create the account from your invite link."
+          });
+          return;
+        }
+
+        sendJson(request, response, 200, {
+          ok: true,
+          account: {
+            id: signIn.id,
+            clientId: signIn.client_id,
+            email: signIn.email
+          },
+          accessKey: String(accessKey || "").trim(),
+          portalPath: `/client-portal?key=${encodeURIComponent(String(accessKey || "").trim())}`
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, {
+          ok: false,
+          error: String(error?.message || error || "Unable to sign in to client portal.")
         });
       });
     return;
