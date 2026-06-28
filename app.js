@@ -7733,6 +7733,44 @@ function renderClientProposalWorkspace(client) {
   </div>`;
 }
 
+function buildLeadServiceOnboardingTasks(client) {
+  const services = getLeadRequestedServices(client);
+  if (!services.length) {
+    return [
+      makeOnboardingTask(client, "service", "Service path", "missing", "Select at least one service or package so the lead can route into the right delivery lane.", { required: true, id: "service-path" })
+    ];
+  }
+
+  const tasks = [];
+  const hasWebsiteTarget = Boolean(client.websiteUrl || client.githubRepo || client.vercelUrl);
+  const hasSocialTargets = Boolean(client.socialUrls);
+  const hasDiscovery = Boolean(client.notes || hasDiscoveryBriefValues(client.discoveryBrief || {}));
+  const hasAccessPath = Boolean(client.websiteUrl || client.githubRepo || client.railwayBackendUrl || client.vercelUrl || client.googleBusinessProfile);
+
+  if (services.some((service) => ["website-build", "web-helper-care"].includes(service))) {
+    tasks.push(makeOnboardingTask(client, "service", "Website target", hasWebsiteTarget ? "complete" : "missing", hasWebsiteTarget ? client.websiteUrl || client.vercelUrl || client.githubRepo : "Attach the website URL, repo, or launch target.", { required: true, id: "website-target" }));
+  }
+  if (services.some((service) => ["search-intelligence", "google-business-profile", "local-service"].includes(service))) {
+    tasks.push(makeOnboardingTask(client, "service", "Search / GEO baseline", client.googleBusinessProfile || client.websiteUrl ? "complete" : "missing", client.googleBusinessProfile || client.websiteUrl || "Attach a website or Google Business Profile before GEO work starts.", { required: true, id: "search-geo-baseline" }));
+  }
+  if (services.includes("content-social")) {
+    tasks.push(makeOnboardingTask(client, "service", "Social channels", hasSocialTargets ? "complete" : "missing", hasSocialTargets ? "Social URLs are attached." : "Add Facebook, Instagram, LinkedIn, TikTok, or YouTube URLs.", { required: true, id: "social-channels" }));
+  }
+  if (services.some((service) => ["paid-ads", "social-media-ads", "google-ads"].includes(service))) {
+    tasks.push(makeOnboardingTask(client, "service", "Ad campaign access", hasAccessPath ? "access-needed" : "missing", hasAccessPath ? "Confirm account access and tracking before launch." : "Collect Meta or Google Ads access, destination URL, offer, and tracking rules.", { required: true, id: "ad-campaign-access" }));
+  }
+  if (services.some((service) => ["lead-funnel", "crm-setup", "ghl-setup"].includes(service))) {
+    tasks.push(makeOnboardingTask(client, "service", "CRM / funnel map", hasDiscovery ? "complete" : "missing", hasDiscovery ? "Lead flow notes are captured." : "Map lead sources, pipeline stages, owner alerts, calendar, and follow-up rules.", { required: true, id: "crm-funnel-map" }));
+  }
+  if (services.some((service) => ["ai-automation", "ai-chatbot"].includes(service))) {
+    tasks.push(makeOnboardingTask(client, "service", "AI workflow map", hasDiscovery ? "complete" : "missing", hasDiscovery ? "Automation notes are captured." : "Map the workflow, knowledge base, handoff rules, and approval gates.", { required: true, id: "ai-workflow-map" }));
+  }
+  if (services.includes("reporting") || isMarketingLeadClient(client)) {
+    tasks.push(makeOnboardingTask(client, "service", "Monthly value report", services.includes("reporting") ? "planned" : "missing", services.includes("reporting") ? "Client reporting is mapped for the portal." : "Add reporting so the client can see what Ghost moved and what made money.", { required: false, id: "monthly-value-report" }));
+  }
+  return tasks;
+}
+
 function buildOnboardingTasks(client) {
   const contact = client.contact || "";
   const businessEmail = client.businessEmail || "";
@@ -7743,7 +7781,7 @@ function buildOnboardingTasks(client) {
   const proposalSigned = client.proposalSigned || client.depositPaid;
   const depositPaid = client.depositPaid || getClientStage(client) === "deposit-paid";
 
-  return [
+  const baseTasks = [
     makeOnboardingTask(client, "intake", "Lead source", client.leadSource ? "complete" : "missing", client.leadSource ? `${getLeadSourceLabel(client)}${client.leadSourceDetail ? ` - ${client.leadSourceDetail}` : ""}` : "Tag the lead as social media, referral, Ghost Lead Command, digital business card, email, AI outreach, or manual.", { required: true }),
     makeOnboardingTask(client, "intake", "Discovery call / message thread", client.notes ? "complete" : "missing", client.notes || "Capture what they asked for over phone or Facebook Messenger.", { required: true }),
     makeOnboardingTask(client, "intake", "Primary contact", contact ? "complete" : "missing", contact || "Name, role, and best contact method.", { required: true }),
@@ -7752,8 +7790,9 @@ function buildOnboardingTasks(client) {
     makeOnboardingTask(client, "proposal", "Deposit invoice sent", depositInvoiceSent ? "complete" : "missing", "Send the deposit invoice with the proposal email.", { required: true }),
     makeOnboardingTask(client, "agreement", "Signed project agreement", proposalSigned ? "complete" : "missing", "Client replied with agreement to the proposal terms.", { required: true }),
     makeOnboardingTask(client, "deposit", "Deposit paid", depositPaid ? "complete" : "missing", "Deposit must be paid before initial draft work begins.", { required: true }),
-    makeOnboardingTask(client, "deposit", "Initial draft queue", depositPaid ? "ready" : "planned", depositPaid ? "Move this client into the website build queue." : "Waiting for deposit before build queue.", { required: true })
+    makeOnboardingTask(client, "deposit", isMarketingLeadClient(client) ? "Service kickoff queue" : "Initial draft queue", depositPaid ? "ready" : "planned", depositPaid ? (isMarketingLeadClient(client) ? "Move this client into marketing, GEO, or growth service kickoff." : "Move this client into the website build queue.") : "Waiting for deposit before delivery kickoff.", { required: true })
   ];
+  return [...baseTasks, ...buildLeadServiceOnboardingTasks(client)];
 }
 
 function renderOnboardingCard(task) {

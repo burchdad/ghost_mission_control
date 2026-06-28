@@ -4569,9 +4569,305 @@ function getClientPortalGeoSummary(client) {
   };
 }
 
+const CLIENT_PORTAL_SERVICE_VALUES = {
+  "website-build": { oneTime: 400 },
+  "web-helper-care": { monthly: 100 },
+  "search-intelligence": { monthly: 250 },
+  "google-business-profile": { oneTime: 100 },
+  "lead-funnel": { oneTime: 700 },
+  "crm-setup": { oneTime: 700 },
+  "ghl-setup": { oneTime: 800 },
+  "content-social": { monthly: 600 },
+  "paid-ads": { oneTime: 2200 },
+  "social-media-ads": { oneTime: 1200 },
+  "google-ads": { oneTime: 1000 },
+  "mobile-app": { oneTime: 5000 },
+  "software-tool": { oneTime: 4000 },
+  "enterprise-platform": { oneTime: 4000 },
+  "ai-automation": { oneTime: 4500 },
+  "ai-chatbot": { oneTime: 3000 },
+  ecommerce: { oneTime: 400 },
+  reporting: { monthly: 0 }
+};
+
+function formatClientPortalMoney(value) {
+  const amount = Number(value || 0);
+  if (!amount) {
+    return "$0";
+  }
+  return `$${amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+}
+
+function parseMonthlyValueFromPlan(plan) {
+  const match = String(plan || "").match(/\$([\d,]+(?:\.\d+)?)(?:\s*\/\s*mo|\s*monthly|\s*\/month)/i);
+  return match ? Number(match[1].replace(/,/g, "")) || 0 : 0;
+}
+
+function getClientPortalServiceIds(client) {
+  return uniq([...(client.services || []), ...(client.plannedServices || [])]).filter(Boolean);
+}
+
+function getClientPortalValueLedger(client) {
+  const serviceIds = getClientPortalServiceIds(client);
+  const catalog = new Map(getServiceCatalog().map((service) => [service.id, service]));
+  const serviceRows = serviceIds.map((serviceId) => {
+    const values = CLIENT_PORTAL_SERVICE_VALUES[serviceId] || {};
+    const service = catalog.get(serviceId) || getPortalServiceMeta(serviceId);
+    return {
+      id: serviceId,
+      name: service.name,
+      oneTime: Number(values.oneTime || 0),
+      monthly: Number(values.monthly || 0),
+      status: normalizeServiceList(client.services).includes(serviceId) ? "Active" : "Planned",
+      pricingLabel: service.pricingLabel || ""
+    };
+  });
+  const estimatedOneTime = serviceRows.reduce((sum, row) => sum + row.oneTime, 0);
+  const estimatedMonthly = serviceRows.reduce((sum, row) => sum + row.monthly, 0);
+  const planMonthly = parseMonthlyValueFromPlan(client.plan);
+  const monthly = Math.max(estimatedMonthly, planMonthly);
+  const labelParts = [];
+  if (estimatedOneTime) {
+    labelParts.push(`${formatClientPortalMoney(estimatedOneTime)} one-time`);
+  }
+  if (monthly) {
+    labelParts.push(`${formatClientPortalMoney(monthly)}/mo`);
+  }
+  return {
+    oneTime: estimatedOneTime,
+    monthly,
+    label: labelParts.join(" + ") || client.plan || "Value pending",
+    serviceRows,
+    paidStatus: client.depositPaid || client.finalPaymentPaid ? "Payment activity recorded" : "Payment pending or not tracked",
+    stageLabel: CLIENT_PIPELINE_STAGES.find((stage) => stage.id === client.stage)?.label || client.stage || "Client"
+  };
+}
+
+function makePortalChecklistItem(title, complete, detail, required = true) {
+  return {
+    title,
+    status: complete ? "Complete" : "Needed",
+    complete: Boolean(complete),
+    detail,
+    required
+  };
+}
+
+function getClientPortalServiceOnboarding(client) {
+  const serviceIds = getClientPortalServiceIds(client);
+  const activeServices = normalizeServiceList(client.services);
+  const geo = getClientPortalGeoSummary(client);
+  const contactReady = Boolean(client.contact || client.businessEmail || client.businessPhone);
+  const scopeApproved = Boolean(client.proposalSigned || client.depositPaid || client.stage !== "lead");
+  const accessReady = Boolean(client.websiteUrl || client.githubRepo || client.railwayBackendUrl || client.vercelUrl);
+  const baseByService = {
+    "website-build": [
+      makePortalChecklistItem("Primary contact confirmed", contactReady, "Name, email, or phone is attached to the client record."),
+      makePortalChecklistItem("Scope approved", scopeApproved, "Proposal or agreement is marked approved before build work starts."),
+      makePortalChecklistItem("Website URL or build target attached", Boolean(client.websiteUrl || client.githubRepo || client.vercelUrl), "Connect the current website, repo, or launch target."),
+      makePortalChecklistItem("Launch payment / kickoff ready", Boolean(client.depositPaid), "Deposit payment moves the website into active delivery.")
+    ],
+    "web-helper-care": [
+      makePortalChecklistItem("Live website connected", Boolean(client.websiteUrl), "Attach the production website URL."),
+      makePortalChecklistItem("Approved support contact", contactReady, "Confirm who can request updates."),
+      makePortalChecklistItem("Maintenance scope selected", activeServices.includes("web-helper-care"), "Mark Web Helper Care active after handoff.")
+    ],
+    "search-intelligence": [
+      makePortalChecklistItem("Website or business profile connected", Boolean(client.websiteUrl || client.googleBusinessProfile), "Search work needs a website or local profile target."),
+      makePortalChecklistItem("Baseline GEO audit captured", Boolean(geo?.latestAuditId || geo?.visibilityScore), "Import the latest GEO score and audit summary."),
+      makePortalChecklistItem("Opportunity queue mapped", Boolean(geo?.opportunityCount || geo?.topOpportunities?.length), "Map the first visibility opportunities."),
+      makePortalChecklistItem("Monthly reporting lane ready", activeServices.includes("reporting") || client.plannedServices?.includes("reporting"), "Reporting turns GEO movement into a visible client story.", false)
+    ],
+    "content-social": [
+      makePortalChecklistItem("Brand voice and offer confirmed", Boolean(client.notes || client.discoveryBrief?.visualDirection), "Capture voice, offers, and positioning."),
+      makePortalChecklistItem("Social channels attached", Boolean(client.socialUrls), "Add one social URL per line."),
+      makePortalChecklistItem("Monthly content cadence approved", scopeApproved, "Confirm posting cadence and approval rules.")
+    ],
+    "paid-ads": [
+      makePortalChecklistItem("Campaign offer confirmed", Boolean(client.discoveryBrief?.primaryGoal || client.notes), "Ads need a clear offer and conversion goal."),
+      makePortalChecklistItem("Tracking destination attached", Boolean(client.websiteUrl), "Connect a landing page or website before launch."),
+      makePortalChecklistItem("Ad account access collected", accessReady, "Attach Meta or Google access notes.")
+    ],
+    "social-media-ads": [
+      makePortalChecklistItem("Social ad offer confirmed", Boolean(client.discoveryBrief?.primaryGoal || client.notes), "Confirm the service, offer, and lead routing."),
+      makePortalChecklistItem("Meta access collected", accessReady, "Attach account access or invite notes."),
+      makePortalChecklistItem("Creative direction captured", Boolean(client.discoveryBrief?.visualDirection || client.notes), "Capture creative style, proof, and audience.")
+    ],
+    "google-ads": [
+      makePortalChecklistItem("Search offer confirmed", Boolean(client.discoveryBrief?.primaryGoal || client.notes), "Confirm search intent and conversion goal."),
+      makePortalChecklistItem("Landing page connected", Boolean(client.websiteUrl), "Google Ads needs a destination and conversion path."),
+      makePortalChecklistItem("Google Ads access collected", accessReady, "Attach account access or manager invite notes.")
+    ],
+    "crm-setup": [
+      makePortalChecklistItem("Lead sources mapped", Boolean(client.leadSource || client.discoveryBrief?.selectedNeeds?.length), "Confirm where leads come from."),
+      makePortalChecklistItem("Pipeline stages approved", scopeApproved, "Confirm the sales process before automation."),
+      makePortalChecklistItem("Primary contact field ready", contactReady, "Confirm the owner for lead alerts.")
+    ],
+    "ghl-setup": [
+      makePortalChecklistItem("GHL access collected", accessReady, "Attach GHL login, subaccount, or invite notes."),
+      makePortalChecklistItem("Pipeline and calendar rules mapped", Boolean(client.notes || client.discoveryBrief?.primaryGoal), "Capture handoff and booking rules."),
+      makePortalChecklistItem("Launch test planned", scopeApproved, "Run a form, calendar, email, and SMS test before handoff.")
+    ],
+    "ai-automation": [
+      makePortalChecklistItem("Workflow mapped", Boolean(client.discoveryBrief?.primaryGoal || client.notes), "Document the manual process the automation replaces."),
+      makePortalChecklistItem("Approval gates defined", scopeApproved, "Define what AI can do automatically and what needs approval."),
+      makePortalChecklistItem("Systems access ready", accessReady, "Attach connected systems or integration targets.")
+    ],
+    "ai-chatbot": [
+      makePortalChecklistItem("Knowledge base collected", Boolean(client.notes || client.discoveryBrief?.currentProblem), "Collect FAQs, services, policies, and preferred answers."),
+      makePortalChecklistItem("Website destination connected", Boolean(client.websiteUrl), "Attach the site where the chatbot will live."),
+      makePortalChecklistItem("Lead routing confirmed", Boolean(client.businessEmail || client.businessPhone), "Confirm where qualified chats should go.")
+    ],
+    "mobile-app": [
+      makePortalChecklistItem("App scope captured", Boolean(client.discoveryBrief?.primaryGoal || client.notes), "Define features, users, and launch path."),
+      makePortalChecklistItem("Account/release path planned", scopeApproved, "Confirm store accounts and release ownership."),
+      makePortalChecklistItem("Build kickoff ready", Boolean(client.depositPaid), "Payment and scope unlock the build queue.")
+    ],
+    "software-tool": [
+      makePortalChecklistItem("Product workflow mapped", Boolean(client.discoveryBrief?.primaryGoal || client.notes), "Define users, workflows, and core screens."),
+      makePortalChecklistItem("Architecture target chosen", accessReady, "Attach repo, deployment, or backend target when available."),
+      makePortalChecklistItem("Build kickoff ready", Boolean(client.depositPaid), "Payment and scope unlock the build queue.")
+    ],
+    "enterprise-platform": [
+      makePortalChecklistItem("Executive scope confirmed", scopeApproved, "Enterprise work needs decision-maker agreement."),
+      makePortalChecklistItem("Integration map started", accessReady, "Attach systems, APIs, or platforms to connect."),
+      makePortalChecklistItem("Roadmap review scheduled", Boolean(client.notes || client.discoveryBrief?.nextStep), "Capture the next architecture conversation.")
+    ],
+    reporting: [
+      makePortalChecklistItem("Services mapped", Boolean(serviceIds.length), "Reports need active or planned services."),
+      makePortalChecklistItem("Monthly value story ready", Boolean(serviceIds.length && (client.plan || client.notes || geo)), "Summarize what was done, what moved, and what comes next."),
+      makePortalChecklistItem("Client portal active", true, "This client can view progress through the connected portal.")
+    ]
+  };
+  return serviceIds.map((serviceId) => {
+    const service = getPortalServiceMeta(serviceId);
+    const items = baseByService[serviceId] || [
+      makePortalChecklistItem("Scope confirmed", scopeApproved, "Confirm what Ghost is delivering."),
+      makePortalChecklistItem("Client contact ready", contactReady, "Confirm the owner for updates."),
+      makePortalChecklistItem("Access and assets collected", accessReady, "Attach the systems or assets needed to execute.")
+    ];
+    const completeCount = items.filter((item) => item.complete).length;
+    return {
+      serviceId,
+      serviceName: service.name,
+      status: activeServices.includes(serviceId) ? "Active" : "Planned",
+      percent: Math.round((completeCount / Math.max(1, items.length)) * 100),
+      items
+    };
+  });
+}
+
+function getClientPortalNextRequiredAction(client, serviceOnboarding = []) {
+  if (!client.contact && !client.businessEmail && !client.businessPhone) {
+    return {
+      title: "Confirm the primary contact",
+      detail: "Add the person, email, or phone Ghost should use for onboarding and approvals.",
+      service: "Client profile",
+      urgency: "high"
+    };
+  }
+  if (client.stage === "lead" && !client.proposalSigned) {
+    return {
+      title: client.proposalSent ? "Get proposal approval" : "Send proposal and confirm scope",
+      detail: "Move the lead from intake into an approved client path.",
+      service: "Proposal",
+      urgency: client.proposalSent ? "high" : "medium"
+    };
+  }
+  if (!client.depositPaid && (client.proposalSigned || client.depositInvoiceSent)) {
+    return {
+      title: "Confirm kickoff payment",
+      detail: "Deposit payment unlocks delivery work and final onboarding.",
+      service: "Billing",
+      urgency: "high"
+    };
+  }
+  const nextMissing = serviceOnboarding
+    .flatMap((service) => service.items.map((item) => ({ ...item, serviceName: service.serviceName })))
+    .find((item) => item.required && !item.complete);
+  if (nextMissing) {
+    return {
+      title: nextMissing.title,
+      detail: nextMissing.detail,
+      service: nextMissing.serviceName,
+      urgency: "medium"
+    };
+  }
+  return {
+    title: "Review the monthly growth report",
+    detail: "Everything required is mapped. Use the monthly report to show progress and recommend the next move.",
+    service: "Client reporting",
+    urgency: "normal"
+  };
+}
+
+function getClientPortalEventTimeline(client) {
+  const events = [];
+  const addEvent = (label, detail, at, status = "complete") => {
+    events.push({
+      label,
+      detail,
+      at: at || client.updatedAt || client.createdAt || new Date().toISOString(),
+      status
+    });
+  };
+  addEvent("Client record created", client.leadSource ? `Source: ${client.leadSource}` : "Mission Control record", client.createdAt);
+  if (client.businessEmail || client.businessPhone || client.contact) {
+    addEvent("Contact details captured", client.businessEmail || client.businessPhone || client.contact, client.createdAt || client.updatedAt);
+  }
+  if (client.proposalSent || client.depositInvoiceSent) {
+    addEvent("Proposal routed", client.depositInvoiceSent ? "Proposal and invoice sent" : "Proposal sent", client.updatedAt);
+  }
+  if (client.proposalSigned) {
+    addEvent("Scope approved", "Client accepted the proposal or agreement.", client.updatedAt);
+  }
+  if (client.depositPaid) {
+    addEvent("Kickoff payment recorded", "Client is ready for service onboarding.", client.updatedAt);
+  }
+  (client.activityEvents || []).slice(-6).forEach((event) => {
+    addEvent(event.label || event.type || "Activity", event.detail || event.type || "Tracked in Mission Control", event.at, "complete");
+  });
+  const deduped = [];
+  const seen = new Set();
+  events
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+    .forEach((event) => {
+      const key = `${event.label}|${event.detail}|${event.at}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(event);
+      }
+    });
+  return deduped.slice(-8);
+}
+
+function getClientPortalMonthlyReport(client, valueLedger, serviceOnboarding) {
+  const geo = getClientPortalGeoSummary(client);
+  const completedServices = serviceOnboarding.filter((service) => service.percent >= 80).length;
+  const missingItems = serviceOnboarding.flatMap((service) =>
+    service.items.filter((item) => item.required && !item.complete).map((item) => `${service.serviceName}: ${item.title}`)
+  );
+  return {
+    title: `${client.clientName || "Client"} monthly growth report`,
+    period: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+    summary: geo
+      ? `GEO visibility is ${geo.visibilityScore ?? "pending"} with ${geo.opportunityCount || 0} mapped opportunities.`
+      : `${serviceOnboarding.length} service lane(s) are mapped, with ${completedServices} lane(s) mostly ready.`,
+    valueLabel: valueLedger.label,
+    wins: [
+      valueLedger.label !== "Value pending" ? `Requested value mapped: ${valueLedger.label}` : "",
+      geo?.visibilityScore !== null && geo?.visibilityScore !== undefined ? `Visibility score captured: ${geo.visibilityScore}` : "",
+      serviceOnboarding.length ? `${serviceOnboarding.length} service lane(s) connected to the portal` : "",
+      client.websiteUrl ? `Website connected: ${client.websiteUrl}` : ""
+    ].filter(Boolean).slice(0, 4),
+    risks: missingItems.slice(0, 4),
+    nextMove: getClientPortalRecommendations(client)[0] || null
+  };
+}
+
 function getClientPortalProgress(client) {
   const hasWebsite = Boolean(client.websiteUrl);
-  const services = new Set([...(client.services || []), ...(client.plannedServices || [])]);
+  const services = new Set(getClientPortalServiceIds(client));
   const geo = getClientPortalGeoSummary(client);
   const hasServices = Boolean(services.size);
   const hasWebsiteBuild = services.has("website-build") || services.has("web-helper-care");
@@ -4603,15 +4899,15 @@ function getClientPortalProgress(client) {
 }
 
 function getClientPortalMoneyRows(client) {
-  const serviceCount = Math.max(1, (client.services || []).length + (client.plannedServices || []).length);
-  const requestedValue = typeof getLeadRequestedValue === "function" ? getLeadRequestedValue(client) : null;
+  const serviceCount = Math.max(1, getClientPortalServiceIds(client).length);
+  const valueLedger = getClientPortalValueLedger(client);
   return [
     {
       source: "Active Ghost services",
       leads: serviceCount,
       won: client.depositPaid || client.finalPaymentPaid ? 1 : 0,
-      value: requestedValue?.label || client.plan || "Mapped",
-      note: "Services currently tied to this client record."
+      value: valueLedger.label,
+      note: "Estimated from services currently tied to this client record."
     },
     {
       source: "Website / portal requests",
@@ -4673,6 +4969,11 @@ function buildClientPortalPayload(client, request = null) {
   const supportUrl = buildClientSupportUrl(client, request);
   const updatedAt = client.updatedAt || new Date().toISOString();
   const geo = getClientPortalGeoSummary(client);
+  const valueLedger = getClientPortalValueLedger(client);
+  const serviceOnboarding = getClientPortalServiceOnboarding(client);
+  const nextRequiredAction = getClientPortalNextRequiredAction(client, serviceOnboarding);
+  const eventTimeline = getClientPortalEventTimeline(client);
+  const monthlyReport = getClientPortalMonthlyReport(client, valueLedger, serviceOnboarding);
   const hasWebsiteService = services.some((service) => ["website-build", "web-helper-care"].includes(service.id));
   const primaryServiceNames = services.slice(0, 3).map((service) => service.name).join(", ");
   return {
@@ -4692,7 +4993,7 @@ function buildClientPortalPayload(client, request = null) {
       greeting: `Good Morning, ${client.clientName}`,
       mode: "Connected Mission Control data",
       monthLabel: "Current Snapshot",
-      revenueInfluenced: client.plan || "Mapped",
+      revenueInfluenced: valueLedger.label,
       growthScore: geo?.visibilityScore ?? Math.min(98, 64 + services.filter((service) => service.status === "Active").length * 7 + (client.websiteUrl ? 8 : 0)),
       leadsGenerated: client.stage === "lead" ? 1 : services.length,
       activeServices: services.filter((service) => service.status === "Active").length,
@@ -4706,24 +5007,31 @@ function buildClientPortalPayload(client, request = null) {
           ? "Website connection is pending"
           : "Marketing service workspace is ready",
       services.length ? `${services.length} service lane(s) mapped in Mission Control` : "Service map needs setup",
+      nextRequiredAction ? `Next action: ${nextRequiredAction.title}` : "",
       primaryServiceNames ? `Focus areas: ${primaryServiceNames}` : "Focus areas need confirmation",
       client.stage === "lead" ? "Lead is still in proposal / onboarding flow" : `Current stage: ${client.stage || "client"}`,
       supportUrl ? "Support request link is ready" : "Support request link needs configuration"
     ].filter(Boolean).slice(0, 4),
     services,
     geo,
+    valueLedger,
     moneyRows: getClientPortalMoneyRows(client),
     progress,
+    serviceOnboarding,
+    nextRequiredAction,
+    eventTimeline,
+    monthlyReport,
     support: {
       supportUrl,
       actions: [
+        nextRequiredAction?.title || "",
         client.websiteUrl ? "Request a website update" : "Send onboarding assets",
         "Ask for a campaign change",
         "Send a new offer or service",
         "Request a monthly report",
         "Book a growth review",
         "Ask the AI helper"
-      ],
+      ].filter(Boolean),
       openRequests: progress
         .filter((item) => item.percent < 100)
         .map((item) => ({
