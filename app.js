@@ -7183,6 +7183,9 @@ async function updateLeadStage(clientId, leadStage) {
   }
 
   const payload = buildClientSavePayloadFromRecord(client, overrides);
+  if (overrides.leadStage === "deposit-paid" && isMarketingLeadClient(client)) {
+    payload.stage = "growth-services";
+  }
   try {
     const result = await saveClientRecord(payload);
     if (didClientRepoStoreFail(result)) {
