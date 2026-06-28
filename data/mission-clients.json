@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-28T21:48:02.596Z",
+  "savedAt": "2026-06-28T21:48:09.883Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -567,7 +567,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T21:48:00.784Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -575,7 +575,7 @@
       "businessPhone": "918-924-9195",
       "plan": "Launch + Care",
       "contact": "Alyssa Calma",
-      "notes": "Running website maintenance for e-commerce right now, looking to help grow once she is more stable\nWeb Helper memory is active; moved from handoff into completed/post-build care.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.",
+      "notes": "Running website maintenance for e-commerce right now, looking to help grow once she is more stable\nWeb Helper memory is active; moved from handoff into completed/post-build care.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.",
       "stage": "completed-archived",
       "status": "completed-archived",
       "services": [
@@ -588,7 +588,7 @@
         "local-service"
       ],
       "createdAt": "2026-06-15T11:29:44.107Z",
-      "updatedAt": "2026-06-26T00:39:27.299Z",
+      "updatedAt": "2026-06-28T21:48:09.526Z",
       "source": "runtime"
     },
     {
@@ -684,7 +684,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T21:48:00.784Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -692,7 +692,7 @@
       "businessPhone": "",
       "plan": "Launch + Care",
       "contact": "",
-      "notes": "Primary Ghost AI brand and lead-intelligence backend.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.",
+      "notes": "Primary Ghost AI brand and lead-intelligence backend.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.",
       "stage": "completed-archived",
       "status": "completed-archived",
       "services": [
@@ -704,7 +704,7 @@
       ],
       "plannedServices": [],
       "createdAt": "2026-06-15T11:30:29.578Z",
-      "updatedAt": "2026-06-26T00:39:31.455Z",
+      "updatedAt": "2026-06-28T21:48:03.385Z",
       "source": "runtime"
     },
     {
