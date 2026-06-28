@@ -3569,7 +3569,7 @@ async function persistRuntimeClientToPostgres(client, options = {}) {
         $11, $12, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20,
         $21, $22, $23, $24, $25, $26, $27, $28,
         $29::jsonb, $30::jsonb, $31::jsonb, $32, $33, $34, $35, $36,
-        $37, $38, $39::timestamptz, $40::timestamptz
+        $37, $38::timestamptz, $39::timestamptz
       )
       ON CONFLICT (id) DO UPDATE SET
         client_name = EXCLUDED.client_name,
