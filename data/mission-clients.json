@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-28T19:57:53.251Z",
+  "savedAt": "2026-06-28T21:47:59.952Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -38,7 +38,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.071Z"
+        "updatedAt": "2026-06-28T21:47:59.555Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -95,7 +95,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.071Z"
+        "updatedAt": "2026-06-28T21:47:59.555Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -151,7 +151,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.071Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -208,7 +208,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -267,7 +267,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.071Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -333,7 +333,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -391,7 +391,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -452,7 +452,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.071Z"
+        "updatedAt": "2026-06-28T21:47:59.555Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -509,7 +509,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -567,7 +567,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -626,7 +626,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.071Z"
+        "updatedAt": "2026-06-28T21:47:59.555Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -684,7 +684,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -742,7 +742,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -750,7 +750,7 @@
       "businessPhone": "903-483-4214",
       "plan": "Launch + Care",
       "contact": "Stephen Burch",
-      "notes": "Personal digital business card.\nWeb Helper memory is active; moved from handoff into completed/post-build care.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.",
+      "notes": "Personal digital business card.\nWeb Helper memory is active; moved from handoff into completed/post-build care.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.",
       "stage": "completed-archived",
       "status": "completed-archived",
       "services": [
@@ -763,7 +763,7 @@
         "search-intelligence"
       ],
       "createdAt": "2026-06-15T11:30:34.924Z",
-      "updatedAt": "2026-06-26T00:39:41.805Z",
+      "updatedAt": "2026-06-28T21:47:59.558Z",
       "source": "runtime"
     },
     {
@@ -801,7 +801,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.071Z"
+        "updatedAt": "2026-06-28T21:47:59.555Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -860,7 +860,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.035Z"
+        "updatedAt": "2026-06-28T21:47:59.555Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -868,15 +868,15 @@
       "businessPhone": "210-895-1122",
       "plan": "Launch + Care",
       "contact": "Anna Howard",
-      "notes": "Web Helper memory is active; moved from handoff into completed/post-build care.",
-      "stage": "completed-archived",
-      "status": "completed-archived",
+      "notes": "",
+      "stage": "launch-handoff",
+      "status": "launch-handoff",
       "services": [
         "website-build"
       ],
       "plannedServices": [],
       "createdAt": "2026-06-15T11:29:32.902Z",
-      "updatedAt": "2026-06-28T19:57:53.031Z",
+      "updatedAt": "2026-06-17T20:22:55.692Z",
       "source": "runtime"
     },
     {
@@ -914,7 +914,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -970,7 +970,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -1026,7 +1026,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -1082,7 +1082,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -1136,7 +1136,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.070Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -1190,7 +1190,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.071Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
