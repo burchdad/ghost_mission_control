@@ -1561,12 +1561,22 @@ async function ensureClientPortalAccountTables() {
         email text NOT NULL,
         name text NOT NULL DEFAULT '',
         portal_key_hash text NOT NULL UNIQUE,
+        password_hash text NOT NULL DEFAULT '',
+        role text NOT NULL DEFAULT 'client',
+        permissions jsonb NOT NULL DEFAULT '["portal:read","support:write"]'::jsonb,
         status text NOT NULL DEFAULT 'active',
         source text NOT NULL DEFAULT 'manual',
+        email_verified_at timestamptz,
+        password_updated_at timestamptz,
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now(),
         last_login_at timestamptz
       );
+      ALTER TABLE mission_client_portal_accounts ADD COLUMN IF NOT EXISTS password_hash text NOT NULL DEFAULT '';
+      ALTER TABLE mission_client_portal_accounts ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'client';
+      ALTER TABLE mission_client_portal_accounts ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '["portal:read","support:write"]'::jsonb;
+      ALTER TABLE mission_client_portal_accounts ADD COLUMN IF NOT EXISTS email_verified_at timestamptz;
+      ALTER TABLE mission_client_portal_accounts ADD COLUMN IF NOT EXISTS password_updated_at timestamptz;
       CREATE UNIQUE INDEX IF NOT EXISTS mission_client_portal_accounts_client_email_idx
         ON mission_client_portal_accounts (client_id, lower(email));
       CREATE INDEX IF NOT EXISTS mission_client_portal_accounts_client_id_idx
@@ -1587,6 +1597,37 @@ async function ensureClientPortalAccountTables() {
       );
       CREATE INDEX IF NOT EXISTS mission_client_portal_invites_client_id_idx
         ON mission_client_portal_invites (client_id);
+
+      CREATE TABLE IF NOT EXISTS mission_client_portal_sessions (
+        id text PRIMARY KEY,
+        account_id text NOT NULL REFERENCES mission_client_portal_accounts(id) ON DELETE CASCADE,
+        client_id text NOT NULL REFERENCES mission_clients(id) ON DELETE CASCADE,
+        session_hash text NOT NULL UNIQUE,
+        status text NOT NULL DEFAULT 'active',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        expires_at timestamptz NOT NULL,
+        last_seen_at timestamptz
+      );
+      CREATE INDEX IF NOT EXISTS mission_client_portal_sessions_account_id_idx
+        ON mission_client_portal_sessions (account_id);
+      CREATE INDEX IF NOT EXISTS mission_client_portal_sessions_expires_at_idx
+        ON mission_client_portal_sessions (expires_at);
+
+      CREATE TABLE IF NOT EXISTS mission_client_portal_tokens (
+        id text PRIMARY KEY,
+        account_id text REFERENCES mission_client_portal_accounts(id) ON DELETE CASCADE,
+        client_id text REFERENCES mission_clients(id) ON DELETE CASCADE,
+        email text NOT NULL DEFAULT '',
+        token_hash text NOT NULL UNIQUE,
+        token_type text NOT NULL,
+        status text NOT NULL DEFAULT 'active',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        expires_at timestamptz NOT NULL,
+        used_at timestamptz,
+        metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+      );
+      CREATE INDEX IF NOT EXISTS mission_client_portal_tokens_lookup_idx
+        ON mission_client_portal_tokens (token_type, status, expires_at);
     `);
     return { ok: true, target: "postgres", table: "mission_client_portal_accounts" };
   } catch (error) {
@@ -3734,6 +3775,156 @@ function generateClientPortalKey(prefix = "cp") {
   return `${prefix}_${crypto.randomBytes(18).toString("base64url")}`;
 }
 
+function validateClientPortalPassword(password) {
+  const value = String(password || "");
+  if (value.length < 10) {
+    return "Password must be at least 10 characters.";
+  }
+  if (!/[a-z]/i.test(value) || !/[0-9]/.test(value)) {
+    return "Password must include letters and numbers.";
+  }
+  return "";
+}
+
+function hashPortalPassword(password) {
+  const salt = crypto.randomBytes(16).toString("base64url");
+  const derived = crypto.scryptSync(String(password || ""), salt, 64).toString("base64url");
+  return `scrypt:${salt}:${derived}`;
+}
+
+function verifyPortalPassword(password, storedHash) {
+  const [method, salt, hash] = String(storedHash || "").split(":");
+  if (method !== "scrypt" || !salt || !hash) {
+    return false;
+  }
+  const derived = crypto.scryptSync(String(password || ""), salt, 64);
+  const stored = Buffer.from(hash, "base64url");
+  return stored.length === derived.length && crypto.timingSafeEqual(stored, derived);
+}
+
+function getClientPortalBaseUrl() {
+  return String(process.env.CLIENT_PORTAL_PUBLIC_URL || "https://www.ghostai.solutions/client-portal").replace(/\/+$/, "");
+}
+
+function getClientPortalSiteOrigin() {
+  return getClientPortalBaseUrl().replace(/\/client-portal$/i, "");
+}
+
+async function sendClientPortalEmail({ to, subject, text, html }) {
+  if (!RESEND_API_KEY) {
+    return { ok: false, skipped: true, reason: "RESEND_API_KEY is not configured." };
+  }
+  if (!to) {
+    return { ok: false, skipped: true, reason: "No recipient email." };
+  }
+
+  const email = {
+    from: RESEND_FROM_EMAIL,
+    to: [to],
+    subject,
+    html,
+    text
+  };
+  if (RESEND_REPLY_TO_EMAIL) {
+    email.reply_to = RESEND_REPLY_TO_EMAIL;
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(email)
+    });
+    const body = await response.text();
+    return { ok: response.ok, status: response.status, body: body.slice(0, 1000) };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error) };
+  }
+}
+
+async function createClientPortalSession(accountId, clientId) {
+  const token = generateClientPortalKey("cps");
+  const sessionId = `cps_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
+  await getClientStorePgPool().query(
+    `
+    INSERT INTO mission_client_portal_sessions (
+      id, account_id, client_id, session_hash, status, created_at, expires_at, last_seen_at
+    ) VALUES ($1, $2, $3, $4, 'active', now(), $5::timestamptz, now())
+    RETURNING *;
+    `,
+    [sessionId, accountId, clientId, hashClientPortalSecret(token, "session"), expiresAt]
+  );
+  return { sessionToken: token, expiresAt };
+}
+
+async function resolveClientPortalSession(sessionToken) {
+  const token = String(sessionToken || "").trim();
+  if (!token) {
+    return null;
+  }
+
+  const init = await ensureClientPortalAccountTables();
+  if (!init.ok) {
+    return null;
+  }
+
+  const result = await getClientStorePgPool().query(
+    `
+    UPDATE mission_client_portal_sessions session
+    SET last_seen_at = now()
+    FROM mission_client_portal_accounts account
+    WHERE session.account_id = account.id
+      AND session.session_hash = $1
+      AND session.status = 'active'
+      AND session.expires_at > now()
+      AND account.status = 'active'
+    RETURNING session.client_id, session.account_id, account.email, account.name, account.role, account.permissions;
+    `,
+    [hashClientPortalSecret(token, "session")]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function createClientPortalToken({ accountId = null, clientId = null, email = "", type, ttlMinutes = 60, metadata = {} }) {
+  const token = generateClientPortalKey(type === "magic" ? "magic" : type === "reset" ? "reset" : "verify");
+  const tokenId = `cpt_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
+  const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
+  await getClientStorePgPool().query(
+    `
+    INSERT INTO mission_client_portal_tokens (
+      id, account_id, client_id, email, token_hash, token_type, status, created_at, expires_at, metadata
+    ) VALUES ($1, $2, $3, $4, $5, $6, 'active', now(), $7::timestamptz, $8::jsonb);
+    `,
+    [tokenId, accountId, clientId, normalizePortalEmail(email), hashClientPortalSecret(token, type), type, expiresAt, JSON.stringify(metadata || {})]
+  );
+  return { token, expiresAt };
+}
+
+async function consumeClientPortalToken(token, type) {
+  const key = String(token || "").trim();
+  if (!key) {
+    return null;
+  }
+  const result = await getClientStorePgPool().query(
+    `
+    UPDATE mission_client_portal_tokens
+    SET status = 'used', used_at = now()
+    WHERE token_hash = $1
+      AND token_type = $2
+      AND status = 'active'
+      AND expires_at > now()
+    RETURNING *;
+    `,
+    [hashClientPortalSecret(key, type), type]
+  );
+  return result.rows[0] || null;
+}
+
 async function resolveClientPortalClientIdFromStore(accessKey) {
   const envClientId = resolveClientPortalClientId(accessKey);
   if (envClientId) {
@@ -3884,7 +4075,7 @@ async function findClientPortalInviteClient(inviteKey) {
   };
 }
 
-async function createOrLoadClientPortalAccount({ client, email, name = "", source = "manual", inviteId = "" }) {
+async function createOrLoadClientPortalAccount({ client, email, name = "", password = "", source = "manual", inviteId = "" }) {
   const init = await ensureClientPortalAccountTables();
   if (!init.ok) {
     throw new Error(init.error || init.reason || "Client portal account tables are unavailable.");
@@ -3896,6 +4087,10 @@ async function createOrLoadClientPortalAccount({ client, email, name = "", sourc
   }
   if (!normalizedEmail || !normalizedEmail.includes("@")) {
     throw new Error("A valid email address is required.");
+  }
+  const passwordError = validateClientPortalPassword(password);
+  if (passwordError) {
+    throw new Error(passwordError);
   }
 
   const existing = await getClientStorePgPool().query(
@@ -3919,6 +4114,9 @@ async function createOrLoadClientPortalAccount({ client, email, name = "", sourc
       accountId: existing.rows[0].id,
       clientId: existing.rows[0].client_id,
       email: existing.rows[0].email,
+      name: existing.rows[0].name,
+      role: existing.rows[0].role,
+      permissions: parsePostgresJsonList(existing.rows[0].permissions),
       existing: true,
       accessKey: ""
     };
@@ -3926,12 +4124,13 @@ async function createOrLoadClientPortalAccount({ client, email, name = "", sourc
 
   const accountId = `cpa_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
   const accessKey = generateClientPortalKey("cp");
+  const passwordHash = hashPortalPassword(password);
 
   const result = await getClientStorePgPool().query(
     `
     INSERT INTO mission_client_portal_accounts (
-      id, client_id, email, name, portal_key_hash, status, source, created_at, updated_at, last_login_at
-    ) VALUES ($1, $2, $3, $4, $5, 'active', $6, now(), now(), now())
+      id, client_id, email, name, portal_key_hash, password_hash, role, permissions, status, source, created_at, updated_at, last_login_at, password_updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, 'client', $7::jsonb, 'active', $8, now(), now(), now(), now())
     RETURNING *;
     `,
     [
@@ -3940,6 +4139,8 @@ async function createOrLoadClientPortalAccount({ client, email, name = "", sourc
       normalizedEmail,
       String(name || client.contact || "").trim().slice(0, 160),
       hashClientPortalSecret(accessKey, "portal"),
+      passwordHash,
+      JSON.stringify(["portal:read", "support:write"]),
       source
     ]
   );
@@ -3951,39 +4152,81 @@ async function createOrLoadClientPortalAccount({ client, email, name = "", sourc
     );
   }
 
+  const session = await createClientPortalSession(result.rows[0].id, result.rows[0].client_id);
+  const verifyToken = await createClientPortalToken({
+    accountId: result.rows[0].id,
+    clientId: result.rows[0].client_id,
+    email: result.rows[0].email,
+    type: "verify",
+    ttlMinutes: 60 * 24 * 7
+  });
+  const verifyUrl = `${getClientPortalSiteOrigin()}/api/client-portal/verify-email?token=${encodeURIComponent(verifyToken.token)}`;
+  await sendClientPortalEmail({
+    to: result.rows[0].email,
+    subject: "Verify your Ghost Growth Portal account",
+    text: `Verify your Ghost Growth Portal account: ${verifyUrl}`,
+    html: `<p>Welcome to Ghost Growth Portal.</p><p><a href="${escapeEmailHtml(verifyUrl)}">Verify your email address</a></p>`
+  });
+
   return {
     ok: true,
     accountId: result.rows[0].id,
     clientId: result.rows[0].client_id,
     email: result.rows[0].email,
+    name: result.rows[0].name,
+    role: result.rows[0].role,
+    permissions: parsePostgresJsonList(result.rows[0].permissions),
     existing: false,
-    accessKey
+    accessKey,
+    sessionToken: session.sessionToken,
+    sessionExpiresAt: session.expiresAt
   };
 }
 
-async function signInClientPortalAccount({ email, accessKey }) {
+async function signInClientPortalAccount({ email, password = "", accessKey = "" }) {
   const init = await ensureClientPortalAccountTables();
   if (!init.ok) {
     throw new Error(init.error || init.reason || "Client portal account tables are unavailable.");
   }
 
   const normalizedEmail = normalizePortalEmail(email);
-  const key = String(accessKey || "").trim();
-  if (!normalizedEmail || !key) {
-    throw new Error("Email and portal access key are required.");
+  if (!normalizedEmail) {
+    throw new Error("Email is required.");
   }
 
-  const result = await getClientStorePgPool().query(
-    `
-    UPDATE mission_client_portal_accounts
-    SET last_login_at = now(), updated_at = now()
-    WHERE lower(email) = $1 AND portal_key_hash = $2 AND status = 'active'
-    RETURNING id, client_id, email;
-    `,
-    [normalizedEmail, hashClientPortalSecret(key, "portal")]
+  const params = [normalizedEmail];
+  let where = "lower(email) = $1 AND status = 'active'";
+  if (accessKey) {
+    params.push(hashClientPortalSecret(accessKey, "portal"));
+    where += " AND portal_key_hash = $2";
+  }
+
+  const result = await getClientStorePgPool().query(`SELECT * FROM mission_client_portal_accounts WHERE ${where} LIMIT 1;`, params);
+  const account = result.rows[0];
+  if (!account) {
+    return { ok: false };
+  }
+  if (!accessKey && !verifyPortalPassword(password, account.password_hash)) {
+    return { ok: false };
+  }
+
+  const session = await createClientPortalSession(account.id, account.client_id);
+  await getClientStorePgPool().query(
+    "UPDATE mission_client_portal_accounts SET last_login_at = now(), updated_at = now() WHERE id = $1",
+    [account.id]
   );
 
-  return result.rows[0] ? { ok: true, ...result.rows[0] } : { ok: false };
+  return {
+    ok: true,
+    id: account.id,
+    client_id: account.client_id,
+    email: account.email,
+    name: account.name,
+    role: account.role,
+    permissions: parsePostgresJsonList(account.permissions),
+    sessionToken: session.sessionToken,
+    sessionExpiresAt: session.expiresAt
+  };
 }
 
 function getPortalServiceMeta(serviceId) {
@@ -10694,14 +10937,16 @@ const server = http.createServer((request, response) => {
 
   if (request.method === "GET" && url.pathname === "/mission/client-portal") {
     Promise.all([
+      resolveClientPortalSession(url.searchParams.get("session")),
       resolveClientPortalClientIdFromStore(url.searchParams.get("key")),
       syncClientStore(url.searchParams.get("refresh") === "true")
     ])
-      .then(([clientId]) => {
+      .then(([sessionInfo, keyClientId]) => {
+        const clientId = canonicalClientId(sessionInfo?.client_id || keyClientId);
         if (!clientId) {
           sendJson(request, response, 401, {
             ok: false,
-            error: "Client portal access key is required."
+            error: "Client portal session or access key is required."
           });
           return;
         }
@@ -10715,7 +10960,18 @@ const server = http.createServer((request, response) => {
           return;
         }
 
-        sendJson(request, response, 200, buildClientPortalPayload(client, request));
+        sendJson(request, response, 200, {
+          ...buildClientPortalPayload(client, request),
+          account: sessionInfo
+            ? {
+                id: sessionInfo.account_id,
+                email: sessionInfo.email,
+                name: sessionInfo.name,
+                role: sessionInfo.role || "client",
+                permissions: parsePostgresJsonList(sessionInfo.permissions)
+              }
+            : null
+        });
       })
       .catch((error) => {
         sendJson(request, response, 500, {
@@ -10745,6 +11001,7 @@ const server = http.createServer((request, response) => {
           client: invite.client,
           email: body.email,
           name: body.name,
+          password: body.password,
           source: invite.source === "proposal" ? "proposal_acceptance" : "invite",
           inviteId: invite.inviteId
         });
@@ -10755,11 +11012,15 @@ const server = http.createServer((request, response) => {
             id: account.accountId,
             clientId: account.clientId,
             email: account.email,
-            existing: account.existing
+            existing: account.existing,
+            role: account.role,
+            permissions: account.permissions
           },
           accessKey: account.accessKey,
+          sessionToken: account.sessionToken,
+          sessionExpiresAt: account.sessionExpiresAt,
           client: buildClientResponseRecord(invite.client),
-          portalPath: account.accessKey ? `/client-portal?key=${encodeURIComponent(account.accessKey)}` : ""
+          portalPath: account.sessionToken ? "/client-portal" : ""
         });
       })
       .catch((error) => {
@@ -10776,11 +11037,12 @@ const server = http.createServer((request, response) => {
       .then(async (body) => {
         const email = body.email;
         const accessKey = body.accessKey || body.key;
-        const signIn = await signInClientPortalAccount({ email, accessKey });
+        const password = body.password;
+        const signIn = await signInClientPortalAccount({ email, password, accessKey });
         if (!signIn.ok) {
           sendJson(request, response, 401, {
             ok: false,
-            error: "Portal account not found. Check the email and access key, or create the account from your invite link."
+            error: "Portal account not found. Check the email and password, or create the account from your invite link."
           });
           return;
         }
@@ -10790,10 +11052,14 @@ const server = http.createServer((request, response) => {
           account: {
             id: signIn.id,
             clientId: signIn.client_id,
-            email: signIn.email
+            email: signIn.email,
+            role: signIn.role,
+            permissions: signIn.permissions
           },
           accessKey: String(accessKey || "").trim(),
-          portalPath: `/client-portal?key=${encodeURIComponent(String(accessKey || "").trim())}`
+          sessionToken: signIn.sessionToken,
+          sessionExpiresAt: signIn.sessionExpiresAt,
+          portalPath: "/client-portal"
         });
       })
       .catch((error) => {
@@ -10802,6 +11068,164 @@ const server = http.createServer((request, response) => {
           error: String(error?.message || error || "Unable to sign in to client portal.")
         });
       });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/logout") {
+    readJsonBody(request)
+      .then(async (body) => {
+        const token = String(body.sessionToken || "").trim();
+        if (token) {
+          await ensureClientPortalAccountTables();
+          await getClientStorePgPool().query(
+            "UPDATE mission_client_portal_sessions SET status = 'revoked', last_seen_at = now() WHERE session_hash = $1",
+            [hashClientPortalSecret(token, "session")]
+          );
+        }
+        sendJson(request, response, 200, { ok: true });
+      })
+      .catch((error) => sendJson(request, response, 400, { ok: false, error: String(error?.message || error) }));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/password-reset/request") {
+    readJsonBody(request)
+      .then(async (body) => {
+        await ensureClientPortalAccountTables();
+        const email = normalizePortalEmail(body.email);
+        const accountResult = await getClientStorePgPool().query(
+          "SELECT * FROM mission_client_portal_accounts WHERE lower(email) = $1 AND status = 'active' LIMIT 1",
+          [email]
+        );
+        if (accountResult.rows[0]) {
+          const account = accountResult.rows[0];
+          const reset = await createClientPortalToken({ accountId: account.id, clientId: account.client_id, email: account.email, type: "reset", ttlMinutes: 60 });
+          const resetUrl = `${getClientPortalBaseUrl()}/reset-password?token=${encodeURIComponent(reset.token)}`;
+          await sendClientPortalEmail({
+            to: account.email,
+            subject: "Reset your Ghost Growth Portal password",
+            text: `Reset your password: ${resetUrl}`,
+            html: `<p>Reset your Ghost Growth Portal password.</p><p><a href="${escapeEmailHtml(resetUrl)}">Reset password</a></p>`
+          });
+        }
+        sendJson(request, response, 200, { ok: true, message: "If that email has a portal account, a reset link has been sent." });
+      })
+      .catch((error) => sendJson(request, response, 400, { ok: false, error: String(error?.message || error) }));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/password-reset/confirm") {
+    readJsonBody(request)
+      .then(async (body) => {
+        await ensureClientPortalAccountTables();
+        const passwordError = validateClientPortalPassword(body.password);
+        if (passwordError) {
+          throw new Error(passwordError);
+        }
+        const tokenRow = await consumeClientPortalToken(body.token, "reset");
+        if (!tokenRow?.account_id) {
+          sendJson(request, response, 400, { ok: false, error: "Reset link is invalid or expired." });
+          return;
+        }
+        await getClientStorePgPool().query(
+          "UPDATE mission_client_portal_accounts SET password_hash = $1, password_updated_at = now(), updated_at = now() WHERE id = $2",
+          [hashPortalPassword(body.password), tokenRow.account_id]
+        );
+        await getClientStorePgPool().query(
+          "UPDATE mission_client_portal_sessions SET status = 'revoked' WHERE account_id = $1",
+          [tokenRow.account_id]
+        );
+        sendJson(request, response, 200, { ok: true });
+      })
+      .catch((error) => sendJson(request, response, 400, { ok: false, error: String(error?.message || error) }));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/magic-link/request") {
+    readJsonBody(request)
+      .then(async (body) => {
+        await ensureClientPortalAccountTables();
+        const email = normalizePortalEmail(body.email);
+        const accountResult = await getClientStorePgPool().query(
+          "SELECT * FROM mission_client_portal_accounts WHERE lower(email) = $1 AND status = 'active' LIMIT 1",
+          [email]
+        );
+        if (accountResult.rows[0]) {
+          const account = accountResult.rows[0];
+          const magic = await createClientPortalToken({ accountId: account.id, clientId: account.client_id, email: account.email, type: "magic", ttlMinutes: 20 });
+          const magicUrl = `${getClientPortalSiteOrigin()}/api/client-portal/magic/consume?token=${encodeURIComponent(magic.token)}`;
+          await sendClientPortalEmail({
+            to: account.email,
+            subject: "Sign in to Ghost Growth Portal",
+            text: `Sign in to Ghost Growth Portal: ${magicUrl}`,
+            html: `<p>Use this secure link to sign in to Ghost Growth Portal.</p><p><a href="${escapeEmailHtml(magicUrl)}">Sign in</a></p>`
+          });
+        }
+        sendJson(request, response, 200, { ok: true, message: "If that email has a portal account, a magic link has been sent." });
+      })
+      .catch((error) => sendJson(request, response, 400, { ok: false, error: String(error?.message || error) }));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/magic-link/consume") {
+    readJsonBody(request)
+      .then(async (body) => {
+        await ensureClientPortalAccountTables();
+        const tokenRow = await consumeClientPortalToken(body.token, "magic");
+        if (!tokenRow?.account_id || !tokenRow?.client_id) {
+          sendJson(request, response, 400, { ok: false, error: "Magic link is invalid or expired." });
+          return;
+        }
+        const session = await createClientPortalSession(tokenRow.account_id, tokenRow.client_id);
+        sendJson(request, response, 200, { ok: true, sessionToken: session.sessionToken, sessionExpiresAt: session.expiresAt });
+      })
+      .catch((error) => sendJson(request, response, 400, { ok: false, error: String(error?.message || error) }));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/verify-email") {
+    readJsonBody(request)
+      .then(async (body) => {
+        await ensureClientPortalAccountTables();
+        const tokenRow = await consumeClientPortalToken(body.token, "verify");
+        if (!tokenRow?.account_id) {
+          sendJson(request, response, 400, { ok: false, error: "Verification link is invalid or expired." });
+          return;
+        }
+        await getClientStorePgPool().query(
+          "UPDATE mission_client_portal_accounts SET email_verified_at = now(), updated_at = now() WHERE id = $1",
+          [tokenRow.account_id]
+        );
+        sendJson(request, response, 200, { ok: true });
+      })
+      .catch((error) => sendJson(request, response, 400, { ok: false, error: String(error?.message || error) }));
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/client-portal/change-password") {
+    readJsonBody(request)
+      .then(async (body) => {
+        const sessionInfo = await resolveClientPortalSession(body.sessionToken);
+        if (!sessionInfo?.account_id) {
+          sendJson(request, response, 401, { ok: false, error: "Client portal session is required." });
+          return;
+        }
+        const passwordError = validateClientPortalPassword(body.newPassword);
+        if (passwordError) {
+          throw new Error(passwordError);
+        }
+        const accountResult = await getClientStorePgPool().query("SELECT * FROM mission_client_portal_accounts WHERE id = $1 LIMIT 1", [sessionInfo.account_id]);
+        if (!verifyPortalPassword(body.currentPassword, accountResult.rows[0]?.password_hash)) {
+          sendJson(request, response, 401, { ok: false, error: "Current password is incorrect." });
+          return;
+        }
+        await getClientStorePgPool().query(
+          "UPDATE mission_client_portal_accounts SET password_hash = $1, password_updated_at = now(), updated_at = now() WHERE id = $2",
+          [hashPortalPassword(body.newPassword), sessionInfo.account_id]
+        );
+        sendJson(request, response, 200, { ok: true });
+      })
+      .catch((error) => sendJson(request, response, 400, { ok: false, error: String(error?.message || error) }));
     return;
   }
 
