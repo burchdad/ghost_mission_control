@@ -3784,6 +3784,82 @@ async function findClientPortalInviteClient(inviteKey) {
     throw new Error(init.error || init.reason || "Client portal account tables are unavailable.");
   }
 
+  const approvalTable = await getClientStorePgPool().query("SELECT to_regclass('public.proposal_approvals') AS table_name");
+  if (approvalTable.rows[0]?.table_name) {
+    const approvalResult = await getClientStorePgPool().query(
+      "SELECT * FROM proposal_approvals WHERE approval_id::text = $1 LIMIT 1",
+      [key]
+    );
+    const approval = approvalResult.rows[0];
+    if (approval) {
+      const selectedServices = parsePostgresJsonList(approval.selected_services);
+      const serviceIds = selectedServices.map((service) => String(service.id || "").trim()).filter(Boolean);
+      const clientId = canonicalClientId(`marketing-${approval.approval_id}`);
+      const clientName = String(approval.company || approval.signer_name || "Marketing Client").trim();
+      const signedAt = postgresTimestampToIso(approval.signed_at || approval.created_at);
+      const monthlyTotal = Number(approval.monthly_total || 0);
+      const client = normalizeClient({
+        id: clientId,
+        clientName,
+        stage: "lead",
+        leadStage: "agreement-returned",
+        leadSource: "marketing-proposal",
+        leadSourceDetail: `Approved marketing proposal ${approval.approval_id}`,
+        relationshipType: "client",
+        pricingTier: "marketing-custom",
+        proposalSent: true,
+        proposalSigned: true,
+        services: [],
+        plannedServices: serviceIds,
+        businessEmail: approval.signer_email,
+        plan: monthlyTotal ? `$${monthlyTotal.toLocaleString("en-US")}/mo marketing scope` : "Marketing proposal approved",
+        contact: [approval.signer_name, approval.signer_email].filter(Boolean).join(" / "),
+        notes: [
+          `Marketing proposal approved: ${approval.approval_id}`,
+          `Signer: ${approval.signer_name || "Not provided"} <${approval.signer_email || "no email"}>`,
+          `Selected services: ${selectedServices.map((service) => service.title || service.id).filter(Boolean).join(", ") || "Not provided"}`,
+          approval.notes ? `Notes: ${approval.notes}` : ""
+        ].filter(Boolean).join("\n"),
+        proposals: [
+          {
+            id: "marketing-proposal",
+            token: key,
+            status: "approved",
+            title: `${clientName} Marketing Scope`,
+            scope: selectedServices.map((service) => `${service.title} - $${Number(service.price || 0).toLocaleString("en-US")}/mo`).join("\n"),
+            investment: monthlyTotal ? `$${monthlyTotal.toLocaleString("en-US")}/mo` : "Marketing scope approved",
+            timeline: "Marketing onboarding after portal activation",
+            clientNeeds: "Portal account, billing setup, kickoff assets, approval contact.",
+            cta: "Create client portal account and begin onboarding.",
+            createdAt: signedAt,
+            updatedAt: signedAt,
+            sentAt: signedAt
+          }
+        ],
+        activityEvents: [
+          {
+            id: `marketing-approved-${approval.approval_id}`,
+            type: "proposal_signed",
+            label: "Marketing proposal approved",
+            detail: monthlyTotal ? `$${monthlyTotal.toLocaleString("en-US")}/mo scope approved.` : "Marketing scope approved.",
+            at: signedAt,
+            actor: "proposal_site"
+          }
+        ],
+        createdAt: signedAt,
+        updatedAt: new Date().toISOString()
+      });
+
+      await persistRuntimeClientToPostgres(client);
+      return {
+        client,
+        source: "marketing_proposal",
+        proposal: client.proposals[0],
+        inviteId: ""
+      };
+    }
+  }
+
   const result = await getClientStorePgPool().query(
     `
     SELECT invite.*, client.*
