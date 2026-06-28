@@ -365,6 +365,12 @@ const leadSourceDefinitions = [
     status: "active"
   },
   {
+    id: "marketing-proposal",
+    label: "Marketing Proposal",
+    detail: "Approved marketing proposal, custom monthly scope, or direct campaign client.",
+    status: "active"
+  },
+  {
     id: "ai-outreach",
     label: "AI Outreach",
     detail: "Future outbound AI outreach and follow-up campaigns.",
@@ -7202,6 +7208,9 @@ function getLeadDeskNextAction(client) {
     return "Follow up on deposit payment.";
   }
   if (column === "deposit-paid") {
+    if (isMarketingLeadClient(client)) {
+      return "Closed marketing client - start marketing onboarding and service kickoff.";
+    }
     return "Queued in Web Clients for the initial website build.";
   }
   return "Decide whether to revive, archive, or remove this lead.";
@@ -7249,7 +7258,37 @@ function getLeadRequestedServices(client) {
   return [...new Set([...(client.services || []), ...(client.plannedServices || [])])];
 }
 
+function isMarketingLeadClient(client) {
+  const services = getLeadRequestedServices(client);
+  const hasWebsiteService = services.some((service) => ["website-build", "web-helper-care"].includes(service));
+  const hasMarketingService = services.some((service) =>
+    ["content-social", "paid-ads", "social-media-ads", "google-ads", "search-intelligence", "google-business-profile", "reporting"].includes(service)
+  );
+  return client?.leadSource === "marketing-proposal" || (hasMarketingService && !hasWebsiteService);
+}
+
+function getMarketingProposalMonthlyValue(client) {
+  if (client?.leadSource !== "marketing-proposal") {
+    return 0;
+  }
+  const plan = String(client.plan || "");
+  const match = plan.match(/\$([\d,]+(?:\.\d+)?)(?:\s*\/\s*mo|\s*monthly|\s*\/month)/i);
+  if (!match) {
+    return 0;
+  }
+  return Number(match[1].replace(/,/g, "")) || 0;
+}
+
 function getLeadRequestedValue(client) {
+  const marketingMonthly = getMarketingProposalMonthlyValue(client);
+  if (marketingMonthly) {
+    return {
+      oneTime: 0,
+      monthly: marketingMonthly,
+      services: getLeadRequestedServices(client)
+    };
+  }
+
   const services = getLeadRequestedServices(client);
   const totals = services.reduce((sum, serviceKey) => {
     const estimate = serviceValueEstimates[serviceKey] || {};
@@ -7435,7 +7474,9 @@ function getLeadNotificationItems(client) {
     return [
       {
         title: "Closed lead queued",
-        detail: "This won client is visible in Web Clients for website build work.",
+        detail: isMarketingLeadClient(client)
+          ? "This won client is ready for marketing services, onboarding assets, and campaign kickoff."
+          : "This won client is visible in Web Clients for website build work.",
         status: "ready"
       }
     ];

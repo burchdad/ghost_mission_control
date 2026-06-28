@@ -133,6 +133,7 @@ const LEAD_SOURCE_DEFINITIONS = [
   { id: "lead-command-center", label: "Ghost Lead Command" },
   { id: "digital-business-card", label: "Digital Business Card" },
   { id: "email", label: "Email" },
+  { id: "marketing-proposal", label: "Marketing Proposal" },
   { id: "ai-outreach", label: "AI Outreach" },
   { id: "other", label: "Other / Manual" }
 ];
@@ -3775,25 +3776,54 @@ function generateClientPortalKey(prefix = "cp") {
   return `${prefix}_${crypto.randomBytes(18).toString("base64url")}`;
 }
 
-async function registerMarketingProposalApproval({ approvalId, signer = {}, selectedServices = [], monthlyTotal = 0, signedAt = "" }) {
-  const init = await ensureClientPortalAccountTables();
-  if (!init.ok) {
-    throw new Error(init.error || init.reason || "Client portal account tables are unavailable.");
-  }
+const marketingProposalServiceMap = {
+  photo: ["content-social"],
+  video: ["content-social"],
+  drone: ["content-social"],
+  local: ["google-business-profile", "search-intelligence"],
+  geo: ["search-intelligence"],
+  ads: ["paid-ads"],
+  social: ["content-social"],
+  reviews: ["content-social", "google-business-profile"],
+  reporting: ["reporting"]
+};
 
+function mapMarketingProposalServices(selectedServices = []) {
+  const selected = Array.isArray(selectedServices) ? selectedServices : [];
+  const mapped = selected.flatMap((service) => {
+    const id = String(service?.id || service || "").trim().toLowerCase();
+    return marketingProposalServiceMap[id] || [id].filter(Boolean);
+  });
+  return uniq(mapped);
+}
+
+function buildMarketingProposalClient({ approvalId, signer = {}, selectedServices = [], monthlyTotal = 0, signedAt = "" }) {
   const normalizedApprovalId = String(approvalId || "").trim();
   if (!normalizedApprovalId) {
     throw new Error("Approval ID is required.");
   }
 
   const clientId = canonicalClientId(`marketing-${normalizedApprovalId}`);
-  const signerEmail = normalizePortalEmail(signer.email);
-  const clientName = String(signer.company || signer.name || "Marketing Client").trim();
+  const signerEmail = normalizePortalEmail(signer.email || signer.signer_email);
+  const signerName = String(signer.name || signer.signer_name || "").trim();
+  const clientName = String(signer.company || signer.company_name || signerName || "Marketing Client").trim();
   const selected = Array.isArray(selectedServices) ? selectedServices : [];
-  const serviceIds = selected.map((service) => String(service.id || "").trim()).filter(Boolean);
+  const serviceIds = mapMarketingProposalServices(selected);
   const approvedAt = signedAt || new Date().toISOString();
   const total = Number(monthlyTotal || 0);
-  const client = normalizeClient({
+  const selectedLabel = selected
+    .map((service) => service.title || service.name || service.id)
+    .filter(Boolean)
+    .join(", ");
+  const scope = selected
+    .map((service) => {
+      const title = service.title || service.name || service.id || "Marketing service";
+      const price = Number(service.price || service.monthlyPrice || 0);
+      return `${title} - ${price ? `$${price.toLocaleString("en-US")}/mo` : "included in approved scope"}`;
+    })
+    .join("\n");
+
+  return normalizeClient({
     id: clientId,
     clientName,
     stage: "lead",
@@ -3801,18 +3831,20 @@ async function registerMarketingProposalApproval({ approvalId, signer = {}, sele
     leadSource: "marketing-proposal",
     leadSourceDetail: `Approved marketing proposal ${normalizedApprovalId}`,
     relationshipType: "client",
-    pricingTier: "marketing-custom",
+    pricingTier: "custom",
     proposalSent: true,
+    depositInvoiceSent: true,
     proposalSigned: true,
     services: [],
     plannedServices: serviceIds,
     businessEmail: signerEmail,
     plan: total ? `$${total.toLocaleString("en-US")}/mo marketing scope` : "Marketing proposal approved",
-    contact: [signer.name, signerEmail].filter(Boolean).join(" / "),
+    contact: [signerName, signerEmail].filter(Boolean).join(" / "),
     notes: [
       `Marketing proposal approved: ${normalizedApprovalId}`,
-      `Signer: ${signer.name || "Not provided"} <${signerEmail || "no email"}>`,
-      `Selected services: ${selected.map((service) => service.title || service.id).filter(Boolean).join(", ") || "Not provided"}`,
+      `Signer: ${signerName || "Not provided"} <${signerEmail || "no email"}>`,
+      `Selected proposal items: ${selectedLabel || "Not provided"}`,
+      `Mission Control services: ${serviceIds.join(", ") || "Not mapped"}`,
       signer.notes ? `Notes: ${signer.notes}` : ""
     ].filter(Boolean).join("\n"),
     proposals: [
@@ -3821,7 +3853,7 @@ async function registerMarketingProposalApproval({ approvalId, signer = {}, sele
         token: normalizedApprovalId,
         status: "approved",
         title: `${clientName} Marketing Scope`,
-        scope: selected.map((service) => `${service.title || service.id} - $${Number(service.price || 0).toLocaleString("en-US")}/mo`).join("\n"),
+        scope,
         investment: total ? `$${total.toLocaleString("en-US")}/mo` : "Marketing scope approved",
         timeline: "Marketing onboarding after portal activation",
         clientNeeds: "Portal account, billing setup, kickoff assets, approval contact.",
@@ -3839,11 +3871,37 @@ async function registerMarketingProposalApproval({ approvalId, signer = {}, sele
         detail: total ? `$${total.toLocaleString("en-US")}/mo scope approved.` : "Marketing scope approved.",
         at: approvedAt,
         actor: "proposal_site"
+      },
+      {
+        id: `marketing-services-${normalizedApprovalId}`,
+        type: "services_mapped",
+        label: "Marketing services mapped",
+        detail: serviceIds.length ? serviceIds.join(", ") : "Service map pending.",
+        at: approvedAt,
+        actor: "mission_control"
       }
     ],
     createdAt: approvedAt,
     updatedAt: new Date().toISOString()
   });
+}
+
+async function registerMarketingProposalApproval({ approvalId, signer = {}, selectedServices = [], monthlyTotal = 0, signedAt = "" }) {
+  const init = await ensureClientPortalAccountTables();
+  if (!init.ok) {
+    throw new Error(init.error || init.reason || "Client portal account tables are unavailable.");
+  }
+
+  const normalizedApprovalId = String(approvalId || "").trim();
+  if (!normalizedApprovalId) {
+    throw new Error("Approval ID is required.");
+  }
+
+  const signerEmail = normalizePortalEmail(signer.email);
+  const total = Number(monthlyTotal || 0);
+  const selected = Array.isArray(selectedServices) ? selectedServices : [];
+  const client = buildMarketingProposalClient({ approvalId: normalizedApprovalId, signer, selectedServices: selected, monthlyTotal: total, signedAt });
+  const clientId = client.id;
 
   const saved = await persistRuntimeClientToPostgres(client);
   if (!saved.ok) {
@@ -4086,61 +4144,19 @@ async function findClientPortalInviteClient(inviteKey) {
     const approval = approvalResult.rows[0];
     if (approval) {
       const selectedServices = parsePostgresJsonList(approval.selected_services);
-      const serviceIds = selectedServices.map((service) => String(service.id || "").trim()).filter(Boolean);
-      const clientId = canonicalClientId(`marketing-${approval.approval_id}`);
-      const clientName = String(approval.company || approval.signer_name || "Marketing Client").trim();
       const signedAt = postgresTimestampToIso(approval.signed_at || approval.created_at);
       const monthlyTotal = Number(approval.monthly_total || 0);
-      const client = normalizeClient({
-        id: clientId,
-        clientName,
-        stage: "lead",
-        leadStage: "agreement-returned",
-        leadSource: "marketing-proposal",
-        leadSourceDetail: `Approved marketing proposal ${approval.approval_id}`,
-        relationshipType: "client",
-        pricingTier: "marketing-custom",
-        proposalSent: true,
-        proposalSigned: true,
-        services: [],
-        plannedServices: serviceIds,
-        businessEmail: approval.signer_email,
-        plan: monthlyTotal ? `$${monthlyTotal.toLocaleString("en-US")}/mo marketing scope` : "Marketing proposal approved",
-        contact: [approval.signer_name, approval.signer_email].filter(Boolean).join(" / "),
-        notes: [
-          `Marketing proposal approved: ${approval.approval_id}`,
-          `Signer: ${approval.signer_name || "Not provided"} <${approval.signer_email || "no email"}>`,
-          `Selected services: ${selectedServices.map((service) => service.title || service.id).filter(Boolean).join(", ") || "Not provided"}`,
-          approval.notes ? `Notes: ${approval.notes}` : ""
-        ].filter(Boolean).join("\n"),
-        proposals: [
-          {
-            id: "marketing-proposal",
-            token: key,
-            status: "approved",
-            title: `${clientName} Marketing Scope`,
-            scope: selectedServices.map((service) => `${service.title} - $${Number(service.price || 0).toLocaleString("en-US")}/mo`).join("\n"),
-            investment: monthlyTotal ? `$${monthlyTotal.toLocaleString("en-US")}/mo` : "Marketing scope approved",
-            timeline: "Marketing onboarding after portal activation",
-            clientNeeds: "Portal account, billing setup, kickoff assets, approval contact.",
-            cta: "Create client portal account and begin onboarding.",
-            createdAt: signedAt,
-            updatedAt: signedAt,
-            sentAt: signedAt
-          }
-        ],
-        activityEvents: [
-          {
-            id: `marketing-approved-${approval.approval_id}`,
-            type: "proposal_signed",
-            label: "Marketing proposal approved",
-            detail: monthlyTotal ? `$${monthlyTotal.toLocaleString("en-US")}/mo scope approved.` : "Marketing scope approved.",
-            at: signedAt,
-            actor: "proposal_site"
-          }
-        ],
-        createdAt: signedAt,
-        updatedAt: new Date().toISOString()
+      const client = buildMarketingProposalClient({
+        approvalId: approval.approval_id,
+        signer: {
+          name: approval.signer_name,
+          email: approval.signer_email,
+          company: approval.company,
+          notes: approval.notes
+        },
+        selectedServices,
+        monthlyTotal,
+        signedAt
       });
 
       await persistRuntimeClientToPostgres(client);
@@ -4365,15 +4381,28 @@ function getClientPortalServices(client) {
 
 function getClientPortalProgress(client) {
   const hasWebsite = Boolean(client.websiteUrl);
-  const hasServices = Boolean((client.services || []).length || (client.plannedServices || []).length);
+  const services = new Set([...(client.services || []), ...(client.plannedServices || [])]);
+  const hasServices = Boolean(services.size);
+  const hasWebsiteBuild = services.has("website-build") || services.has("web-helper-care");
+  const hasMarketingServices = ["content-social", "paid-ads", "social-media-ads", "google-ads", "search-intelligence", "google-business-profile", "reporting"].some((service) => services.has(service));
   const webHelper = getWebHelperActivationSummary(client.id);
-  return [
+  const rows = [
     { title: "Client profile", status: client.contact || client.businessEmail ? "Complete" : "Needs details", percent: client.contact || client.businessEmail ? 100 : 45 },
-    { title: "Service map", status: hasServices ? "Complete" : "Needs scope", percent: hasServices ? 100 : 35 },
-    { title: "Website connection", status: hasWebsite ? "Connected" : "Not connected", percent: hasWebsite ? 100 : 20 },
-    { title: "Web Helper support", status: webHelper?.status === "active" ? "Active" : "Prepared", percent: webHelper?.status === "active" ? 100 : 55 },
-    { title: "Monthly growth reporting", status: (client.services || []).includes("reporting") ? "Active" : "Recommended", percent: (client.services || []).includes("reporting") ? 100 : 40 }
+    { title: "Service map", status: hasServices ? "Complete" : "Needs scope", percent: hasServices ? 100 : 35 }
   ];
+  if (hasWebsiteBuild) {
+    rows.push(
+      { title: "Website connection", status: hasWebsite ? "Connected" : "Not connected", percent: hasWebsite ? 100 : 20 },
+      { title: "Web Helper support", status: webHelper?.status === "active" ? "Active" : "Prepared", percent: webHelper?.status === "active" ? 100 : 55 }
+    );
+  }
+  if (hasMarketingServices) {
+    rows.push(
+      { title: "Marketing onboarding", status: client.proposalSigned ? "Scope approved" : "Preparing", percent: client.proposalSigned ? 80 : 45 },
+      { title: "Monthly growth reporting", status: services.has("reporting") ? "Mapped" : "Recommended", percent: services.has("reporting") ? 75 : 40 }
+    );
+  }
+  return rows;
 }
 
 function getClientPortalMoneyRows(client) {
@@ -4436,6 +4465,8 @@ function buildClientPortalPayload(client, request = null) {
   const progress = getClientPortalProgress(client);
   const supportUrl = buildClientSupportUrl(client, request);
   const updatedAt = client.updatedAt || new Date().toISOString();
+  const hasWebsiteService = services.some((service) => ["website-build", "web-helper-care"].includes(service.id));
+  const primaryServiceNames = services.slice(0, 3).map((service) => service.name).join(", ");
   return {
     ok: true,
     generatedAt: new Date().toISOString(),
@@ -4460,18 +4491,23 @@ function buildClientPortalPayload(client, request = null) {
       plannedServices: services.filter((service) => service.status === "Planned").length
     },
     highlights: [
-      client.websiteUrl ? `Website connected: ${client.websiteUrl}` : "Website connection is pending",
+      client.websiteUrl
+        ? `Website connected: ${client.websiteUrl}`
+        : hasWebsiteService
+          ? "Website connection is pending"
+          : "Marketing service workspace is ready",
       services.length ? `${services.length} service lane(s) mapped in Mission Control` : "Service map needs setup",
+      primaryServiceNames ? `Focus areas: ${primaryServiceNames}` : "Focus areas need confirmation",
       client.stage === "lead" ? "Lead is still in proposal / onboarding flow" : `Current stage: ${client.stage || "client"}`,
       supportUrl ? "Support request link is ready" : "Support request link needs configuration"
-    ],
+    ].slice(0, 4),
     services,
     moneyRows: getClientPortalMoneyRows(client),
     progress,
     support: {
       supportUrl,
       actions: [
-        "Request a website update",
+        client.websiteUrl ? "Request a website update" : "Send onboarding assets",
         "Ask for a campaign change",
         "Send a new offer or service",
         "Request a monthly report",
@@ -7194,6 +7230,11 @@ function normalizeLeadSource(value) {
     "digital-business-card": "digital-business-card",
     email: "email",
     gmail: "email",
+    marketing: "marketing-proposal",
+    "marketing-client": "marketing-proposal",
+    "marketing-proposal": "marketing-proposal",
+    proposal: "marketing-proposal",
+    "proposal-site": "marketing-proposal",
     "ai-outreach": "ai-outreach",
     ai: "ai-outreach",
     outreach: "ai-outreach",
