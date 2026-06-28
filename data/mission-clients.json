@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-28T19:57:50.432Z",
+  "savedAt": "2026-06-28T19:57:53.251Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -860,7 +860,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T19:57:50.071Z"
+        "updatedAt": "2026-06-28T19:57:50.035Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -868,15 +868,15 @@
       "businessPhone": "210-895-1122",
       "plan": "Launch + Care",
       "contact": "Anna Howard",
-      "notes": "",
-      "stage": "launch-handoff",
-      "status": "launch-handoff",
+      "notes": "Web Helper memory is active; moved from handoff into completed/post-build care.",
+      "stage": "completed-archived",
+      "status": "completed-archived",
       "services": [
         "website-build"
       ],
       "plannedServices": [],
       "createdAt": "2026-06-15T11:29:32.902Z",
-      "updatedAt": "2026-06-17T20:22:55.692Z",
+      "updatedAt": "2026-06-28T19:57:53.031Z",
       "source": "runtime"
     },
     {
