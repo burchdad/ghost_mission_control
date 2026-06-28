@@ -4865,6 +4865,96 @@ function getClientPortalMonthlyReport(client, valueLedger, serviceOnboarding) {
   };
 }
 
+function buildClientOperatorAssets(client, request = null) {
+  const services = getClientPortalServices(client);
+  const valueLedger = getClientPortalValueLedger(client);
+  const serviceOnboarding = getClientPortalServiceOnboarding(client);
+  const monthlyReport = getClientPortalMonthlyReport(client, valueLedger, serviceOnboarding);
+  const nextRequiredAction = getClientPortalNextRequiredAction(client, serviceOnboarding);
+  const serviceNames = services.map((service) => service.name).join(", ") || "Scope pending";
+  const proposalDraft = {
+    status: "draft",
+    title: `${client.clientName || "Client"} Growth Scope`,
+    scope: [
+      `Recommended service lanes: ${serviceNames}.`,
+      monthlyReport.summary,
+      nextRequiredAction ? `Next required action before kickoff: ${nextRequiredAction.title}.` : ""
+    ].filter(Boolean).join("\n\n"),
+    investment: valueLedger.label || client.plan || "Investment TBD",
+    timeline: client.stage === "lead" ? "Proposal approval, kickoff payment, onboarding, then first delivery sprint." : "Next delivery sprint and monthly reporting cycle.",
+    clientNeeds: serviceOnboarding
+      .flatMap((service) => service.items.filter((item) => item.required && !item.complete).map((item) => `${service.serviceName}: ${item.title}`))
+      .slice(0, 8)
+      .join("\n") || "No major blockers are currently mapped.",
+    cta: "Approve the scope, create or sign into the client portal, and complete the next required action."
+  };
+  const baseUrl = request ? `${request.headers["x-forwarded-proto"] || "https"}://${request.headers.host}` : "";
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    client: buildClientResponseRecord(client),
+    portalPreviewUrl: baseUrl ? `${baseUrl}/mission/client-portal/preview?clientId=${encodeURIComponent(client.id)}` : `/mission/client-portal/preview?clientId=${encodeURIComponent(client.id)}`,
+    proposalDraft,
+    monthlyReport,
+    valueLedger,
+    nextRequiredAction,
+    serviceOnboarding
+  };
+}
+
+function renderClientPortalPreviewPage(client, request) {
+  const payload = buildClientPortalPayload(client, request);
+  const action = payload.nextRequiredAction || {};
+  const ledger = payload.valueLedger || {};
+  const report = payload.monthlyReport || {};
+  const services = payload.services || [];
+  const serviceOnboarding = payload.serviceOnboarding || [];
+  const events = payload.eventTimeline || [];
+  const recommendations = payload.recommendations || [];
+  const list = (items) => items.length ? items.map((item) => `<li>${escapeEmailHtml(item)}</li>`).join("") : "<li>Nothing critical mapped.</li>";
+  return `<!doctype html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${escapeEmailHtml(client.clientName)} Portal Preview</title>
+    <style>
+      :root{color-scheme:dark;--bg:#050a13;--panel:#0b1324;--line:rgba(148,163,184,.2);--cyan:#67e8f9;--gold:#facc15;--text:#f8fafc;--muted:#a8b3c7}
+      *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 75% 10%,rgba(103,232,249,.15),transparent 32rem),var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
+      main{width:min(1180px,calc(100vw - 32px));margin:0 auto;padding:34px 0 50px}.eyebrow{color:var(--cyan);font-size:.75rem;text-transform:uppercase;letter-spacing:.18em;font-weight:800}
+      h1{font-size:clamp(2.2rem,5vw,4.6rem);line-height:.95;margin:.4rem 0 1rem}h2{margin:0 0 1rem;font-size:1.4rem}p{color:var(--muted);line-height:1.6}.grid{display:grid;gap:18px}.two{grid-template-columns:repeat(2,minmax(0,1fr))}.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+      section,.card{border:1px solid var(--line);background:rgba(11,19,36,.82);border-radius:18px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.22)}
+      .metric strong{display:block;font-size:2rem}.pill{display:inline-flex;border:1px solid rgba(103,232,249,.25);background:rgba(103,232,249,.1);color:#cffafe;border-radius:999px;padding:6px 10px;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em}
+      .bar{height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}.bar span{display:block;height:100%;background:var(--cyan)}ul{margin:0;padding-left:1.1rem;color:var(--muted);line-height:1.65}.event{border-left:2px solid rgba(103,232,249,.35);padding-left:14px}
+      @media(max-width:800px){.two,.four{grid-template-columns:1fr}}
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">Ghost Growth Portal Preview</p>
+      <h1>${escapeEmailHtml(client.clientName)}</h1>
+      <p>Owner-side preview generated from the current Mission Control record. This is not a client login session.</p>
+      <div class="grid four">
+        <div class="card metric"><span class="eyebrow">Growth Score</span><strong>${escapeEmailHtml(String(payload.snapshot.growthScore || "0"))}</strong><p>Mission Control score</p></div>
+        <div class="card metric"><span class="eyebrow">Value</span><strong>${escapeEmailHtml(ledger.label || "Mapped")}</strong><p>${escapeEmailHtml(ledger.paidStatus || "")}</p></div>
+        <div class="card metric"><span class="eyebrow">Services</span><strong>${escapeEmailHtml(String(services.length))}</strong><p>${escapeEmailHtml(`${payload.snapshot.activeServices || 0} active / ${payload.snapshot.plannedServices || 0} planned`)}</p></div>
+        <div class="card metric"><span class="eyebrow">Next</span><strong>${escapeEmailHtml(action.urgency || "normal")}</strong><p>${escapeEmailHtml(action.title || "Review monthly report")}</p></div>
+      </div>
+      <div class="grid two" style="margin-top:18px">
+        <section><p class="eyebrow">Next Required Action</p><h2>${escapeEmailHtml(action.title || "Review monthly report")}</h2><p>${escapeEmailHtml(action.detail || "")}</p><span class="pill">${escapeEmailHtml(action.service || "Portal")}</span></section>
+        <section><p class="eyebrow">${escapeEmailHtml(report.period || "Monthly Report")}</p><h2>${escapeEmailHtml(report.title || "Monthly growth report")}</h2><p>${escapeEmailHtml(report.summary || "")}</p><ul>${list(report.wins || [])}</ul></section>
+      </div>
+      <section style="margin-top:18px"><p class="eyebrow">Services</p><div class="grid two">${services.map((service) => `<div class="card"><h2>${escapeEmailHtml(service.name)}</h2><p>${escapeEmailHtml(service.description || "")}</p><span class="pill">${escapeEmailHtml(service.status)}</span><p><strong>${escapeEmailHtml(service.result || "")}</strong></p></div>`).join("") || "<p>No services mapped.</p>"}</div></section>
+      <section style="margin-top:18px"><p class="eyebrow">Service Onboarding</p><div class="grid two">${serviceOnboarding.map((service) => `<div class="card"><h2>${escapeEmailHtml(service.serviceName)} <span class="pill">${escapeEmailHtml(String(service.percent))}% ready</span></h2><div class="bar"><span style="width:${Math.max(0, Math.min(100, Number(service.percent) || 0))}%"></span></div><ul>${list((service.items || []).map((item) => `${item.status}: ${item.title}`))}</ul></div>`).join("") || "<p>No onboarding map yet.</p>"}</div></section>
+      <div class="grid two" style="margin-top:18px">
+        <section><p class="eyebrow">Activity Timeline</p>${events.map((event) => `<div class="event"><h2>${escapeEmailHtml(event.label)}</h2><p>${escapeEmailHtml(event.detail || "")}</p><span class="pill">${escapeEmailHtml(String(event.at || ""))}</span></div>`).join("") || "<p>No events yet.</p>"}</section>
+        <section><p class="eyebrow">Next Moves</p>${recommendations.map((item) => `<div class="card"><h2>${escapeEmailHtml(item.title)}</h2><p>${escapeEmailHtml(item.impact || "")}</p><p>${escapeEmailHtml(item.reason || "")}</p></div>`).join("") || "<p>No recommendations yet.</p>"}</section>
+      </div>
+    </main>
+  </body>
+  </html>`;
+}
+
 function getClientPortalProgress(client) {
   const hasWebsite = Boolean(client.websiteUrl);
   const services = new Set(getClientPortalServiceIds(client));
@@ -11735,6 +11825,23 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "GET" && url.pathname === "/mission/client-portal/preview") {
+    const clientId = canonicalClientId(url.searchParams.get("clientId") || "");
+    syncClientStore(url.searchParams.get("refresh") !== "false")
+      .then(() => {
+        const client = getAllClients().find((entry) => canonicalClientId(entry.id) === clientId);
+        if (!client) {
+          sendHtml(request, response, 404, "<!doctype html><title>Client not found</title><body style=\"font-family:system-ui;background:#050a13;color:#f8fafc;padding:40px\"><h1>Client not found</h1><p>This portal preview is not connected to an active client record.</p></body>");
+          return;
+        }
+        sendHtml(request, response, 200, renderClientPortalPreviewPage(client, request));
+      })
+      .catch((error) => {
+        sendHtml(request, response, 500, `<!doctype html><title>Preview unavailable</title><body style="font-family:system-ui;background:#050a13;color:#f8fafc;padding:40px"><h1>Preview unavailable</h1><p>${escapeEmailHtml(String(error?.message || error || "Unable to load portal preview."))}</p></body>`);
+      });
+    return;
+  }
+
   if (request.method === "POST" && url.pathname === "/mission/client-portal/geo-client") {
     readJsonBody(request)
       .then(async (body) => {
@@ -12117,6 +12224,24 @@ const server = http.createServer((request, response) => {
       })
       .catch((error) => {
         sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/clients/operator-assets") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        await syncClientStore(true);
+        const clientId = canonicalClientId(payload.id || payload.clientId);
+        const client = getAllClients().find((entry) => canonicalClientId(entry.id) === clientId);
+        if (!client) {
+          sendJson(request, response, 404, { ok: false, error: "Client not found." });
+          return;
+        }
+        sendJson(request, response, 200, buildClientOperatorAssets(client, request));
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { ok: false, error: String(error?.message || error || "Unable to generate operator assets.") });
       });
     return;
   }

@@ -5062,9 +5062,13 @@ function renderClientQuickActions(client, options = {}) {
   const provisionButton = shouldShowWebHelperProvision(client)
     ? `<button type="button" data-client-provision-web-helper="${escapeHtml(client.id)}">Provision Web Helper</button>`
     : "";
+  const portalPreviewButton = `<button type="button" data-client-portal-preview="${escapeHtml(client.id)}">Portal Preview</button>`;
+  const operatorAssetsButton = `<button type="button" data-client-operator-assets="${escapeHtml(client.id)}">Create Proposal / Report</button>`;
 
   return `<div class="client-quick-actions">
     ${links || `<span>No links yet</span>`}
+    ${portalPreviewButton}
+    ${operatorAssetsButton}
     ${detailsButton}
     ${provisionButton}
   </div>`;
@@ -6338,6 +6342,81 @@ async function postClientMutation(path, payload) {
     loadWebHelpers("");
   }
   return result;
+}
+
+function openClientPortalPreview(clientId) {
+  if (!clientId) {
+    return;
+  }
+  window.open(apiUrl(`/mission/client-portal/preview?clientId=${encodeURIComponent(clientId)}`), "_blank", "noopener,noreferrer");
+}
+
+function formatOperatorAssetsForClipboard(result) {
+  const proposal = result.proposalDraft || {};
+  const report = result.monthlyReport || {};
+  const next = result.nextRequiredAction || {};
+  const onboarding = Array.isArray(result.serviceOnboarding) ? result.serviceOnboarding : [];
+  return [
+    `CLIENT: ${result.client?.clientName || "Client"}`,
+    `PORTAL PREVIEW: ${result.portalPreviewUrl || ""}`,
+    "",
+    "PROPOSAL DRAFT",
+    `Status: ${proposal.status || "draft"}`,
+    `Title: ${proposal.title || ""}`,
+    `Investment: ${proposal.investment || ""}`,
+    `Timeline: ${proposal.timeline || ""}`,
+    "",
+    proposal.scope || "",
+    "",
+    "CLIENT NEEDS / BLOCKERS",
+    proposal.clientNeeds || "No blockers mapped.",
+    "",
+    `CTA: ${proposal.cta || ""}`,
+    "",
+    "MONTHLY REPORT PREVIEW",
+    `${report.period || ""} - ${report.title || ""}`,
+    report.summary || "",
+    ...(report.wins || []).map((win) => `Win: ${win}`),
+    ...(report.risks || []).map((risk) => `Risk: ${risk}`),
+    "",
+    "NEXT REQUIRED ACTION",
+    `${next.title || ""} (${next.service || "Portal"})`,
+    next.detail || "",
+    "",
+    "SERVICE ONBOARDING",
+    ...onboarding.map((service) => `${service.serviceName}: ${service.percent}% ready`)
+  ].filter((line, index, arr) => line || arr[index - 1]).join("\n");
+}
+
+async function generateClientOperatorAssets(clientId) {
+  const target = document.getElementById("clientProvisionResponse");
+  if (target) {
+    target.textContent = "Generating proposal/report packet...";
+  }
+  try {
+    const response = await fetch(apiUrl("/mission/clients/operator-assets"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ clientId })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+      throw new Error(result.error || `Asset generation failed with status ${response.status}`);
+    }
+    const clipboardText = formatOperatorAssetsForClipboard(result);
+    await copyTextToClipboard(clipboardText);
+    if (target) {
+      const proposal = result.proposalDraft || {};
+      const report = result.monthlyReport || {};
+      target.innerHTML = `Generated and copied proposal/report packet. <a href="${escapeHtml(result.portalPreviewUrl || "#")}" target="_blank" rel="noreferrer">Open portal preview</a><br><strong>${escapeHtml(proposal.title || "Proposal draft")}</strong> - ${escapeHtml(proposal.investment || "Investment TBD")}<br>${escapeHtml(report.summary || "")}`;
+    }
+  } catch (error) {
+    if (target) {
+      target.textContent = String(error.message || error);
+    }
+  }
 }
 
 async function archiveEditingClient() {
@@ -9997,6 +10076,18 @@ async function init() {
       return;
     }
 
+    const portalPreviewTarget = event.target.closest("[data-client-portal-preview]");
+    if (portalPreviewTarget) {
+      openClientPortalPreview(portalPreviewTarget.dataset.clientPortalPreview);
+      return;
+    }
+
+    const operatorAssetsTarget = event.target.closest("[data-client-operator-assets]");
+    if (operatorAssetsTarget) {
+      generateClientOperatorAssets(operatorAssetsTarget.dataset.clientOperatorAssets);
+      return;
+    }
+
     const detailTarget = event.target.closest("[data-client-detail]");
     if (!detailTarget) {
       return;
@@ -10061,6 +10152,18 @@ async function init() {
     const proposalLinkTarget = event.target.closest("[data-copy-proposal-link]");
     if (proposalLinkTarget) {
       copyTextToClipboard(proposalLinkTarget.dataset.copyProposalLink || "", proposalLinkTarget);
+      return;
+    }
+
+    const portalPreviewTarget = event.target.closest("[data-client-portal-preview]");
+    if (portalPreviewTarget) {
+      openClientPortalPreview(portalPreviewTarget.dataset.clientPortalPreview);
+      return;
+    }
+
+    const operatorAssetsTarget = event.target.closest("[data-client-operator-assets]");
+    if (operatorAssetsTarget) {
+      generateClientOperatorAssets(operatorAssetsTarget.dataset.clientOperatorAssets);
       return;
     }
 
