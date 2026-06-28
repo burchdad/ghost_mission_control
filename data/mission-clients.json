@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-28T21:48:01.390Z",
+  "savedAt": "2026-06-28T21:48:02.596Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -914,7 +914,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T21:48:00.784Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -922,7 +922,7 @@
       "businessPhone": "",
       "plan": "Launch + Care",
       "contact": "",
-      "notes": "Dealership CRM property that is currently paused.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper memory is active; moved from handoff into completed/post-build care.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.",
+      "notes": "Dealership CRM property that is currently paused.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper memory is active; moved from handoff into completed/post-build care.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.",
       "stage": "completed-archived",
       "status": "completed-archived",
       "services": [
@@ -932,7 +932,7 @@
       ],
       "plannedServices": [],
       "createdAt": "2026-06-18T11:42:16.965Z",
-      "updatedAt": "2026-06-26T00:39:39.025Z",
+      "updatedAt": "2026-06-28T21:48:02.303Z",
       "source": "runtime"
     },
     {
