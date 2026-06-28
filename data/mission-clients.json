@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-06-28T21:48:09.883Z",
+  "savedAt": "2026-06-28T21:48:13.203Z",
   "storage": "ghost-mission-control-repo",
   "clients": [
     {
@@ -333,7 +333,7 @@
         "recommendedPath": "",
         "success": "",
         "nextStep": "",
-        "updatedAt": "2026-06-28T21:48:00.784Z"
+        "updatedAt": "2026-06-28T21:47:59.554Z"
       },
       "proposals": [],
       "activityEvents": [],
@@ -341,7 +341,7 @@
       "businessPhone": "903-601-4983",
       "plan": "Launch + Care",
       "contact": "Brad Collins",
-      "notes": "Website finished, domain wrapped, final website payment accepted. Web Helper care is active; SEO/monthly contract is the next service step.\nWeb Helper memory is active; moved from handoff into completed/post-build care.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.",
+      "notes": "Website finished, domain wrapped, final website payment accepted. Web Helper care is active; SEO/monthly contract is the next service step.\nWeb Helper memory is active; moved from handoff into completed/post-build care.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.\nWeb Helper handoff automation provisioned helper memory.",
       "stage": "completed-archived",
       "status": "completed-archived",
       "services": [
@@ -353,7 +353,7 @@
         "search-intelligence"
       ],
       "createdAt": "2026-06-14T02:47:39.203Z",
-      "updatedAt": "2026-06-26T00:39:25.562Z",
+      "updatedAt": "2026-06-28T21:48:12.960Z",
       "source": "runtime"
     },
     {
