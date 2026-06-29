@@ -7293,7 +7293,7 @@ function getLeadDeskNextAction(client) {
     return "Follow up for signed agreement.";
   }
   if (column === "agreement-returned") {
-    return "Follow up on deposit payment.";
+    return "Agreement returned - awaiting deposit payment.";
   }
   if (column === "deposit-paid") {
     if (isMarketingLeadClient(client)) {
@@ -7492,7 +7492,7 @@ function getLeadActivityTimeline(client) {
   if (client.proposalSigned || ["agreement-returned", "deposit-paid"].includes(stageId)) {
     activities.push({
       label: "Agreement returned",
-      detail: "Ready for deposit follow-up",
+      detail: client.depositPaid || stageId === "deposit-paid" ? "Deposit confirmed" : "Awaiting deposit payment",
       at: client.updatedAt,
       status: "complete"
     });

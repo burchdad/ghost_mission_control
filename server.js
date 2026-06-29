@@ -4865,6 +4865,17 @@ function getClientPortalMonthlyReport(client, valueLedger, serviceOnboarding) {
   };
 }
 
+function formatPortalPreviewDate(value) {
+  if (!value) {
+    return "Logged";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 function buildClientOperatorAssets(client, request = null) {
   const services = getClientPortalServices(client);
   const valueLedger = getClientPortalValueLedger(client);
@@ -4924,7 +4935,7 @@ function renderClientPortalPreviewPage(client, request) {
       main{width:min(1180px,calc(100vw - 32px));margin:0 auto;padding:34px 0 50px}.eyebrow{color:var(--cyan);font-size:.75rem;text-transform:uppercase;letter-spacing:.18em;font-weight:800}
       h1{font-size:clamp(2.2rem,5vw,4.6rem);line-height:.95;margin:.4rem 0 1rem}h2{margin:0 0 1rem;font-size:1.4rem}p{color:var(--muted);line-height:1.6}.grid{display:grid;gap:18px}.two{grid-template-columns:repeat(2,minmax(0,1fr))}.four{grid-template-columns:repeat(4,minmax(0,1fr))}
       section,.card{border:1px solid var(--line);background:rgba(11,19,36,.82);border-radius:18px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.22)}
-      .metric strong{display:block;font-size:2rem}.pill{display:inline-flex;border:1px solid rgba(103,232,249,.25);background:rgba(103,232,249,.1);color:#cffafe;border-radius:999px;padding:6px 10px;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em}
+      .metric strong{display:block;font-size:clamp(1.35rem,2.2vw,2rem);line-height:1.08;overflow-wrap:normal}.metric.value strong{font-size:clamp(1.2rem,1.7vw,1.7rem)}.pill{display:inline-flex;border:1px solid rgba(103,232,249,.25);background:rgba(103,232,249,.1);color:#cffafe;border-radius:999px;padding:6px 10px;font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.12em}
       .bar{height:8px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}.bar span{display:block;height:100%;background:var(--cyan)}ul{margin:0;padding-left:1.1rem;color:var(--muted);line-height:1.65}.event{border-left:2px solid rgba(103,232,249,.35);padding-left:14px}
       @media(max-width:800px){.two,.four{grid-template-columns:1fr}}
     </style>
@@ -4936,9 +4947,9 @@ function renderClientPortalPreviewPage(client, request) {
       <p>Owner-side preview generated from the current Mission Control record. This is not a client login session.</p>
       <div class="grid four">
         <div class="card metric"><span class="eyebrow">Growth Score</span><strong>${escapeEmailHtml(String(payload.snapshot.growthScore || "0"))}</strong><p>Mission Control score</p></div>
-        <div class="card metric"><span class="eyebrow">Value</span><strong>${escapeEmailHtml(ledger.label || "Mapped")}</strong><p>${escapeEmailHtml(ledger.paidStatus || "")}</p></div>
+        <div class="card metric value"><span class="eyebrow">Value</span><strong>${escapeEmailHtml(ledger.label || "Mapped")}</strong><p>${escapeEmailHtml(ledger.paidStatus || "")}</p></div>
         <div class="card metric"><span class="eyebrow">Services</span><strong>${escapeEmailHtml(String(services.length))}</strong><p>${escapeEmailHtml(`${payload.snapshot.activeServices || 0} active / ${payload.snapshot.plannedServices || 0} planned`)}</p></div>
-        <div class="card metric"><span class="eyebrow">Next</span><strong>${escapeEmailHtml(action.urgency || "normal")}</strong><p>${escapeEmailHtml(action.title || "Review monthly report")}</p></div>
+        <div class="card metric"><span class="eyebrow">Next Action</span><strong>${escapeEmailHtml(action.title || "Review monthly report")}</strong><p>${escapeEmailHtml(action.urgency ? `${action.urgency} priority` : "normal priority")}</p></div>
       </div>
       <div class="grid two" style="margin-top:18px">
         <section><p class="eyebrow">Next Required Action</p><h2>${escapeEmailHtml(action.title || "Review monthly report")}</h2><p>${escapeEmailHtml(action.detail || "")}</p><span class="pill">${escapeEmailHtml(action.service || "Portal")}</span></section>
@@ -4947,7 +4958,7 @@ function renderClientPortalPreviewPage(client, request) {
       <section style="margin-top:18px"><p class="eyebrow">Services</p><div class="grid two">${services.map((service) => `<div class="card"><h2>${escapeEmailHtml(service.name)}</h2><p>${escapeEmailHtml(service.description || "")}</p><span class="pill">${escapeEmailHtml(service.status)}</span><p><strong>${escapeEmailHtml(service.result || "")}</strong></p></div>`).join("") || "<p>No services mapped.</p>"}</div></section>
       <section style="margin-top:18px"><p class="eyebrow">Service Onboarding</p><div class="grid two">${serviceOnboarding.map((service) => `<div class="card"><h2>${escapeEmailHtml(service.serviceName)} <span class="pill">${escapeEmailHtml(String(service.percent))}% ready</span></h2><div class="bar"><span style="width:${Math.max(0, Math.min(100, Number(service.percent) || 0))}%"></span></div><ul>${list((service.items || []).map((item) => `${item.status}: ${item.title}`))}</ul></div>`).join("") || "<p>No onboarding map yet.</p>"}</div></section>
       <div class="grid two" style="margin-top:18px">
-        <section><p class="eyebrow">Activity Timeline</p>${events.map((event) => `<div class="event"><h2>${escapeEmailHtml(event.label)}</h2><p>${escapeEmailHtml(event.detail || "")}</p><span class="pill">${escapeEmailHtml(String(event.at || ""))}</span></div>`).join("") || "<p>No events yet.</p>"}</section>
+        <section><p class="eyebrow">Activity Timeline</p>${events.map((event) => `<div class="event"><h2>${escapeEmailHtml(event.label)}</h2><p>${escapeEmailHtml(event.detail || "")}</p><span class="pill">${escapeEmailHtml(formatPortalPreviewDate(event.at))}</span></div>`).join("") || "<p>No events yet.</p>"}</section>
         <section><p class="eyebrow">Next Moves</p>${recommendations.map((item) => `<div class="card"><h2>${escapeEmailHtml(item.title)}</h2><p>${escapeEmailHtml(item.impact || "")}</p><p>${escapeEmailHtml(item.reason || "")}</p></div>`).join("") || "<p>No recommendations yet.</p>"}</section>
       </div>
     </main>
@@ -8716,7 +8727,7 @@ function getLeadDeskAction(client) {
   }
 
   if (client.proposalSigned) {
-    return "Follow up on deposit payment.";
+    return "Agreement returned - awaiting deposit payment.";
   }
 
   if (client.proposalSent || client.depositInvoiceSent) {
