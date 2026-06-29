@@ -6145,6 +6145,7 @@ function openClientDetail(clientId) {
       ${renderClientQuickActions(client, { includeDetails: false })}
       <p id="clientProvisionResponse" class="command-response client-provision-response" aria-live="polite"></p>
     </div>
+    ${renderLeadClosePlan(client)}
     ${renderClientLeadChecklist(client)}
     ${renderClientProposalWorkspace(client)}
     <div class="client-detail-section">
@@ -6285,6 +6286,9 @@ function buildClientSavePayloadFromRecord(client, overrides = {}) {
     partnershipSigned: Boolean(client.partnershipSigned),
     finalDomainPurchased: client.finalDomainPurchased,
     clientDetailsPending: Boolean(client.clientDetailsPending),
+    discoveryBrief: client.discoveryBrief || {},
+    proposals: client.proposals || [],
+    activityEvents: client.activityEvents || [],
     businessEmail: client.businessEmail || "",
     businessPhone: client.businessPhone || "",
     plan: client.plan || defaultClientPlan,
@@ -6412,6 +6416,115 @@ async function generateClientOperatorAssets(clientId) {
       const report = result.monthlyReport || {};
       target.innerHTML = `Generated and copied proposal/report packet. <a href="${escapeHtml(result.portalPreviewUrl || "#")}" target="_blank" rel="noreferrer">Open portal preview</a><br><strong>${escapeHtml(proposal.title || "Proposal draft")}</strong> - ${escapeHtml(proposal.investment || "Investment TBD")}<br>${escapeHtml(report.summary || "")}`;
     }
+  } catch (error) {
+    if (target) {
+      target.textContent = String(error.message || error);
+    }
+  }
+}
+
+async function copyLeadClosePlan(clientId) {
+  const client = getClientById(clientId);
+  const target = document.getElementById("leadClosePlanResponse");
+  if (!client) {
+    if (target) target.textContent = "Lead record not found.";
+    return;
+  }
+  await copyTextToClipboard(getLeadClosePacket(client));
+  if (target) {
+    target.textContent = "Post-discovery packet copied.";
+  }
+}
+
+async function applyLeadCloseAction(clientId, action) {
+  const client = getClientById(clientId);
+  const target = document.getElementById("leadClosePlanResponse");
+  if (!client) {
+    if (target) target.textContent = "Lead record not found.";
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const events = Array.isArray(client.activityEvents) ? client.activityEvents : [];
+  const eventBase = {
+    at: now,
+    actor: "mission_control"
+  };
+  const actionConfig = {
+    "proposal-sent": {
+      message: "Proposal and invoice marked sent.",
+      overrides: {
+        leadStage: "proposal-sent",
+        proposalSent: true,
+        depositInvoiceSent: true,
+        activityEvents: [
+          ...events,
+          {
+            ...eventBase,
+            id: `proposal-sent-${Date.now()}`,
+            type: "proposal_sent",
+            label: "Proposal sent",
+            detail: "Proposal and deposit invoice marked sent from Close Plan."
+          }
+        ]
+      }
+    },
+    "agreement-returned": {
+      message: "Agreement marked returned.",
+      overrides: {
+        leadStage: "agreement-returned",
+        proposalSent: true,
+        depositInvoiceSent: true,
+        proposalSigned: true,
+        activityEvents: [
+          ...events,
+          {
+            ...eventBase,
+            id: `agreement-returned-${Date.now()}`,
+            type: "agreement_returned",
+            label: "Agreement returned",
+            detail: "Client agreement marked returned from Close Plan."
+          }
+        ]
+      }
+    },
+    "deposit-paid": {
+      message: "Deposit marked paid and lead queued for delivery.",
+      overrides: {
+        stage: "deposit-paid",
+        leadStage: "agreement-returned",
+        proposalSent: true,
+        depositInvoiceSent: true,
+        proposalSigned: true,
+        depositPaid: true,
+        activityEvents: [
+          ...events,
+          {
+            ...eventBase,
+            id: `deposit-paid-${Date.now()}`,
+            type: "deposit_paid",
+            label: "Deposit paid",
+            detail: "Deposit marked paid from Close Plan."
+          }
+        ]
+      }
+    }
+  }[action];
+
+  if (!actionConfig) {
+    if (target) target.textContent = "Unknown lead action.";
+    return;
+  }
+
+  if (target) {
+    target.textContent = "Saving close-plan update...";
+  }
+  try {
+    await saveClientRecord(buildClientSavePayloadFromRecord(client, actionConfig.overrides));
+    if (target) {
+      target.textContent = actionConfig.message;
+    }
+    openClientDetail(clientId);
   } catch (error) {
     if (target) {
       target.textContent = String(error.message || error);
@@ -7746,6 +7859,174 @@ function renderClientLeadChecklist(client) {
   return `<div class="client-detail-section client-detail-section-wide">
     <h3>Lead / Proposal Checklist</h3>
     ${renderLeadChecklistList(client)}
+  </div>`;
+}
+
+function getLeadCloseMilestones(client) {
+  const stageId = getLeadDeskColumnId(client);
+  const discovery = client.discoveryBrief || {};
+  const proposal = (client.proposals || [])[0] || client.latestProposal || null;
+  const laterThanDiscovery = ["proposal-sent", "agreement-returned", "deposit-paid"].includes(stageId) || client.proposalSent || client.proposalSigned || client.depositPaid;
+  const hasDiscovery = hasDiscoveryBriefValues(discovery) || /post-discovery brief/i.test(String(client.notes || "")) || laterThanDiscovery;
+  const hasProposalDraft = Boolean(proposal) || /proposal draft/i.test(String(client.notes || "")) || client.proposalSent || client.depositInvoiceSent || client.proposalSigned || client.depositPaid;
+  const hasContact = Boolean(client.businessEmail || client.businessPhone || client.contact);
+  return [
+    {
+      id: "intake",
+      label: "Lead captured",
+      detail: getLeadSourceLabel(client),
+      status: "complete"
+    },
+    {
+      id: "contact",
+      label: "Contact path",
+      detail: hasContact ? getLeadCardContactLine(client) : "Need email, phone, or decision-maker contact.",
+      status: hasContact ? "complete" : "missing"
+    },
+    {
+      id: "discovery",
+      label: "Discovery brief",
+      detail: hasDiscovery ? (discovery.nextStep || discovery.recommendedPath || "Post-call notes captured.") : "Capture what they want, why now, decision maker, success criteria, and next step.",
+      status: hasDiscovery ? "complete" : stageId === "contacted-discovery" ? "active" : "missing"
+    },
+    {
+      id: "proposal-draft",
+      label: "Scope + proposal",
+      detail: hasProposalDraft ? (proposal?.investment || proposal?.title || "Proposal draft ready.") : "Add scope, investment, timeline, client needs, and CTA.",
+      status: hasProposalDraft ? "complete" : hasDiscovery ? "active" : "missing"
+    },
+    {
+      id: "proposal-sent",
+      label: "Proposal + invoice sent",
+      detail: client.depositInvoiceSent ? "Proposal and deposit invoice are out." : client.proposalSent ? "Proposal sent; invoice status needs confirmation." : "Send the proposal link and deposit invoice.",
+      status: client.proposalSent || client.depositInvoiceSent || ["proposal-sent", "agreement-returned", "deposit-paid"].includes(stageId) ? "complete" : hasProposalDraft ? "active" : "missing"
+    },
+    {
+      id: "agreement",
+      label: "Agreement returned",
+      detail: client.proposalSigned || ["agreement-returned", "deposit-paid"].includes(stageId) ? "Client accepted the scope." : "Follow up until agreement is back.",
+      status: client.proposalSigned || ["agreement-returned", "deposit-paid"].includes(stageId) ? "complete" : client.proposalSent ? "active" : "missing"
+    },
+    {
+      id: "deposit",
+      label: "Deposit paid",
+      detail: client.depositPaid || stageId === "deposit-paid" ? "Ready to move into delivery." : "Collect deposit before production kickoff.",
+      status: client.depositPaid || stageId === "deposit-paid" ? "complete" : client.proposalSigned ? "active" : "missing"
+    }
+  ];
+}
+
+function getLeadCloseRecommendedAction(client) {
+  const milestones = getLeadCloseMilestones(client);
+  const next = milestones.find((item) => item.status !== "complete");
+  if (!next) {
+    return {
+      title: "Move into delivery",
+      detail: isMarketingLeadClient(client) ? "Kick off marketing onboarding and service setup." : "Convert the lead into the correct production lane.",
+      action: ""
+    };
+  }
+  const actions = {
+    contact: "Open the lead and confirm the right contact path.",
+    discovery: "Capture the post-call discovery brief.",
+    "proposal-draft": "Draft the scoped proposal from discovery.",
+    "proposal-sent": "Send proposal, invoice, and approval link.",
+    agreement: "Follow up for agreement return.",
+    deposit: "Collect deposit and start delivery."
+  };
+  return {
+    title: next.label,
+    detail: actions[next.id] || next.detail,
+    action: next.id
+  };
+}
+
+function getLeadClosePacket(client) {
+  const discovery = client.discoveryBrief || {};
+  const proposal = (client.proposals || [])[0] || client.latestProposal || {};
+  const services = getLeadRequestedServices(client)
+    .map((serviceKey) => getClientServiceDefinition(serviceKey).label)
+    .filter(Boolean);
+  const milestones = getLeadCloseMilestones(client);
+  const blockers = milestones.filter((item) => item.status !== "complete");
+  const recommendation = getLeadCloseRecommendedAction(client);
+  return [
+    `CLIENT: ${client.clientName}`,
+    `LEAD STAGE: ${getLeadStageLabel(getLeadDeskColumnId(client))}`,
+    `REQUESTED VALUE: ${formatLeadValueBadge(client)}`,
+    `CONTACT: ${getLeadCardContactLine(client)}`,
+    `SOURCE: ${getLeadSourceLabel(client)}${client.leadSourceDetail ? ` - ${client.leadSourceDetail}` : ""}`,
+    "",
+    "REQUESTED SERVICES",
+    services.length ? services.map((service) => `- ${service}`).join("\n") : "- Scope pending",
+    "",
+    "DISCOVERY BRIEF",
+    `Need: ${discovery.need || "Not captured"}`,
+    `Problem: ${discovery.problem || "Not captured"}`,
+    `Decision maker: ${discovery.decisionMaker || "Not captured"}`,
+    `Recommended path: ${discovery.recommendedPath || client.plan || "Not captured"}`,
+    `Success criteria: ${discovery.success || "Not captured"}`,
+    `Next step promised: ${discovery.nextStep || "Not captured"}`,
+    "",
+    "PROPOSAL DRAFT",
+    `Status: ${proposal.status || "Not started"}`,
+    `Title: ${proposal.title || "Not drafted"}`,
+    `Scope: ${proposal.scope || "Not drafted"}`,
+    `Investment: ${proposal.investment || formatLeadValueBadge(client)}`,
+    `Timeline: ${proposal.timeline || "Not drafted"}`,
+    `Client needs: ${proposal.clientNeeds || "Not drafted"}`,
+    `CTA: ${proposal.cta || "Approve scope, pay deposit, or request changes."}`,
+    "",
+    "BLOCKERS / NEXT ACTION",
+    blockers.length ? blockers.map((item) => `- ${item.label}: ${item.detail}`).join("\n") : "- No blockers; move into delivery.",
+    `Owner next move: ${recommendation.detail}`
+  ].join("\n");
+}
+
+function renderLeadClosePlan(client) {
+  if (!isLeadDeskClient(client)) {
+    return "";
+  }
+  const milestones = getLeadCloseMilestones(client);
+  const recommendation = getLeadCloseRecommendedAction(client);
+  const completed = milestones.filter((item) => item.status === "complete").length;
+  const total = milestones.length;
+  const stageId = getLeadDeskColumnId(client);
+  const actions = [];
+  if (!client.proposalSent && stageId !== "deposit-paid") {
+    actions.push(`<button type="button" data-lead-close-action="proposal-sent" data-lead-close-client="${escapeHtml(client.id)}">Mark Proposal Sent</button>`);
+  }
+  if (!client.proposalSigned && stageId !== "deposit-paid") {
+    actions.push(`<button type="button" data-lead-close-action="agreement-returned" data-lead-close-client="${escapeHtml(client.id)}">Mark Agreement Returned</button>`);
+  }
+  if (!client.depositPaid) {
+    actions.push(`<button type="button" data-lead-close-action="deposit-paid" data-lead-close-client="${escapeHtml(client.id)}">Mark Deposit Paid</button>`);
+  }
+
+  return `<div class="client-detail-section client-detail-section-wide lead-close-plan">
+    <div class="lead-close-plan-head">
+      <div>
+        <span class="eyebrow">Close Plan</span>
+        <h3>${escapeHtml(recommendation.title)}</h3>
+        <p>${escapeHtml(recommendation.detail)}</p>
+      </div>
+      <div class="lead-close-score">
+        <strong>${escapeHtml(`${completed}/${total}`)}</strong>
+        <span>ready</span>
+      </div>
+    </div>
+    <div class="lead-close-milestones">
+      ${milestones.map((item) => `<article class="lead-close-milestone is-${escapeHtml(item.status)}">
+        <span>${escapeHtml(item.status)}</span>
+        <strong>${escapeHtml(item.label)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+      </article>`).join("")}
+    </div>
+    <div class="client-detail-actions lead-close-actions">
+      <button type="button" data-copy-close-plan="${escapeHtml(client.id)}">Copy Post-Discovery Packet</button>
+      ${actions.join("")}
+    </div>
+    <p id="leadClosePlanResponse" class="command-response client-provision-response" aria-live="polite"></p>
   </div>`;
 }
 
@@ -10164,6 +10445,18 @@ async function init() {
     const operatorAssetsTarget = event.target.closest("[data-client-operator-assets]");
     if (operatorAssetsTarget) {
       generateClientOperatorAssets(operatorAssetsTarget.dataset.clientOperatorAssets);
+      return;
+    }
+
+    const closePacketTarget = event.target.closest("[data-copy-close-plan]");
+    if (closePacketTarget) {
+      copyLeadClosePlan(closePacketTarget.dataset.copyClosePlan);
+      return;
+    }
+
+    const closeActionTarget = event.target.closest("[data-lead-close-action][data-lead-close-client]");
+    if (closeActionTarget) {
+      applyLeadCloseAction(closeActionTarget.dataset.leadCloseClient, closeActionTarget.dataset.leadCloseAction);
       return;
     }
 
