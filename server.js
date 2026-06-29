@@ -2859,6 +2859,11 @@ function renderProposalPage(client, proposal) {
   const selectedServices = uniq([...(client.services || []), ...(client.plannedServices || [])])
     .map(getServiceCatalogEntry)
     .slice(0, 8);
+  const portalCreateUrl = `${getClientPortalBaseUrl()}/create-account${client.businessEmail ? `?email=${encodeURIComponent(client.businessEmail)}` : ""}`;
+  const portalSignInUrl = `${getClientPortalBaseUrl()}/sign-in${client.businessEmail ? `?email=${encodeURIComponent(client.businessEmail)}` : ""}`;
+  const discovery = client.discoveryBrief || {};
+  const valueLedger = getClientPortalValueLedger(client);
+  const nextAction = getClientPortalNextRequiredAction(client, getClientPortalServiceOnboarding(client));
   const safeClientName = escapeEmailHtml(client.clientName || "Your Business");
   const safeTitle = escapeEmailHtml(proposal.title || `${client.clientName || "Your Business"} Growth Plan`);
   const safeScope = escapeEmailHtml(proposal.scope || "Ghost AI Solutions will confirm the right starting scope after reviewing discovery notes.");
@@ -2867,9 +2872,17 @@ function renderProposalPage(client, proposal) {
   const safeClientNeeds = escapeEmailHtml(proposal.clientNeeds || "We will confirm the exact assets, access, and approval contact before kickoff.");
   const safeCta = escapeEmailHtml(proposal.cta || "Approve this plan or request changes.");
   const safeStatus = escapeEmailHtml(proposal.status || "draft");
+  const safeValue = escapeEmailHtml(valueLedger.label || safeInvestment);
+  const safeNext = escapeEmailHtml(nextAction?.title || "Confirm scope and kickoff path");
   const serviceCards = selectedServices.length
-    ? selectedServices.map((service) => `<article><span>${escapeEmailHtml(service.category || "service")}</span><h3>${escapeEmailHtml(service.name)}</h3><p>${escapeEmailHtml(service.description || "")}</p><strong>${escapeEmailHtml(service.pricingLabel || "Pricing TBD")}</strong></article>`).join("")
-    : `<article><span>scope</span><h3>Custom Growth Scope</h3><p>Services will be finalized from the proposal notes.</p><strong>${safeInvestment}</strong></article>`;
+    ? selectedServices.map((service) => `<article class="service-card"><span>${escapeEmailHtml(service.category || "service")}</span><h3>${escapeEmailHtml(service.name)}</h3><p>${escapeEmailHtml(service.description || "")}</p><strong>${escapeEmailHtml(service.pricingLabel || "Pricing TBD")}</strong><ul>${(service.nextActions || []).slice(0, 3).map((item) => `<li>${escapeEmailHtml(item)}</li>`).join("")}</ul></article>`).join("")
+    : `<article class="service-card"><span>scope</span><h3>Custom Growth Scope</h3><p>Services will be finalized from the proposal notes.</p><strong>${safeInvestment}</strong></article>`;
+  const discoveryCards = [
+    ["Goal", discovery.need || discovery.primaryGoal || proposal.clientNeeds || "Confirm growth outcome"],
+    ["Problem", discovery.problem || "Confirm current bottleneck"],
+    ["Success", discovery.success || "Define the win before kickoff"],
+    ["Next Step", discovery.nextStep || safeCta]
+  ].map(([label, value]) => `<div class="mini-card"><span>${escapeEmailHtml(label)}</span><strong>${escapeEmailHtml(value)}</strong></div>`).join("");
 
   return `<!doctype html>
 <html lang="en">
@@ -2878,32 +2891,40 @@ function renderProposalPage(client, proposal) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${safeTitle} - Ghost AI Solutions</title>
   <style>
-    :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#07111f;color:#f8fbff}
-    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 75% 4%,rgba(103,232,249,.16),transparent 33%),linear-gradient(180deg,#081425,#050914);color:#f8fbff}
-    main{width:min(1120px,calc(100vw - 32px));margin:0 auto;padding:42px 0 64px}
-    header{min-height:52vh;display:grid;align-items:center;border-bottom:1px solid rgba(255,255,255,.1)}
+    :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#07111f;color:#f8fbff;--cyan:#67e8f9;--gold:#fde68a;--line:rgba(255,255,255,.12);--muted:#c7d2e1}
+    *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 74% 5%,rgba(103,232,249,.18),transparent 32rem),radial-gradient(circle at 12% 16%,rgba(253,230,138,.1),transparent 24rem),linear-gradient(180deg,#081425,#050914);color:#f8fbff}
+    main{width:min(1180px,calc(100vw - 32px));margin:0 auto;padding:28px 0 64px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 0 26px;color:#cbd5e1}
+    .brand{font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#e0fbff}.topbar a{color:#f8fbff;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:10px 14px;font-weight:800}
+    header{min-height:56vh;display:grid;align-items:center;border:1px solid var(--line);border-radius:26px;background:linear-gradient(135deg,rgba(15,23,42,.86),rgba(2,6,23,.72));padding:34px;box-shadow:0 30px 120px rgba(0,0,0,.35)}
     .eyebrow{color:#67e8f9;text-transform:uppercase;letter-spacing:.18em;font-size:.78rem;font-weight:800}
     h1{font-size:clamp(2.5rem,7vw,6rem);line-height:.96;margin:.4em 0 0;letter-spacing:0}
     h2{font-size:clamp(1.7rem,4vw,3rem);margin:0 0 14px}
     h3{margin:8px 0 8px;font-size:1.15rem}
-    p{color:#c7d2e1;line-height:1.65;font-size:1rem}
+    p{color:var(--muted);line-height:1.65;font-size:1rem}
     .hero-grid{display:grid;gap:28px;grid-template-columns:minmax(0,1.1fr) minmax(280px,.7fr);align-items:end}
-    .status-card,.panel,article{border:1px solid rgba(255,255,255,.12);background:rgba(15,23,42,.72);border-radius:18px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.26)}
+    .status-card,.panel,article,.mini-card{border:1px solid var(--line);background:rgba(15,23,42,.72);border-radius:18px;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.26)}
     .status-card strong{display:block;font-size:2rem;color:#fde68a;margin-top:8px}
     .grid{display:grid;gap:18px}
     .two{grid-template-columns:repeat(2,minmax(0,1fr))}
     .three{grid-template-columns:repeat(3,minmax(0,1fr))}
-    section{padding:34px 0}
-    article span{color:#67e8f9;text-transform:uppercase;letter-spacing:.14em;font-size:.72rem;font-weight:800}
+    .four{grid-template-columns:repeat(4,minmax(0,1fr))}
+    section{padding:28px 0}
+    article span,.mini-card span{color:#67e8f9;text-transform:uppercase;letter-spacing:.14em;font-size:.72rem;font-weight:800}
+    .mini-card strong{display:block;margin-top:8px;color:#fff;line-height:1.35}
     article strong{display:inline-block;margin-top:10px;color:#fde68a}
+    .service-card ul{margin:16px 0 0;padding-left:1.1rem;color:#aebbd0;line-height:1.55}
+    .phase{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start}.phase b{display:grid;place-items:center;width:38px;height:38px;border-radius:999px;background:rgba(103,232,249,.14);border:1px solid rgba(103,232,249,.25);color:#cffafe}
+    .action-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:18px}.action-row a{display:inline-flex;border-radius:12px;padding:13px 16px;font-weight:900;text-decoration:none}.primary{background:#fde68a;color:#07111f}.secondary{border:1px solid rgba(103,232,249,.35);color:#cffafe;background:rgba(103,232,249,.08)}
     .cta{border-color:rgba(103,232,249,.35);background:rgba(8,47,73,.62)}
     .cta strong{display:block;color:#fff;font-size:1.4rem;margin-top:0}
     footer{padding-top:28px;color:#94a3b8;border-top:1px solid rgba(255,255,255,.1)}
-    @media (max-width:820px){.hero-grid,.two,.three{grid-template-columns:1fr} header{min-height:auto;padding:54px 0}}
+    @media (max-width:820px){.hero-grid,.two,.three,.four{grid-template-columns:1fr} header{min-height:auto;padding:24px}.topbar{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
 <body>
   <main>
+    <nav class="topbar"><div class="brand">Ghost AI Solutions</div><a href="${escapeEmailHtml(portalSignInUrl)}">Client Portal</a></nav>
     <header>
       <div class="hero-grid">
         <div>
@@ -2915,12 +2936,14 @@ function renderProposalPage(client, proposal) {
           <span class="eyebrow">Proposal Status</span>
           <strong>${safeStatus}</strong>
           <p>${safeCta}</p>
+          <div class="action-row"><a class="primary" href="mailto:support@ghostai.solutions?subject=${encodeURIComponent(`Approval: ${proposal.title || client.clientName || "Ghost proposal"}`)}">Approve / Ask a Question</a></div>
         </div>
       </div>
     </header>
+    <section class="grid four">${discoveryCards}</section>
     <section class="grid two">
       <div class="panel"><span class="eyebrow">Recommended Scope</span><h2>What We Build First</h2><p>${safeScope}</p></div>
-      <div class="panel"><span class="eyebrow">Investment</span><h2>Commercial Snapshot</h2><p>${safeInvestment}</p></div>
+      <div class="panel"><span class="eyebrow">Investment</span><h2>Commercial Snapshot</h2><p>${safeInvestment}</p><p><strong>${safeValue}</strong></p></div>
     </section>
     <section>
       <span class="eyebrow">Included Services</span>
@@ -2931,10 +2954,19 @@ function renderProposalPage(client, proposal) {
       <div class="panel"><span class="eyebrow">Timeline</span><h2>Expected Motion</h2><p>${safeTimeline}</p></div>
       <div class="panel"><span class="eyebrow">Client Inputs</span><h2>What We Need</h2><p>${safeClientNeeds}</p></div>
     </section>
+    <section class="grid three">
+      <div class="panel phase"><b>1</b><div><span class="eyebrow">Approve</span><h3>Confirm the scope</h3><p>Reply with approval or requested edits so Ghost can lock the plan.</p></div></div>
+      <div class="panel phase"><b>2</b><div><span class="eyebrow">Activate</span><h3>Create portal access</h3><p>Once your invite is issued, create the client portal account tied to this scope.</p></div></div>
+      <div class="panel phase"><b>3</b><div><span class="eyebrow">Kickoff</span><h3>${safeNext}</h3><p>Complete the next required action and move into the first delivery sprint.</p></div></div>
+    </section>
     <section class="panel cta">
       <span class="eyebrow">Next Step</span>
       <strong>${safeCta}</strong>
       <p>Reply to your Ghost AI Solutions contact with approval, requested edits, or any access/assets needed for kickoff.</p>
+      <div class="action-row">
+        <a class="primary" href="${escapeEmailHtml(portalCreateUrl)}">Create Portal Account</a>
+        <a class="secondary" href="${escapeEmailHtml(portalSignInUrl)}">Sign In</a>
+      </div>
     </section>
     <footer>Ghost AI Solutions - Proposal generated from Mission Control.</footer>
   </main>
@@ -2957,7 +2989,7 @@ function getTicketRequesterEmail(ticket) {
 function buildClientUpdateEmailPayload(ticket, task, options = {}) {
   const client = getAllClients().find((entry) => entry.id === ticket.clientId) || {};
   const confirmationUrl = buildClientConfirmationUrl(ticket.id, task.id);
-  const to = String(client.businessEmail || getTicketRequesterEmail(ticket) || options.email || "").trim();
+  const to = String(getTicketRequesterEmail(ticket) || client.businessEmail || options.email || "").trim();
   const clientName = client.clientName || ticket.clientName || "your website";
   const summary = ticket.summary || ticket.title || "Website update completed";
   const pageUrl = ticket.pageUrl || "";
