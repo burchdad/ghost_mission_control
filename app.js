@@ -302,6 +302,7 @@ let commandMemory = [];
 let liveClients = null;
 let novaMessages = [];
 let currentNovaActions = [];
+let liveNovaKernel = null;
 let selectedClientId = "";
 let editingClientId = "";
 let clientModalMode = "client";
@@ -5601,6 +5602,120 @@ function renderExecutiveSection({ eyebrow, title, summary, metrics, actions, ton
   </section>`;
 }
 
+function renderNovaKernelAction(action) {
+  const priority = normalizeExecutivePriority(action.priority);
+  return `<button class="nova-kernel-action priority-${escapeHtml(priority)}" type="button" ${action.view ? `data-view-shortcut="${escapeHtml(action.view)}"` : ""} ${action.command ? `data-nova-command="${escapeHtml(action.command)}"` : ""}>
+    <span class="executive-action-dot priority-${escapeHtml(priority)}" aria-hidden="true"></span>
+    <span>
+      <strong>${escapeHtml(action.title || "NOVA action")}</strong>
+      <small>${escapeHtml(action.department || "NOVA")} / ${escapeHtml(action.detail || "Ready for review.")}</small>
+    </span>
+  </button>`;
+}
+
+function normalizeExecutivePriority(priority) {
+  const value = String(priority || "").toLowerCase();
+  if (value.includes("high") || value.includes("critical") || value.includes("urgent") || value.includes("red")) {
+    return "high";
+  }
+  if (value.includes("medium") || value.includes("normal") || value.includes("yellow")) {
+    return "medium";
+  }
+  return "low";
+}
+
+function renderNovaKernelPanel() {
+  if (!liveNovaKernel) {
+    return `<section class="nova-kernel-panel tone-border-blue">
+      <div class="nova-kernel-head">
+        <div>
+          <span>NOVA CEO</span>
+          <h3>Command Kernel</h3>
+          <p>Kernel snapshot is loading departments, tools, memory, and next actions.</p>
+        </div>
+        <button class="secondary-button" type="button" data-nova-refresh>Refresh Kernel</button>
+      </div>
+    </section>`;
+  }
+
+  const kernel = liveNovaKernel.kernel || {};
+  const summary = liveNovaKernel.summary || {};
+  const actions = liveNovaKernel.actionQueue || [];
+  const departments = liveNovaKernel.departments || [];
+  const tools = liveNovaKernel.tools || [];
+  const memory = liveNovaKernel.memory || [];
+  const activeTools = tools.filter((tool) => tool.status === "active");
+  const needsConfig = tools.filter((tool) => tool.status !== "active");
+
+  return `<section class="nova-kernel-panel tone-border-blue">
+    <div class="nova-kernel-head">
+      <div>
+        <span>NOVA CEO</span>
+        <h3>${escapeHtml(kernel.name || "NOVA")} Command Kernel</h3>
+        <p>${escapeHtml(kernel.mission || "Executive operating system for Ghost AI Solutions.")}</p>
+      </div>
+      <div class="nova-kernel-controls">
+        <span class="status-pill status-green">${escapeHtml(kernel.status || "online")}</span>
+        <button class="secondary-button" type="button" data-nova-refresh>Refresh Kernel</button>
+      </div>
+    </div>
+    <div class="nova-kernel-metrics">
+      ${renderExecutiveMetric("Departments", summary.departments ?? departments.length, "operating lanes")}
+      ${renderExecutiveMetric("Tools", summary.tools ?? tools.length, `${summary.activeTools ?? activeTools.length} active`)}
+      ${renderExecutiveMetric("Action Queue", summary.actionItems ?? actions.length, "ranked next moves")}
+      ${renderExecutiveMetric("Memory", memory.length, "live context cards")}
+    </div>
+    <div class="nova-kernel-layout">
+      <article class="nova-kernel-block">
+        <div class="executive-action-queue-head">
+          <span>Top NOVA Actions</span>
+          <strong>${actions.length}</strong>
+        </div>
+        <div class="executive-action-list">
+          ${actions.length ? actions.slice(0, 6).map(renderNovaKernelAction).join("") : `<div class="pipeline-empty">No NOVA actions queued.</div>`}
+        </div>
+      </article>
+      <article class="nova-kernel-block">
+        <div class="executive-action-queue-head">
+          <span>Departments</span>
+          <strong>${departments.length}</strong>
+        </div>
+        <div class="nova-kernel-chip-grid">
+          ${departments.slice(0, 8).map((department) => `<button class="nova-kernel-chip" type="button" data-nova-command="Review ${escapeHtml(department.name)} department and recommend next action">
+            <strong>${escapeHtml(department.name)}</strong>
+            <small>${escapeHtml(department.status || "active")} / ${escapeHtml(department.purpose || "")}</small>
+          </button>`).join("")}
+        </div>
+      </article>
+      <article class="nova-kernel-block">
+        <div class="executive-action-queue-head">
+          <span>Tool Readiness</span>
+          <strong>${activeTools.length}</strong>
+        </div>
+        <div class="nova-kernel-tool-list">
+          ${tools.slice(0, 10).map((tool) => `<div class="nova-kernel-tool">
+            <span>${escapeHtml(tool.name)}</span>
+            <strong class="${tool.status === "active" ? "text-green" : "text-yellow"}">${escapeHtml(tool.status || "planned")}</strong>
+          </div>`).join("")}
+        </div>
+        ${needsConfig.length ? `<p class="nova-kernel-note">${needsConfig.length} tool(s) still need configuration or activation.</p>` : `<p class="nova-kernel-note">Core tool surface is online.</p>`}
+      </article>
+      <article class="nova-kernel-block">
+        <div class="executive-action-queue-head">
+          <span>Memory State</span>
+          <strong>${memory.length}</strong>
+        </div>
+        <div class="nova-kernel-memory-list">
+          ${memory.map((item) => `<div class="nova-kernel-memory">
+            <strong>${escapeHtml(item.label)}</strong>
+            <p>${escapeHtml(item.value)}</p>
+          </div>`).join("")}
+        </div>
+      </article>
+    </div>
+  </section>`;
+}
+
 function renderExecutiveCommand() {
   if (!elements.executiveCommandBoard) {
     return;
@@ -5767,6 +5882,7 @@ function renderExecutiveCommand() {
   ];
 
   elements.executiveCommandBoard.innerHTML = `
+    ${renderNovaKernelPanel()}
     <div class="executive-kpi-grid">
       ${renderExecutiveMetric("Current MRR", formatExecutiveMoney(monthlyRevenue), monthlyRevenue ? "tracked from records" : "retainer values needed")}
       ${renderExecutiveMetric("Target MRR", "Set target", "add target in Executive Command settings later")}
@@ -10307,6 +10423,45 @@ function getNovaContextSnapshot() {
   };
 }
 
+async function loadNovaKernel() {
+  try {
+    const response = await fetch(apiUrl(`/mission/nova/kernel?view=${encodeURIComponent(activeView)}&site=${encodeURIComponent(activeSiteId || elements.siteSelect?.value || "")}`));
+    if (!response.ok) {
+      throw new Error(`NOVA kernel failed with status ${response.status}`);
+    }
+    liveNovaKernel = await response.json();
+  } catch (error) {
+    liveNovaKernel = {
+      kernel: {
+        name: "NOVA",
+        status: "degraded",
+        mission: "Kernel snapshot unavailable. NOVA can still stage local Mission Control commands."
+      },
+      summary: { departments: 0, tools: 0, activeTools: 0, actionItems: 1 },
+      departments: [],
+      tools: [],
+      memory: [
+        {
+          label: "Kernel Sync",
+          value: String(error?.message || error || "Unable to load NOVA kernel.")
+        }
+      ],
+      actionQueue: [
+        {
+          priority: "high",
+          department: "NOVA Platform",
+          title: "Restore NOVA kernel route",
+          detail: "Mission Control could not load /mission/nova/kernel.",
+          view: "tools",
+          command: "Check NOVA kernel route and backend logs"
+        }
+      ]
+    };
+  }
+
+  renderExecutiveCommand();
+}
+
 async function askNovaAgent() {
   if (!elements.novaAgentInput || !elements.novaAgentStatus || !elements.novaAgentSend) {
     return;
@@ -10325,12 +10480,13 @@ async function askNovaAgent() {
   renderNovaActions([]);
 
   try {
-    const response = await fetch(apiUrl("/mission/nova"), {
+    const response = await fetch(apiUrl("/mission/nova/command"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
+        command: message,
         message,
         siteId: elements.siteSelect?.value || activeSiteId,
         activeView,
@@ -10343,6 +10499,10 @@ async function askNovaAgent() {
     }
 
     const result = await response.json();
+    if (result.kernel) {
+      liveNovaKernel = result.kernel;
+      renderExecutiveCommand();
+    }
     addNovaMessage("nova", result.reply || "I have the context. Pick a next action or ask for a sharper readout.");
     renderNovaActions(result.actions || []);
     elements.novaAgentStatus.textContent = result.provider ? `Powered by ${result.provider}.` : "NOVA response ready.";
@@ -10382,6 +10542,20 @@ function runNovaAction(action) {
   toggleNovaAgent(false);
 }
 
+function stageNovaCommand(command) {
+  const normalizedCommand = String(command || "").trim();
+  if (!normalizedCommand || !elements.novaAgentInput) {
+    return;
+  }
+
+  toggleNovaAgent(true);
+  elements.novaAgentInput.value = normalizedCommand;
+  elements.novaAgentStatus.textContent = "NOVA command staged. Review it, then ask NOVA to route it.";
+  if (elements.commandInput) {
+    elements.commandInput.value = normalizedCommand;
+  }
+}
+
 function setupNovaAgent() {
   if (!elements.novaAgentButton || !elements.novaAgentPanel) {
     return;
@@ -10399,6 +10573,21 @@ function setupNovaAgent() {
       return;
     }
     runNovaAction(currentNovaActions[Number(actionButton.dataset.novaAction)]);
+  });
+  elements.executiveCommandBoard?.addEventListener("click", (event) => {
+    const refreshTarget = event.target.closest("[data-nova-refresh]");
+    if (refreshTarget) {
+      refreshTarget.disabled = true;
+      loadNovaKernel().finally(() => {
+        refreshTarget.disabled = false;
+      });
+      return;
+    }
+
+    const commandTarget = event.target.closest("[data-nova-command]");
+    if (commandTarget) {
+      stageNovaCommand(commandTarget.dataset.novaCommand);
+    }
   });
 
   if (!novaMessages.length) {
@@ -10424,6 +10613,7 @@ async function init() {
   await loadClients();
   loadOnboarding();
   loadServices();
+  loadNovaKernel();
   if (initialSite.id && initialSite.id !== "no-site") {
     loadAgentIntelligence(initialSite.id);
     loadPredictiveSignals(initialSite.id);

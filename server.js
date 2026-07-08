@@ -11630,6 +11630,393 @@ async function getNovaAssistantResponse(payload) {
   };
 }
 
+function getNovaDepartments() {
+  return [
+    {
+      id: "executive-command",
+      name: "Executive Command",
+      status: "active",
+      purpose: "Company-wide prioritization, owner attention, and decision support.",
+      tools: ["mission-command", "nova-action-queue", "client-data-health", "weekly-executive-digest"]
+    },
+    {
+      id: "revenue",
+      name: "Revenue",
+      status: "active",
+      purpose: "Invoices, retainers, proposals, renewals, pricing, and upsell timing.",
+      tools: ["service-pipelines", "client-pricing", "resend-email", "proposal-follow-up"]
+    },
+    {
+      id: "web-helpers",
+      name: "Web Helpers",
+      status: "active",
+      purpose: "Client support tickets, triage, Codex build handoffs, approval gates, and closeout.",
+      tools: ["web-helper-triage", "codex-build-runner", "github-branches", "vercel-preview"]
+    },
+    {
+      id: "build-ops",
+      name: "Build Ops",
+      status: "active",
+      purpose: "Website, app, SaaS, and enterprise platform delivery from discovery to support.",
+      tools: ["build-queue", "github", "vercel", "railway", "codex"]
+    },
+    {
+      id: "client-success",
+      name: "Client Success",
+      status: "active",
+      purpose: "Client records, health, lifecycle stages, handoff, and retention actions.",
+      tools: ["web-clients", "lead-proposals", "service-contracts", "support-links"]
+    },
+    {
+      id: "service-growth",
+      name: "Service Growth",
+      status: "active",
+      purpose: "SEO/AEO/GEO, social, ads, automations, commerce ops, and recurring service expansion.",
+      tools: ["service-pipelines", "seo-aeo-geo", "social-management", "paid-ads", "automation-systems"]
+    },
+    {
+      id: "government",
+      name: "Government",
+      status: "planned",
+      purpose: "Capability statements, RFQ tracking, federal readiness, and procurement tasks.",
+      tools: ["capability-statement", "rfq-watch", "contracts", "government-readiness"]
+    },
+    {
+      id: "nova-platform",
+      name: "NOVA Platform",
+      status: "active",
+      purpose: "Tool registry, department creation, memory, autonomy boundaries, and skill expansion.",
+      tools: ["nova-kernel", "tool-registry", "agent-factory", "memory-index"]
+    }
+  ];
+}
+
+function getNovaToolRegistrySnapshot(serviceCatalog = getServiceCatalog()) {
+  const coreTools = [
+    {
+      id: "nova-kernel",
+      name: "NOVA Command Kernel",
+      category: "ai-operations",
+      status: "active",
+      owner: "NOVA",
+      description: "Routes commands across Mission Control, tools, departments, memory, and action queues.",
+      actions: ["inspect_state", "route_command", "stage_action", "summarize_next_steps"]
+    },
+    {
+      id: "mission-command",
+      name: "Mission Command",
+      category: "command",
+      status: "active",
+      owner: "Automation Supervisor",
+      description: "Turns natural language directives into structured plans and execution paths.",
+      actions: ["dispatch_plan", "open_execution", "record_memory"]
+    },
+    {
+      id: "web-helper-triage",
+      name: "Web Helper Triage",
+      category: "support",
+      status: "active",
+      owner: "Web Helper Agent",
+      description: "Receives client support requests, assesses risk, and routes approved fixes.",
+      actions: ["triage_ticket", "send_to_codex", "request_approval", "archive_ticket"]
+    },
+    {
+      id: "codex-build-runner",
+      name: "Codex Build Runner",
+      category: "build",
+      status: "active",
+      owner: "Codex",
+      description: "Creates testing branches, applies requested changes, pushes commits, and reports back.",
+      actions: ["create_branch", "apply_fix", "run_tests", "report_verification"]
+    },
+    {
+      id: "client-data-health",
+      name: "Client Data Health",
+      category: "data",
+      status: "active",
+      owner: "Client Success",
+      description: "Finds duplicate clients, missing repo links, missing domains, and service mapping gaps.",
+      actions: ["scan_clients", "flag_gaps", "dedupe_records"]
+    },
+    {
+      id: "resend-email",
+      name: "Resend Email",
+      category: "communication",
+      status: process.env.RESEND_API_KEY ? "active" : "needs-config",
+      owner: "Revenue",
+      description: "Sends client review, closeout, support, and upsell emails.",
+      actions: ["send_review_email", "send_status_update", "send_upsell_sequence"]
+    },
+    {
+      id: "github",
+      name: "GitHub",
+      category: "source-control",
+      status: process.env.GITHUB_TOKEN ? "active" : "needs-config",
+      owner: "Build Ops",
+      description: "Branches, commits, pull requests, and repo-aware client work.",
+      actions: ["create_branch", "push_commit", "open_pull_request", "read_repo"]
+    },
+    {
+      id: "vercel",
+      name: "Vercel",
+      category: "deployment",
+      status: process.env.VERCEL_TOKEN ? "active" : "needs-config",
+      owner: "Build Ops",
+      description: "Preview and production deployment verification.",
+      actions: ["read_deployments", "verify_preview", "promote_production"]
+    }
+  ];
+
+  const serviceTools = serviceCatalog.map((service) => ({
+    id: `service-${service.id}`,
+    name: service.name,
+    category: "service-line",
+    status: service.status || "planned",
+    owner: service.owner || "Service Growth",
+    description: service.description || "Service pipeline capability.",
+    actions: service.nextActions || []
+  }));
+
+  return [...coreTools, ...serviceTools];
+}
+
+function getNovaMemoryState(clients = getAllClients(), webHelperRequests = []) {
+  const summary = summarizeClients(clients);
+  const dataHealth = getClientDataHealth(clients);
+  const serviceCatalog = getServiceCatalog();
+  const webHelperTickets = webHelperRequests.filter((request) => !isOperationalWebHelperTask(request));
+  const activeCareClients = clients.filter((client) => normalizeClientStage(client.stage) === "web-helper-care");
+
+  return [
+    {
+      id: "company-operating-model",
+      label: "Operating Model",
+      value: "Ghost Mission Control coordinates leads, builds, web helpers, service pipelines, and executive action."
+    },
+    {
+      id: "client-roster",
+      label: "Client Roster",
+      value: `${summary.clientCount} client records, ${summary.liveCount} live/care records, ${summary.connectionGaps} connection gap(s).`
+    },
+    {
+      id: "data-health",
+      label: "Data Health",
+      value: `${dataHealth.status}; ${dataHealth.duplicateCount} duplicate group(s), ${dataHealth.missingRequiredCount} missing required field set(s).`
+    },
+    {
+      id: "web-helper-state",
+      label: "Web Helper State",
+      value: `${activeCareClients.length} care-stage client(s), ${webHelperTickets.length} support ticket(s) in the operating queue.`
+    },
+    {
+      id: "service-map",
+      label: "Service Map",
+      value: `${serviceCatalog.length} service pipeline(s) available for recurring growth and delivery.`
+    }
+  ];
+}
+
+function createNovaKernelAction(priority, department, title, detail, view = "executive-command", command = "") {
+  return {
+    id: slugify(`${department}-${title}`).slice(0, 72),
+    priority,
+    department,
+    title,
+    detail,
+    view,
+    command
+  };
+}
+
+function normalizeNovaPriority(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (["critical", "urgent", "high", "red"].some((term) => normalized.includes(term))) {
+    return "high";
+  }
+  if (["medium", "yellow", "normal"].some((term) => normalized.includes(term))) {
+    return "medium";
+  }
+  return "low";
+}
+
+function getNovaKernelActionQueue(context = {}, clients = getAllClients(), webHelperRequests = []) {
+  const summary = summarizeClients(clients);
+  const dataHealth = getClientDataHealth(clients);
+  const supportTickets = webHelperRequests.filter((request) => !isOperationalWebHelperTask(request));
+  const blockedTickets = supportTickets.filter((ticket) => String(ticket.status || "").toLowerCase() === "blocked");
+  const reviewTickets = supportTickets.filter((ticket) => /review|external_verification/.test(String(ticket.status || "").toLowerCase()));
+  const pendingAgreementClients = clients.filter((client) =>
+    (client.services || []).some((service) => /pending|needed/i.test(String(service.agreementStatus || service.status || "")))
+  );
+  const queue = [];
+
+  if (blockedTickets[0]) {
+    queue.push(createNovaKernelAction(
+      "high",
+      "Web Helpers",
+      `Unblock ${blockedTickets[0].clientName || blockedTickets[0].client || "support ticket"}`,
+      blockedTickets[0].summary || blockedTickets[0].title || "Ticket needs more details before Codex can safely continue.",
+      "web-helpers",
+      `Review blocked Web Helper ticket ${blockedTickets[0].id}`
+    ));
+  }
+
+  if (reviewTickets[0]) {
+    queue.push(createNovaKernelAction(
+      "high",
+      "Web Helpers",
+      `Review ${reviewTickets[0].clientName || reviewTickets[0].client || "client"} update`,
+      reviewTickets[0].summary || reviewTickets[0].title || "A testing-branch change is ready for owner review.",
+      "web-helpers",
+      `Review and approve Web Helper ticket ${reviewTickets[0].id}`
+    ));
+  }
+
+  if (dataHealth.missingRequiredCount || dataHealth.duplicateCount) {
+    queue.push(createNovaKernelAction(
+      "high",
+      "Client Success",
+      "Clean client data health",
+      `${dataHealth.duplicateCount} duplicate group(s), ${dataHealth.missingRequiredCount} required field gap(s).`,
+      "clients",
+      "Clean client data health and sync records"
+    ));
+  }
+
+  if (pendingAgreementClients[0]) {
+    queue.push(createNovaKernelAction(
+      "medium",
+      "Revenue",
+      `Follow up on ${pendingAgreementClients[0].clientName}`,
+      "Service agreement or care contract status is still pending.",
+      "services",
+      `Prepare agreement follow-up for ${pendingAgreementClients[0].clientName}`
+    ));
+  }
+
+  if (summary.connectionGaps) {
+    queue.push(createNovaKernelAction(
+      "medium",
+      "Build Ops",
+      "Resolve deployment connection gaps",
+      `${summary.connectionGaps} client(s) need website, repo, or Vercel links completed.`,
+      "clients",
+      "Audit client repo, Vercel, and domain links"
+    ));
+  }
+
+  if (summary.websiteBuildCount) {
+    queue.push(createNovaKernelAction(
+      "medium",
+      "Build Ops",
+      "Move active website builds forward",
+      `${summary.websiteBuildCount} build-stage client(s) need the next delivery step.`,
+      "clients",
+      "Advance active website builds"
+    ));
+  }
+
+  queue.push(
+    createNovaKernelAction("low", "Executive Command", "Run weekly executive digest", "Summarize revenue, client risk, active builds, and Web Helper outcomes.", "executive-command", "Prepare weekly executive digest"),
+    createNovaKernelAction("low", "NOVA Platform", "Review new tool integrations", "Confirm newly-added apps expose API actions NOVA can use.", "tools", "Audit tool registry for new NOVA skills")
+  );
+
+  return queue.slice(0, 12);
+}
+
+function inferNovaDepartment(command = "") {
+  const text = String(command || "").toLowerCase();
+  const matches = [
+    { department: "Web Helpers", terms: ["web helper", "ticket", "support", "client update", "codex", "branch", "merge"] },
+    { department: "Revenue", terms: ["invoice", "proposal", "retainer", "upsell", "price", "pricing", "renewal", "payment"] },
+    { department: "Government", terms: ["rfq", "government", "federal", "capability", "naics", "contract"] },
+    { department: "Build Ops", terms: ["build", "deploy", "vercel", "github", "railway", "app", "platform"] },
+    { department: "Service Growth", terms: ["seo", "aeo", "geo", "social", "ads", "automation", "commerce"] },
+    { department: "Client Success", terms: ["client", "handoff", "onboarding", "data", "duplicate", "stage"] }
+  ];
+  return matches.find((entry) => entry.terms.some((term) => text.includes(term)))?.department || "Executive Command";
+}
+
+async function buildNovaKernelSnapshot(context = {}) {
+  const clients = getAllClients();
+  const serviceCatalog = getServiceCatalog();
+  const tools = getNovaToolRegistrySnapshot(serviceCatalog);
+  const departments = getNovaDepartments();
+  const webHelperResult = await readWebHelperRequestsFromPostgres({ limit: 200 }).catch((error) => ({
+    ok: false,
+    error: String(error?.message || error),
+    requests: []
+  }));
+  const webHelperRequests = webHelperResult.requests || [];
+  const actionQueue = getNovaKernelActionQueue(context, clients, webHelperRequests);
+  const memory = getNovaMemoryState(clients, webHelperRequests);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    kernel: {
+      id: "nova",
+      name: "NOVA",
+      status: "online",
+      autonomyLevel: "Level 1 - recommend, stage, and prepare; owner approves irreversible actions",
+      mission: "Executive operating system for Ghost AI Solutions."
+    },
+    summary: {
+      departments: departments.length,
+      tools: tools.length,
+      activeTools: tools.filter((tool) => tool.status === "active").length,
+      actionItems: actionQueue.length,
+      clients: clients.length,
+      webHelperTickets: webHelperRequests.filter((request) => !isOperationalWebHelperTask(request)).length
+    },
+    departments,
+    tools,
+    memory,
+    actionQueue,
+    dataHealth: getClientDataHealth(clients),
+    webHelperSync: {
+      ok: Boolean(webHelperResult.ok),
+      error: webHelperResult.error || ""
+    }
+  };
+}
+
+async function getNovaCommandKernelResponse(payload) {
+  const command = String(payload?.command || payload?.message || "").trim();
+  const context = payload?.context && typeof payload.context === "object" ? payload.context : {};
+  const kernel = await buildNovaKernelSnapshot(context);
+  const base = await getNovaAssistantResponse({
+    ...payload,
+    message: command || "Review Mission Control and recommend the next executive action."
+  });
+  const department = inferNovaDepartment(command);
+  const queue = kernel.actionQueue
+    .filter((item) => item.department === department)
+    .concat(kernel.actionQueue.filter((item) => item.department !== department))
+    .slice(0, 6);
+
+  return {
+    ...base,
+    command,
+    department,
+    routedTo: department,
+    kernel,
+    actionQueue: queue,
+    actions: [
+      ...queue.slice(0, 3).map((item) => ({
+        label: item.title,
+        type: "command",
+        command: item.command || item.title,
+        view: item.view
+      })),
+      ...(base.actions || [])
+    ].slice(0, 6),
+    memoryUpdate: {
+      label: "Command context",
+      value: command ? `NOVA routed "${command}" to ${department}.` : `NOVA reviewed ${kernel.summary.actionItems} queued action(s).`
+    }
+  };
+}
+
 function getCommandPlan(command, siteId) {
   const normalized = String(command || "").trim().toLowerCase();
   const siteLabel = siteId || "active-site";
@@ -13356,6 +13743,45 @@ const server = http.createServer((request, response) => {
           detail: String(error?.message || error)
         });
       });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/nova/kernel") {
+    buildNovaKernelSnapshot({
+      activeView: url.searchParams.get("view") || "mission-control",
+      siteId: url.searchParams.get("site") || getDefaultSiteId()
+    })
+      .then((kernel) => {
+        sendJson(request, response, 200, kernel);
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to build NOVA kernel snapshot",
+          detail: String(error?.message || error)
+        });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/nova/command") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const command = String(payload?.command || payload?.message || "").trim();
+        if (!command) {
+          sendJson(request, response, 400, { error: "NOVA command is required" });
+          return;
+        }
+
+        const novaResponse = await getNovaCommandKernelResponse(payload);
+        sendJson(request, response, 200, {
+          generatedAt: new Date().toISOString(),
+          ...novaResponse
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
     return;
   }
 
