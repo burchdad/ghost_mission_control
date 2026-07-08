@@ -96,6 +96,7 @@ const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const RESEND_FROM_EMAIL = stripWrappingQuotes(String(process.env.RESEND_FROM_EMAIL || process.env.CLIENT_UPDATE_EMAIL_FROM || "Ghost Mission Control <onboarding@resend.dev>").trim());
 const RESEND_REPLY_TO_EMAIL = stripWrappingQuotes(String(process.env.RESEND_REPLY_TO_EMAIL || process.env.SUPPORT_EMAIL || "").trim());
 const CODEX_RUNNER_WORK_ORDER_DIR = String(process.env.CODEX_RUNNER_WORK_ORDER_DIR || ".ghost/web-helper-requests").trim();
+const MONTHLY_GEO_SYNC_DIR = String(process.env.MONTHLY_GEO_SYNC_DIR || ".ghost/monthly-geo-syncs").trim();
 const runtimeClients = [];
 let runtimeClientsHydrated = false;
 let runtimeClientsRepoSyncedAt = 0;
@@ -4134,6 +4135,156 @@ async function registerGeoClientPortalRecord(payload = {}) {
   }
 
   return { ok: true, client, inviteKey: inviteKey || client.id };
+}
+
+function monthlyGeoSyncSecret() {
+  return String(
+    process.env.MONTHLY_GEO_SYNC_SECRET ||
+      process.env.CLIENT_PORTAL_GEO_WEBHOOK_SECRET ||
+      process.env.CLIENT_PORTAL_PROPOSAL_WEBHOOK_SECRET ||
+      process.env.GHOST_MISSION_CONTROL_WEBHOOK_SECRET ||
+      ""
+  ).trim();
+}
+
+function persistMonthlyGeoSyncPayload(payload = {}) {
+  const dir = path.isAbsolute(MONTHLY_GEO_SYNC_DIR) ? MONTHLY_GEO_SYNC_DIR : path.join(ROOT, MONTHLY_GEO_SYNC_DIR);
+  fs.mkdirSync(dir, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const reportId = canonicalClientId(payload.reportId || payload.id || "monthly-geo-sync");
+  const filePath = path.join(dir, `${timestamp}-${reportId}.json`);
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+  return filePath;
+}
+
+function countBy(items = [], keyName = "clientId") {
+  return items.reduce((acc, item) => {
+    const key = canonicalClientId(item?.[keyName] || "");
+    if (!key) return acc;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function findRuntimeClientForGeoSync(input = {}) {
+  const normalized = normalizeClient(input);
+  if (!normalized) return null;
+  const keys = new Set(getClientIdentityKeys(normalized));
+  return runtimeClients.find((client) => (
+    canonicalClientId(client.id) === canonicalClientId(normalized.id) ||
+    getClientIdentityKeys(client).some((key) => keys.has(key))
+  )) || null;
+}
+
+async function registerMonthlyGeoSync(payload = {}) {
+  hydrateRuntimeClients();
+  const now = new Date().toISOString();
+  const clients = Array.isArray(payload.clients) ? payload.clients : [];
+  const plans = Array.isArray(payload.manualActionPlan) ? payload.manualActionPlan : [];
+  const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+  const tasksByClient = countBy(tasks, "clientId");
+  const rawPath = persistMonthlyGeoSyncPayload({ ...payload, receivedAt: now });
+  const synced = [];
+  const errors = [];
+
+  for (const plan of plans) {
+    const clientMeta = clients.find((client) => client.id === plan.clientId) || {};
+    const clientId = canonicalClientId(plan.clientId || clientMeta.id || plan.clientName || clientMeta.name);
+    if (!clientId) continue;
+
+    const manualCount = Array.isArray(plan.manualActions) ? plan.manualActions.length : 0;
+    const taskCount = tasksByClient[clientId] || tasks.filter((task) => canonicalClientId(task.clientId) === clientId).length;
+    const eventId = `monthly-geo-sync-${clientId}-${canonicalClientId(payload.reportId || now)}`;
+    const incoming = normalizeClient({
+      id: clientId,
+      clientName: plan.clientName || clientMeta.name || clientId,
+      websiteUrl: plan.website || clientMeta.website,
+      repo: plan.repositoryTarget || clientMeta.repositoryTarget || clientMeta.githubRepo || "",
+      githubUrl: clientMeta.githubUrl || "",
+      stage: "growth-services",
+      relationshipType: "client",
+      services: ["search-intelligence", "reporting"],
+      plannedServices: ["google-business-profile"],
+      leadSource: "geo-client",
+      leadSourceDetail: payload.reportTitle || "Monthly GEO sync",
+      plan: "Monthly GEO services",
+      notes: [
+        "Monthly GEO client managed by geo.ghostai.solutions.",
+        `Latest sync: ${payload.reportTitle || payload.reportId || "Monday manual action report"}`,
+        `Manual Monday actions: ${manualCount}`,
+        `GEO agent tasks: ${taskCount}`,
+        `Priority keywords: ${(plan.priorityKeywords || []).slice(0, 5).join(", ") || "Not provided"}`
+      ].join("\n"),
+      discoveryBrief: {
+        primaryGoal: "Maintain SEO, AEO, GEO, citation, backlink, and GBP prep for the monthly client.",
+        recommendedPath: "Use GEO for specialist scans/task generation and Mission Control for operator routing.",
+        nextStep: "Review manual Monday actions and approval-required website changes."
+      },
+      proposals: [
+        {
+          id: `monthly-geo-${clientId}`,
+          token: payload.reportId || eventId,
+          status: "active",
+          title: `${plan.clientName || clientMeta.name || clientId} Monthly GEO Agent`,
+          scope: [
+            "SEO / AEO / GEO monitoring",
+            "Citation and backlink opportunity prep",
+            "GBP and review action prep",
+            "Approval-required website implementation tasks"
+          ].join("\n"),
+          investment: "Monthly GEO services",
+          timeline: "Weekly Monday operator prep, weekly audits/research, and ongoing implementation queue.",
+          clientNeeds: (plan.manualActions || []).map((item) => `${item.surface}: ${item.action}`).join("\n"),
+          metadata: { monthlyGeo: true, latestReportId: payload.reportId || "", manualActionPlan: plan },
+          createdAt: payload.createdAt || now,
+          updatedAt: now
+        }
+      ],
+      activityEvents: [
+        {
+          id: eventId,
+          type: "monthly_geo_sync",
+          label: "Monthly GEO sync received",
+          detail: `${manualCount} manual action(s), ${taskCount} GEO task(s), report ${payload.reportId || "pending"}.`,
+          at: now,
+          actor: "geo_ghostai"
+        }
+      ],
+      updatedAt: now
+    });
+
+    if (!incoming) continue;
+
+    const existing = findRuntimeClientForGeoSync(incoming);
+    const merged = existing ? mergeClientRecords(existing, incoming) : incoming;
+    const memoryClient = upsertRuntimeClient(merged);
+    persistRuntimeClients();
+
+    if (isClientStoreDatabaseEnabled()) {
+      const saved = await persistRuntimeClientToPostgres(memoryClient || merged);
+      if (!saved.ok) {
+        errors.push({ clientId, error: saved.error || saved.reason || "Unable to persist client" });
+      }
+    }
+
+    synced.push({
+      clientId,
+      clientName: merged.clientName,
+      manualActionCount: manualCount,
+      taskCount
+    });
+  }
+
+  return {
+    ok: true,
+    receivedAt: now,
+    reportId: payload.reportId || "",
+    reportTitle: payload.reportTitle || "",
+    syncedClientCount: synced.length,
+    synced,
+    warnings: errors,
+    rawPath
+  };
 }
 
 function validateClientPortalPassword(password) {
@@ -11911,6 +12062,32 @@ const server = http.createServer((request, response) => {
         sendJson(request, response, 500, {
           ok: false,
           error: "Unable to register GEO client",
+          detail: String(error?.message || error)
+        });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/monthly-geo-sync") {
+    readJsonBody(request)
+      .then(async (body) => {
+        const requiredSecret = monthlyGeoSyncSecret();
+        if (requiredSecret) {
+          const providedSecret = String(request.headers["x-ghost-webhook-secret"] || "").trim();
+          if (providedSecret !== requiredSecret) {
+            sendJson(request, response, 401, { ok: false, error: "Invalid webhook secret." });
+            return;
+          }
+        }
+
+        const result = await registerMonthlyGeoSync(body || {});
+        const status = result.ok ? 200 : 207;
+        sendJson(request, response, status, result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          ok: false,
+          error: "Unable to sync monthly GEO work",
           detail: String(error?.message || error)
         });
       });
