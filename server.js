@@ -11509,6 +11509,127 @@ function updateCommandHistoryFromRun(run) {
   }
 }
 
+function getNovaViewForPlan(plan) {
+  const category = String(plan?.category || "").toLowerCase();
+  if (category.includes("lead") || category.includes("funnel")) {
+    return "clients";
+  }
+  if (category.includes("seo") || category.includes("service")) {
+    return "services";
+  }
+  if (category.includes("web_helper")) {
+    return "web-helpers";
+  }
+  if (category.includes("execution")) {
+    return "execution";
+  }
+  return "mission-control";
+}
+
+function getNovaActionQueue(message, plan, context = {}) {
+  const command = String(message || "").trim();
+  const view = getNovaViewForPlan(plan);
+  const actions = [
+    {
+      label: `Open ${view === "mission-control" ? "Overview" : view.replace("-", " ")}`,
+      type: "view",
+      view
+    }
+  ];
+
+  if (command) {
+    actions.push({
+      label: "Stage Mission Command",
+      type: "command",
+      command
+    });
+  }
+
+  if (String(command).toLowerCase().includes("web helper") || view === "web-helpers") {
+    actions.push({
+      label: "Open Web Helper Triage",
+      type: "view",
+      view: "web-helpers"
+    });
+  }
+
+  if (context?.openWebHelperTickets || String(command).toLowerCase().includes("codex")) {
+    actions.push({
+      label: "Open Execution Console",
+      type: "view",
+      view: "execution"
+    });
+  }
+
+  return actions.slice(0, 4);
+}
+
+function buildNovaContextSummary(siteId, activeView, clientSummary, dataHealth, context = {}) {
+  const currentSite = context.currentSite || {};
+  const clientBits = [
+    `${clientSummary.clientCount || 0} clients`,
+    `${clientSummary.websiteBuildCount || 0} website builds`,
+    `${clientSummary.liveCount || 0} live/care clients`,
+    `${clientSummary.connectionGaps || 0} connection gaps`
+  ];
+  const webHelperBits = [
+    `${context.openWebHelperTickets || 0} visible Web Helper tickets`,
+    `${dataHealth.missingRequiredCount || 0} missing required fields`,
+    `${dataHealth.duplicateCount || 0} duplicate identity groups`
+  ];
+
+  return {
+    activeView: activeView || "mission-control",
+    siteId: siteId || getDefaultSiteId(),
+    siteName: currentSite.name || siteId || "active site",
+    clientSummary: clientBits.join(", "),
+    webHelperSummary: webHelperBits.join(", ")
+  };
+}
+
+async function getNovaAssistantResponse(payload) {
+  const message = String(payload?.message || "").trim();
+  const siteId = payload?.siteId || getDefaultSiteId();
+  const activeView = payload?.activeView || "mission-control";
+  const context = payload?.context && typeof payload.context === "object" ? payload.context : {};
+  const clients = getAllClients();
+  const clientSummary = summarizeClients(clients);
+  const dataHealth = getClientDataHealth(clients);
+  const plan = getCommandPlan(message, siteId);
+  const aiGuidance = await getAiGuidance(message, siteId, plan);
+  const contextSummary = buildNovaContextSummary(siteId, activeView, clientSummary, dataHealth, context);
+  const actionQueue = [
+    ...(plan.systemActions || []).slice(0, 3),
+    ...aiGuidance.autoActionsAdditions,
+    ...aiGuidance.growthOpportunities.map((item) => `Growth opportunity: ${item}`)
+  ].slice(0, 5);
+  const actionText = actionQueue.length
+    ? `\n\nAction queue:\n${actionQueue.map((item, index) => `${index + 1}. ${item}`).join("\n")}`
+    : "";
+  const reply = [
+    `${plan.summary}`,
+    `I am looking at ${contextSummary.siteName} from ${contextSummary.activeView}. Current operating picture: ${contextSummary.clientSummary}. Web Helper picture: ${contextSummary.webHelperSummary}.`,
+    aiGuidance.confidenceNote,
+    actionText
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return {
+    reply,
+    provider: aiGuidance.provider || "deterministic",
+    siteId,
+    activeView,
+    priority: plan.priority,
+    category: plan.category,
+    confidence: aiGuidance.provider && aiGuidance.provider !== "none" ? "ai-assisted" : "deterministic",
+    actions: getNovaActionQueue(message, plan, context),
+    plan,
+    contextSummary,
+    aiCopilot: aiGuidance
+  };
+}
+
 function getCommandPlan(command, siteId) {
   const normalized = String(command || "").trim().toLowerCase();
   const siteLabel = siteId || "active-site";
@@ -11536,7 +11657,7 @@ function getCommandPlan(command, siteId) {
       }
     },
     {
-      match: ["seo", "rank", "metadata", "index"],
+      match: ["seo", "geo", "aeo", "rank", "ranking", "metadata", "index", "visibility", "backlink", "citation", "google", "search"],
       payload: {
         category: "seo",
         summary: "SEO directive accepted. Recovery tasks and ranking stabilization actions are queued.",
@@ -13235,6 +13356,28 @@ const server = http.createServer((request, response) => {
           detail: String(error?.message || error)
         });
       });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/nova") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const message = String(payload?.message || "").trim();
+        if (!message) {
+          sendJson(request, response, 400, { error: "NOVA message is required" });
+          return;
+        }
+
+        const novaResponse = await getNovaAssistantResponse(payload);
+        sendJson(request, response, 200, {
+          generatedAt: new Date().toISOString(),
+          ...novaResponse
+        });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+
     return;
   }
 

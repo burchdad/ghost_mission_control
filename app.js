@@ -92,6 +92,15 @@ const elements = {
   commandPalette: document.getElementById("commandPalette"),
   paletteInput: document.getElementById("paletteInput"),
   paletteList: document.getElementById("paletteList"),
+  novaAgentButton: document.getElementById("novaAgentButton"),
+  novaAgentPanel: document.getElementById("novaAgentPanel"),
+  novaAgentClose: document.getElementById("novaAgentClose"),
+  novaAgentForm: document.getElementById("novaAgentForm"),
+  novaAgentInput: document.getElementById("novaAgentInput"),
+  novaAgentMessages: document.getElementById("novaAgentMessages"),
+  novaAgentActions: document.getElementById("novaAgentActions"),
+  novaAgentStatus: document.getElementById("novaAgentStatus"),
+  novaAgentSend: document.getElementById("novaAgentSend"),
   focusBanner: document.getElementById("focusBanner"),
   focusTitle: document.getElementById("focusTitle"),
   exitFocusButton: document.getElementById("exitFocusButton"),
@@ -291,6 +300,8 @@ let activeCommandPlan = {
 
 let commandMemory = [];
 let liveClients = null;
+let novaMessages = [];
+let currentNovaActions = [];
 let selectedClientId = "";
 let editingClientId = "";
 let clientModalMode = "client";
@@ -10200,8 +10211,207 @@ async function runMissionCommand() {
   }
 }
 
+function toggleNovaAgent(forceOpen) {
+  if (!elements.novaAgentPanel || !elements.novaAgentButton) {
+    return;
+  }
+
+  const currentlyOpen = !elements.novaAgentPanel.classList.contains("view-hidden");
+  const shouldOpen = typeof forceOpen === "boolean" ? forceOpen : !currentlyOpen;
+  elements.novaAgentPanel.classList.toggle("view-hidden", !shouldOpen);
+  elements.novaAgentButton.setAttribute("aria-expanded", String(shouldOpen));
+
+  if (shouldOpen && elements.novaAgentInput) {
+    window.setTimeout(() => elements.novaAgentInput.focus(), 50);
+  }
+}
+
+function addNovaMessage(role, text) {
+  const normalizedRole = role === "user" ? "user" : "nova";
+  const message = {
+    role: normalizedRole,
+    text: String(text || "").trim(),
+    at: new Date().toISOString()
+  };
+  if (!message.text) {
+    return;
+  }
+
+  novaMessages = [...novaMessages, message].slice(-16);
+  renderNovaMessages();
+}
+
+function renderNovaMessages() {
+  if (!elements.novaAgentMessages) {
+    return;
+  }
+
+  elements.novaAgentMessages.innerHTML = novaMessages
+    .map(
+      (message) => `<article class="nova-message ${message.role}">
+        <strong>${message.role === "user" ? "You" : "NOVA"}</strong>
+        <p>${escapeHtml(message.text)}</p>
+      </article>`
+    )
+    .join("");
+  elements.novaAgentMessages.scrollTop = elements.novaAgentMessages.scrollHeight;
+}
+
+function renderNovaActions(actions = []) {
+  if (!elements.novaAgentActions) {
+    return;
+  }
+
+  currentNovaActions = Array.isArray(actions) ? actions.slice(0, 4) : [];
+  elements.novaAgentActions.innerHTML = currentNovaActions
+    .map(
+      (action, index) => `<button class="nova-action-button" type="button" data-nova-action="${index}">
+        ${escapeHtml(action.label || action.command || "Run action")}
+      </button>`
+    )
+    .join("");
+}
+
+function getNovaContextSnapshot() {
+  const clients = liveClients?.clients || [];
+  const webHelperTickets = currentWebHelperTickets || [];
+  const site = missionData.websites.find((entry) => entry.id === activeSiteId) || missionData.websites[0] || {};
+  return {
+    activeView,
+    activeSiteId,
+    activeServiceSubview,
+    activeClientCount: clients.length,
+    openWebHelperTickets: webHelperTickets.length,
+    currentSite: {
+      id: site.id,
+      name: site.name,
+      url: site.url,
+      repo: site.repo
+    },
+    visibleClients: clients.slice(0, 8).map((client) => ({
+      id: client.id,
+      name: client.clientName,
+      stage: client.stage,
+      websiteUrl: client.websiteUrl,
+      repo: client.repo,
+      services: client.services || []
+    })),
+    recentWebHelperTickets: webHelperTickets.slice(0, 8).map((ticket) => ({
+      id: getWebHelperTicketId(ticket),
+      title: ticket.title || ticket.summary,
+      client: ticket.clientName || ticket.client,
+      status: ticket.status,
+      priority: ticket.priority,
+      page: ticket.pageUrl || ticket.page_url
+    }))
+  };
+}
+
+async function askNovaAgent() {
+  if (!elements.novaAgentInput || !elements.novaAgentStatus || !elements.novaAgentSend) {
+    return;
+  }
+
+  const message = elements.novaAgentInput.value.trim();
+  if (!message) {
+    elements.novaAgentStatus.textContent = "Ask NOVA what to inspect, route, summarize, or build next.";
+    return;
+  }
+
+  addNovaMessage("user", message);
+  elements.novaAgentInput.value = "";
+  elements.novaAgentSend.disabled = true;
+  elements.novaAgentStatus.textContent = "NOVA is reading Mission Control context...";
+  renderNovaActions([]);
+
+  try {
+    const response = await fetch(apiUrl("/mission/nova"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        message,
+        siteId: elements.siteSelect?.value || activeSiteId,
+        activeView,
+        context: getNovaContextSnapshot()
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`NOVA request failed with status ${response.status}`);
+    }
+
+    const result = await response.json();
+    addNovaMessage("nova", result.reply || "I have the context. Pick a next action or ask for a sharper readout.");
+    renderNovaActions(result.actions || []);
+    elements.novaAgentStatus.textContent = result.provider ? `Powered by ${result.provider}.` : "NOVA response ready.";
+  } catch (error) {
+    addNovaMessage(
+      "nova",
+      "I could not reach the NOVA backend route. I can still help once Mission Control is reachable, or you can run a standard Mission Command from the top bar."
+    );
+    elements.novaAgentStatus.textContent = String(error?.message || error);
+  } finally {
+    elements.novaAgentSend.disabled = false;
+  }
+}
+
+function runNovaAction(action) {
+  if (!action) {
+    return;
+  }
+
+  if (action.view) {
+    setActiveView(action.view);
+    setFocusMode(false);
+  }
+
+  if (action.command) {
+    if (elements.commandInput) {
+      elements.commandInput.value = action.command;
+    }
+    if (elements.executionCommandInput) {
+      elements.executionCommandInput.value = action.command;
+    }
+    if (elements.commandResponse) {
+      elements.commandResponse.textContent = "NOVA staged this command. Review it, then dispatch when ready.";
+    }
+  }
+
+  toggleNovaAgent(false);
+}
+
+function setupNovaAgent() {
+  if (!elements.novaAgentButton || !elements.novaAgentPanel) {
+    return;
+  }
+
+  elements.novaAgentButton.addEventListener("click", () => toggleNovaAgent());
+  elements.novaAgentClose?.addEventListener("click", () => toggleNovaAgent(false));
+  elements.novaAgentForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    askNovaAgent();
+  });
+  elements.novaAgentActions?.addEventListener("click", (event) => {
+    const actionButton = event.target.closest("[data-nova-action]");
+    if (!actionButton) {
+      return;
+    }
+    runNovaAction(currentNovaActions[Number(actionButton.dataset.novaAction)]);
+  });
+
+  if (!novaMessages.length) {
+    addNovaMessage(
+      "nova",
+      "NOVA online. I can summarize Mission Control, triage client work, route Web Helper tickets, or stage a Codex build command for approval."
+    );
+  }
+}
+
 async function init() {
   setupNavigation();
+  setupNovaAgent();
   loadTools();
   await loadMissionSnapshot();
   renderWebsiteOptions();
