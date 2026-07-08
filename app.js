@@ -953,8 +953,8 @@ const seededClientProfiles = [
   },
   {
     id: "keisha-law",
-    clientName: "Keisha Law",
-    websiteUrl: "https://keisha-law.vercel.app",
+    clientName: "Rachal Law Firm APC",
+    websiteUrl: "https://www.krachallaw.com",
     repo: "keisha-law",
     githubUrl: "https://github.com/burchdad/keisha-law",
     stage: "web-helper-care",

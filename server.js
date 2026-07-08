@@ -8377,12 +8377,12 @@ function repairKnownClientIdentity(client) {
   if (id === "keisha-law" && (looksLikeBougie || looksLikeProCoat) && !looksLikeKeisha) {
     return {
       ...client,
-      clientName: "Keisha Law",
-      websiteUrl: "https://keisha-law.vercel.app",
+      clientName: "Rachal Law Firm APC",
+      websiteUrl: "https://www.krachallaw.com",
       repo: "burchdad/keisha-law",
       githubUrl: "https://github.com/burchdad/keisha-law",
       railwayUrl: "",
-      vercelUrl: "https://keisha-law.vercel.app/",
+      vercelUrl: "https://keisha-law-6xvi.vercel.app/",
       mobileAppUrl: "",
       googleBusinessUrl: "",
       businessEmail: "ker@krachallaw.com",
@@ -9186,14 +9186,14 @@ const liveDeploymentMap = {
   },
   "keisha-law": {
     provider: "Vercel",
-    url: "https://keisha-law.vercel.app",
-    status: "Live preview domain",
-    clientName: "Keisha Law",
+    url: "https://www.krachallaw.com",
+    status: "Live custom domain",
+    clientName: "Rachal Law Firm APC",
     canonicalRepo: "keisha-law",
     stage: "web-helper-care",
     services: ["website-build", "web-helper-care"],
     plannedServices: ["search-intelligence"],
-    finalDomainPurchased: false,
+    finalDomainPurchased: true,
     notes: "Website is launched and ready for SEO/monthly maintenance contract review."
   },
   "mobile-detailing": {
