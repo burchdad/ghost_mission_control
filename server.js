@@ -12179,6 +12179,217 @@ function buildNovaContextSummary(siteId, activeView, clientSummary, dataHealth, 
   };
 }
 
+function isNovaLeadIntakeMessage(message = "") {
+  const text = String(message || "").toLowerCase();
+  const hasLeadSignal = /\b(new|picked up|got|received|captured|added|add|log|create)\b/.test(text) && /\blead\b/.test(text);
+  const hasBuildSignal = /\bwebsite\b|\bsite\b|\bweb build\b|\bmock ?up\b|\bdeposit invoice\b/.test(text);
+  return hasLeadSignal || (hasBuildSignal && /\bfacebook\b|\blead\b|\bclient\b|\bprospect\b/.test(text));
+}
+
+function extractNovaLeadName(message = "") {
+  const text = String(message || "").replace(/\s+/g, " ").trim();
+  const patterns = [
+    /\b(?:for|from)\s+(.+?)\s+(?:through|via|from|on|off|wants?|want|needs?|need|is looking|just did|will be|sending|deposit|invoice|$)/i,
+    /\blead[,:\s]+(?:for|from)?\s*(.+?)\s+(?:through|via|from|on|off|wants?|want|needs?|need|is looking|just did|will be|sending|deposit|invoice|$)/i,
+    /\bclient[,:\s]+(?:for|from)?\s*(.+?)\s+(?:through|via|from|on|off|wants?|want|needs?|need|is looking|just did|will be|sending|deposit|invoice|$)/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const candidate = String(match?.[1] || "")
+      .replace(/^(a|an|the|new|website build)\s+/i, "")
+      .replace(/[.,;:]+$/g, "")
+      .trim();
+    if (candidate && candidate.length >= 2 && !/\bwebsite\b/i.test(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+function inferNovaLeadSource(message = "") {
+  const text = String(message || "").toLowerCase();
+  if (text.includes("facebook") || text.includes("instagram") || text.includes("tiktok") || text.includes("linkedin") || text.includes("social")) {
+    return "social-media";
+  }
+  if (text.includes("referral") || text.includes("referred")) {
+    return "referral";
+  }
+  if (text.includes("email")) {
+    return "email";
+  }
+  return "other";
+}
+
+function getNovaLeadSourceLabel(source = "") {
+  const labels = {
+    "social-media": "Social Media",
+    referral: "Referral",
+    email: "Email",
+    "lead-command-center": "Ghost Lead Command",
+    "digital-business-card": "Digital Business Card",
+    "marketing-proposal": "Marketing Proposal",
+    "geo-client": "GEO Client",
+    other: "Other"
+  };
+  return labels[String(source || "").trim()] || source || "source pending";
+}
+
+function buildNovaLeadNotes(message = "", leadName = "") {
+  const notes = [
+    `NOVA intake from chat: ${message}`,
+    leadName ? `Lead identified as ${leadName}.` : "",
+    /mock ?up/i.test(message) ? "Mock-up has been prepared or shown." : "",
+    /deposit invoice|invoice/i.test(message) ? "Deposit invoice is planned or being sent today." : "",
+    /\bwebsite\b|\bsite\b/i.test(message) ? "Requested scope currently appears to be a website build." : ""
+  ].filter(Boolean);
+  return notes.join("\n");
+}
+
+async function handleNovaLeadIntake(payload, contextSummary) {
+  const message = String(payload?.message || "").trim();
+  if (!isNovaLeadIntakeMessage(message)) {
+    return null;
+  }
+
+  const leadName = extractNovaLeadName(message);
+  if (!leadName) {
+    return {
+      handled: true,
+      ok: false,
+      reply: [
+        "I can create the lead, but I could not confidently identify the business name.",
+        "Send it like: `Add new website lead for G and B Inflatables from Facebook. Deposit invoice going out today.`"
+      ].join("\n\n"),
+      actions: [
+        { label: "Open Leads / Proposals", type: "view", view: "leads" }
+      ]
+    };
+  }
+
+  await syncClientStore(true);
+  const leadSource = inferNovaLeadSource(message);
+  const now = new Date().toISOString();
+  const leadRecord = buildClientRecord({
+    id: slugify(leadName),
+    clientName: leadName,
+    stage: "lead",
+    leadStage: "new-lead",
+    leadSource,
+    leadSourceDetail: leadSource === "social-media" && /facebook/i.test(message) ? "Facebook" : "",
+    services: ["website-build"],
+    plannedServices: [],
+    proposalSent: false,
+    depositInvoiceSent: /deposit invoice|invoice/i.test(message),
+    proposalSigned: false,
+    depositPaid: false,
+    finalPaymentPaid: false,
+    plan: "Website build lead",
+    notes: buildNovaLeadNotes(message, leadName),
+    activityEvents: [
+      {
+        id: `nova-lead-${Date.now()}`,
+        type: "lead_intake",
+        title: "Lead captured by NOVA",
+        detail: message,
+        status: "complete",
+        createdAt: now
+      }
+    ],
+    source: "runtime",
+    createdAt: now,
+    updatedAt: now
+  });
+
+  if (!leadRecord) {
+    return {
+      handled: true,
+      ok: false,
+      reply: `I found the lead intent for ${leadName}, but the client record failed validation.`,
+      actions: [{ label: "Open Leads / Proposals", type: "view", view: "leads" }]
+    };
+  }
+
+  const existing = runtimeClients.find((entry) => canonicalClientId(entry.id) === canonicalClientId(leadRecord.id));
+  const savedClient = upsertRuntimeClient({
+    ...(existing || {}),
+    ...leadRecord,
+    createdAt: existing?.createdAt || leadRecord.createdAt,
+    updatedAt: now
+  });
+  persistRuntimeClients();
+  const databaseWrite = await persistRuntimeClientToPostgres(savedClient || leadRecord);
+  const storageWrite = databaseWrite.ok ? databaseWrite : await persistClientMutationFallback(databaseWrite).catch((error) => ({
+    ok: false,
+    target: "client-store",
+    error: String(error?.message || error),
+    fallbackFrom: databaseWrite
+  }));
+  const client = savedClient || leadRecord;
+  const storageText = storageWrite?.ok
+    ? `Saved to ${storageWrite.target || "client store"}.`
+    : `Stored in runtime memory, but persistence needs attention: ${storageWrite?.error || "unknown storage error"}.`;
+  const nextActions = [
+    `Send deposit invoice to ${client.clientName} today.`,
+    "Attach or link the mock-up in the lead notes when available.",
+    "Move the card to Proposal Sent once the invoice/proposal package is sent.",
+    "Move to Closed Leads / Build Queue after deposit is paid."
+  ];
+  const novaAction = await saveNovaActionToPostgres({
+    id: `lead-invoice-${client.id}`,
+    title: `Send deposit invoice to ${client.clientName}`,
+    department: "Revenue",
+    priority: "high",
+    status: "queued",
+    permissionLevel: "owner_approval_required",
+    actionType: "follow_up",
+    command: `Prepare and send deposit invoice for ${client.clientName}`,
+    detail: `New website build lead from ${getNovaLeadSourceLabel(client.leadSource)}. Mock-up mentioned; deposit invoice planned today.`,
+    view: "leads",
+    source: "nova_lead_intake",
+    payload: {
+      clientId: client.id,
+      clientName: client.clientName,
+      leadSource: client.leadSource,
+      leadStage: client.leadStage
+    }
+  }).catch((error) => ({
+    ok: false,
+    error: String(error?.message || error)
+  }));
+
+  return {
+    handled: true,
+    ok: Boolean(storageWrite?.ok),
+    client,
+    storageWrite,
+    novaAction,
+    reply: [
+      `Lead created: ${client.clientName}.`,
+      `Source: ${getNovaLeadSourceLabel(client.leadSource)}. Stage: New Lead. Scope: Website build. Deposit invoice: ${client.depositInvoiceSent ? "marked as sending/sent" : "not marked yet"}.`,
+      novaAction?.ok ? "NOVA Action Inbox: deposit invoice follow-up queued under Revenue." : "NOVA Action Inbox: follow-up task could not be queued yet.",
+      storageText,
+      `Action queue:\n${nextActions.map((item, index) => `${index + 1}. ${item}`).join("\n")}`
+    ].join("\n\n"),
+    actions: [
+      { label: "Open Leads / Proposals", type: "view", view: "leads" },
+      { label: `Open ${client.clientName}`, type: "client", clientId: client.id },
+      { label: "Prep Deposit Invoice", type: "command", command: `Prepare deposit invoice follow-up for ${client.clientName}`, view: "executive-command" }
+    ],
+    plan: {
+      category: "lead_intake",
+      priority: "P1 Critical",
+      summary: `Created new website build lead for ${client.clientName}.`,
+      objective: "Move the lead from fresh intake to deposit-paid build queue.",
+      systemActions: nextActions,
+      autoActions: [`Created lead record ${client.id} from NOVA chat.`],
+      expectedImpact: "Lead is now visible in the CRM/lead kanban instead of staying as a chat note."
+    },
+    contextSummary
+  };
+}
+
 async function getNovaAssistantResponse(payload) {
   const message = String(payload?.message || "").trim();
   const siteId = payload?.siteId || getDefaultSiteId();
@@ -12190,6 +12401,30 @@ async function getNovaAssistantResponse(payload) {
   const plan = getCommandPlan(message, siteId);
   const aiGuidance = await getAiGuidance(message, siteId, plan);
   const contextSummary = buildNovaContextSummary(siteId, activeView, clientSummary, dataHealth, context);
+  const leadIntake = await handleNovaLeadIntake(payload, contextSummary);
+  if (leadIntake?.handled) {
+    return {
+      reply: leadIntake.reply,
+      provider: "deterministic",
+      siteId,
+      activeView,
+      priority: leadIntake.plan?.priority || "P1 Critical",
+      category: leadIntake.plan?.category || "lead_intake",
+      confidence: leadIntake.ok ? "high" : "needs-more-info",
+      actions: leadIntake.actions || [],
+      plan: leadIntake.plan,
+      contextSummary,
+      client: leadIntake.client,
+      storageWrite: leadIntake.storageWrite,
+      novaAction: leadIntake.novaAction,
+      aiCopilot: {
+        provider: "deterministic",
+        confidenceNote: leadIntake.ok
+          ? "High confidence: NOVA created a structured lead record from the owner directive."
+          : "NOVA needs one missing detail before creating the lead."
+      }
+    };
+  }
   const actionQueue = [
     ...(plan.systemActions || []).slice(0, 3),
     ...aiGuidance.autoActionsAdditions,
