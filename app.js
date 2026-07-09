@@ -303,6 +303,8 @@ let liveClients = null;
 let novaMessages = [];
 let currentNovaActions = [];
 let liveNovaKernel = null;
+let liveNovaActions = [];
+let liveNovaToolRuns = [];
 let selectedClientId = "";
 let editingClientId = "";
 let clientModalMode = "client";
@@ -5613,6 +5615,135 @@ function renderNovaKernelAction(action) {
   </button>`;
 }
 
+function normalizeNovaActionStatus(status) {
+  const normalized = String(status || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  const aliases = {
+    open: "queued",
+    ready: "queued",
+    stage: "staged",
+    approval: "approval_required",
+    needs_approval: "approval_required",
+    complete: "completed",
+    done: "completed",
+    archived: "completed",
+    cancelled: "dismissed",
+    canceled: "dismissed"
+  };
+  return aliases[normalized] || normalized || "queued";
+}
+
+function getNovaActionPrimaryLabel(action) {
+  const status = normalizeNovaActionStatus(action.status);
+  const permission = String(action.permissionLevel || action.permission_level || "").toLowerCase();
+  if (status === "approval_required") {
+    return "Approve";
+  }
+  if (status === "staged") {
+    return "Run";
+  }
+  if (permission === "owner_approval_required") {
+    return "Request Approval";
+  }
+  if (permission === "read_only") {
+    return "Mark Done";
+  }
+  return "Stage";
+}
+
+function renderNovaActionButtons(action) {
+  const status = normalizeNovaActionStatus(action.status);
+  const id = escapeHtml(action.id || "");
+  if (!id || ["completed", "dismissed"].includes(status)) {
+    return "";
+  }
+
+  const primaryMode = status === "approval_required" ? "approve" : "run";
+  const buttons = [
+    `<button class="nova-inbox-button primary" type="button" data-nova-action-run="${id}" data-mode="${primaryMode}">${escapeHtml(getNovaActionPrimaryLabel(action))}</button>`
+  ];
+
+  if (action.command) {
+    buttons.push(`<button class="nova-inbox-button" type="button" data-nova-action-stage="${id}">Open Command</button>`);
+  }
+
+  buttons.push(`<button class="nova-inbox-button quiet" type="button" data-nova-action-run="${id}" data-mode="dismiss">Dismiss</button>`);
+  return `<div class="nova-inbox-card-actions">${buttons.join("")}</div>`;
+}
+
+function renderNovaActionInboxCard(action) {
+  const priority = normalizeExecutivePriority(action.priority);
+  const status = normalizeNovaActionStatus(action.status);
+  const permission = String(action.permissionLevel || action.permission_level || "draft_only").replace(/_/g, " ");
+  return `<article class="nova-inbox-card priority-${escapeHtml(priority)} status-${escapeHtml(status)}">
+    <div class="nova-inbox-card-head">
+      <span>${escapeHtml(action.department || "NOVA")}</span>
+      <strong>${escapeHtml(action.title || "NOVA action")}</strong>
+    </div>
+    <p>${escapeHtml(action.detail || action.command || "Ready for operator review.")}</p>
+    <div class="nova-inbox-card-meta">
+      <span>${escapeHtml(priority)}</span>
+      <span>${escapeHtml(status.replace(/_/g, " "))}</span>
+      <span>${escapeHtml(permission)}</span>
+    </div>
+    ${action.result?.message ? `<small class="nova-inbox-result">${escapeHtml(action.result.message)}</small>` : ""}
+    ${renderNovaActionButtons(action)}
+  </article>`;
+}
+
+function renderNovaActionInbox() {
+  const actions = liveNovaActions.length
+    ? liveNovaActions
+    : (liveNovaKernel?.actionInbox || liveNovaKernel?.actionQueue || []).map((action) => ({
+      ...action,
+      status: action.status || "queued"
+    }));
+  const lanes = [
+    { id: "queued", label: "Queued", help: "NOVA's recommended next moves." },
+    { id: "staged", label: "Staged", help: "Prepared commands waiting on operator review." },
+    { id: "approval_required", label: "Needs Approval", help: "Owner-gated actions before irreversible work." },
+    { id: "approved", label: "Approved", help: "Ready for the next automation handoff." },
+    { id: "completed", label: "Completed", help: "Finished or archived actions." }
+  ];
+
+  return `<section class="nova-action-inbox tone-border-green">
+    <div class="nova-action-inbox-head">
+      <div>
+        <span>NOVA OS</span>
+        <h3>Action Inbox</h3>
+        <p>Durable next actions with permission gates, tool-run history, and owner approval paths.</p>
+      </div>
+      <button class="secondary-button" type="button" data-nova-refresh>Refresh Actions</button>
+    </div>
+    <div class="nova-action-lanes">
+      ${lanes.map((lane) => {
+        const laneActions = actions.filter((action) => {
+          const status = normalizeNovaActionStatus(action.status);
+          if (lane.id === "completed") {
+            return ["completed", "dismissed"].includes(status);
+          }
+          return status === lane.id;
+        });
+        return `<article class="nova-action-lane">
+          <div class="nova-action-lane-head">
+            <div>
+              <strong>${escapeHtml(lane.label)}</strong>
+              <small>${escapeHtml(lane.help)}</small>
+            </div>
+            <span>${laneActions.length}</span>
+          </div>
+          <div class="nova-action-lane-list">
+            ${laneActions.length ? laneActions.slice(0, 8).map(renderNovaActionInboxCard).join("") : `<div class="pipeline-empty">No actions.</div>`}
+          </div>
+        </article>`;
+      }).join("")}
+    </div>
+    ${liveNovaToolRuns.length ? `<div class="nova-tool-run-strip">
+      <span>Recent tool runs</span>
+      ${liveNovaToolRuns.slice(0, 4).map((run) => `<strong>${escapeHtml(run.toolId || "tool")} / ${escapeHtml(run.status || "complete")}</strong>`).join("")}
+    </div>` : ""}
+  </section>`;
+}
+
 function normalizeExecutivePriority(priority) {
   const value = String(priority || "").toLowerCase();
   if (value.includes("high") || value.includes("critical") || value.includes("urgent") || value.includes("red")) {
@@ -5883,6 +6014,7 @@ function renderExecutiveCommand() {
 
   elements.executiveCommandBoard.innerHTML = `
     ${renderNovaKernelPanel()}
+    ${renderNovaActionInbox()}
     <div class="executive-kpi-grid">
       ${renderExecutiveMetric("Current MRR", formatExecutiveMoney(monthlyRevenue), monthlyRevenue ? "tracked from records" : "retainer values needed")}
       ${renderExecutiveMetric("Target MRR", "Set target", "add target in Executive Command settings later")}
@@ -10430,6 +10562,8 @@ async function loadNovaKernel() {
       throw new Error(`NOVA kernel failed with status ${response.status}`);
     }
     liveNovaKernel = await response.json();
+    liveNovaActions = Array.isArray(liveNovaKernel.actionInbox) ? liveNovaKernel.actionInbox : [];
+    liveNovaToolRuns = Array.isArray(liveNovaKernel.toolRuns) ? liveNovaKernel.toolRuns : [];
   } catch (error) {
     liveNovaKernel = {
       kernel: {
@@ -10457,9 +10591,56 @@ async function loadNovaKernel() {
         }
       ]
     };
+    liveNovaActions = [];
+    liveNovaToolRuns = [];
   }
 
   renderExecutiveCommand();
+}
+
+async function runNovaInboxAction(actionId, mode = "run") {
+  const action = liveNovaActions.find((item) => item.id === actionId) || liveNovaKernel?.actionInbox?.find((item) => item.id === actionId);
+  try {
+    const response = await fetch(apiUrl("/mission/nova/actions/run"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        actionId,
+        mode
+      })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || result.detail || `NOVA action failed with status ${response.status}`);
+    }
+    if (result.action) {
+      liveNovaActions = [
+        result.action,
+        ...liveNovaActions.filter((item) => item.id !== result.action.id)
+      ];
+    }
+    if (result.run) {
+      liveNovaToolRuns = [result.run, ...liveNovaToolRuns].slice(0, 20);
+    }
+    renderExecutiveCommand();
+    showWebHelperToast("NOVA action updated", result.message || `${action?.title || "Action"} moved forward.`);
+  } catch (error) {
+    showWebHelperToast("NOVA action failed", String(error?.message || error));
+  }
+}
+
+function stageNovaInboxAction(actionId) {
+  const action = liveNovaActions.find((item) => item.id === actionId) || liveNovaKernel?.actionInbox?.find((item) => item.id === actionId);
+  if (!action) {
+    return;
+  }
+  if (action.view) {
+    setActiveView(action.view);
+    setFocusMode(false);
+  }
+  stageNovaCommand(action.command || action.title || "");
 }
 
 async function askNovaAgent() {
@@ -10587,6 +10768,21 @@ function setupNovaAgent() {
     const commandTarget = event.target.closest("[data-nova-command]");
     if (commandTarget) {
       stageNovaCommand(commandTarget.dataset.novaCommand);
+      return;
+    }
+
+    const actionRunTarget = event.target.closest("[data-nova-action-run]");
+    if (actionRunTarget) {
+      actionRunTarget.disabled = true;
+      runNovaInboxAction(actionRunTarget.dataset.novaActionRun, actionRunTarget.dataset.mode || "run").finally(() => {
+        actionRunTarget.disabled = false;
+      });
+      return;
+    }
+
+    const actionStageTarget = event.target.closest("[data-nova-action-stage]");
+    if (actionStageTarget) {
+      stageNovaInboxAction(actionStageTarget.dataset.novaActionStage);
     }
   });
 

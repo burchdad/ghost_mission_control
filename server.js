@@ -114,6 +114,10 @@ let clientStorePgPool = null;
 let clientStorePgInitPromise = null;
 let webHelperRequestPgInitPromise = null;
 let codexBuildTaskPgInitPromise = null;
+let novaStorePgInitPromise = null;
+let runtimeNovaActions = [];
+let runtimeNovaMemories = [];
+let runtimeNovaToolRuns = [];
 
 const CLIENT_PIPELINE_STAGES = [
   { id: "lead", label: "Lead / Prospect" },
@@ -1738,6 +1742,83 @@ async function ensureCodexBuildTaskTable() {
   return codexBuildTaskPgInitPromise;
 }
 
+async function ensureNovaStoreTables() {
+  const pool = getClientStorePgPool();
+  if (!pool) {
+    return {
+      ok: false,
+      target: "postgres",
+      skipped: true,
+      reason: isClientStoreDatabaseEnabled() ? runtimeClientsDbLastError : "DATABASE_URL is not configured."
+    };
+  }
+
+  if (novaStorePgInitPromise) {
+    return novaStorePgInitPromise;
+  }
+
+  novaStorePgInitPromise = pool
+    .query(`
+      CREATE TABLE IF NOT EXISTS mission_nova_actions (
+        id text PRIMARY KEY,
+        title text NOT NULL,
+        department text NOT NULL DEFAULT 'Executive Command',
+        priority text NOT NULL DEFAULT 'medium',
+        status text NOT NULL DEFAULT 'queued',
+        permission_level text NOT NULL DEFAULT 'draft_only',
+        action_type text NOT NULL DEFAULT 'command',
+        command text NOT NULL DEFAULT '',
+        detail text NOT NULL DEFAULT '',
+        view text NOT NULL DEFAULT 'executive-command',
+        source text NOT NULL DEFAULT 'nova_kernel',
+        payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+        result jsonb NOT NULL DEFAULT '{}'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now(),
+        completed_at timestamptz
+      );
+      ALTER TABLE mission_nova_actions ADD COLUMN IF NOT EXISTS permission_level text NOT NULL DEFAULT 'draft_only';
+      ALTER TABLE mission_nova_actions ADD COLUMN IF NOT EXISTS action_type text NOT NULL DEFAULT 'command';
+      ALTER TABLE mission_nova_actions ADD COLUMN IF NOT EXISTS result jsonb NOT NULL DEFAULT '{}'::jsonb;
+      ALTER TABLE mission_nova_actions ADD COLUMN IF NOT EXISTS completed_at timestamptz;
+      CREATE INDEX IF NOT EXISTS mission_nova_actions_status_idx ON mission_nova_actions (status, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS mission_nova_actions_department_idx ON mission_nova_actions (department, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS mission_nova_memories (
+        id text PRIMARY KEY,
+        label text NOT NULL,
+        value text NOT NULL DEFAULT '',
+        category text NOT NULL DEFAULT 'general',
+        source text NOT NULL DEFAULT 'nova',
+        payload jsonb NOT NULL DEFAULT '{}'::jsonb,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS mission_nova_memories_category_idx ON mission_nova_memories (category, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS mission_nova_tool_runs (
+        id text PRIMARY KEY,
+        action_id text NOT NULL DEFAULT '',
+        tool_id text NOT NULL DEFAULT '',
+        status text NOT NULL DEFAULT 'queued',
+        input jsonb NOT NULL DEFAULT '{}'::jsonb,
+        output jsonb NOT NULL DEFAULT '{}'::jsonb,
+        error text NOT NULL DEFAULT '',
+        created_at timestamptz NOT NULL DEFAULT now(),
+        updated_at timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS mission_nova_tool_runs_action_idx ON mission_nova_tool_runs (action_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS mission_nova_tool_runs_status_idx ON mission_nova_tool_runs (status, updated_at DESC);
+    `)
+    .then(() => ({ ok: true, target: "postgres", table: "mission_nova_actions" }))
+    .catch((error) => {
+      novaStorePgInitPromise = null;
+      return { ok: false, target: "postgres", table: "mission_nova_actions", error: String(error?.message || error) };
+    });
+
+  return novaStorePgInitPromise;
+}
+
 function normalizeWebhookSecret(value) {
   return stripWrappingQuotes(String(value || "").trim());
 }
@@ -2068,6 +2149,517 @@ async function readWebHelperRequestByIdFromPostgres(id) {
     target: "postgres",
     table: "mission_web_helper_requests",
     request: dbRowToWebHelperRequest(result.rows[0])
+  };
+}
+
+function createNovaId(prefix = "nova") {
+  return `${prefix}_${Date.now()}_${crypto.randomBytes(5).toString("hex")}`;
+}
+
+function normalizeNovaActionStatus(value) {
+  const normalized = String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  const aliases = {
+    open: "queued",
+    ready: "queued",
+    staged: "staged",
+    stage: "staged",
+    approval: "approval_required",
+    needs_approval: "approval_required",
+    approved: "approved",
+    complete: "completed",
+    done: "completed",
+    archived: "completed",
+    dismissed: "dismissed",
+    cancelled: "dismissed",
+    canceled: "dismissed"
+  };
+  return aliases[normalized] || normalized || "queued";
+}
+
+function normalizeNovaPermissionLevel(value) {
+  const normalized = String(value || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  if (["read_only", "draft_only", "owner_approval_required", "autonomous_safe"].includes(normalized)) {
+    return normalized;
+  }
+  return "draft_only";
+}
+
+function dbRowToNovaAction(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    title: row.title,
+    department: row.department,
+    priority: row.priority,
+    status: row.status,
+    permissionLevel: row.permission_level,
+    actionType: row.action_type,
+    command: row.command,
+    detail: row.detail,
+    view: row.view,
+    source: row.source,
+    payload: parsePostgresJsonObject(row.payload),
+    result: parsePostgresJsonObject(row.result),
+    createdAt: postgresTimestampToIso(row.created_at),
+    updatedAt: postgresTimestampToIso(row.updated_at),
+    completedAt: postgresTimestampToIso(row.completed_at)
+  };
+}
+
+function dbRowToNovaMemory(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    label: row.label,
+    value: row.value,
+    category: row.category,
+    source: row.source,
+    payload: parsePostgresJsonObject(row.payload),
+    createdAt: postgresTimestampToIso(row.created_at),
+    updatedAt: postgresTimestampToIso(row.updated_at)
+  };
+}
+
+function dbRowToNovaToolRun(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    actionId: row.action_id,
+    toolId: row.tool_id,
+    status: row.status,
+    input: parsePostgresJsonObject(row.input),
+    output: parsePostgresJsonObject(row.output),
+    error: row.error,
+    createdAt: postgresTimestampToIso(row.created_at),
+    updatedAt: postgresTimestampToIso(row.updated_at)
+  };
+}
+
+function prepareNovaActionRecord(action = {}) {
+  const department = String(action.department || "Executive Command").trim();
+  const title = String(action.title || action.command || "NOVA action").trim();
+  const id = String(action.id || slugify(`${department}-${title}`).slice(0, 72) || createNovaId("nova_action")).trim();
+  const priority = normalizeNovaPriority(action.priority || "medium");
+  const status = normalizeNovaActionStatus(action.status || "queued");
+  const permissionLevel = normalizeNovaPermissionLevel(action.permissionLevel || action.permission_level || (
+    priority === "high" ? "owner_approval_required" : "draft_only"
+  ));
+
+  return {
+    id,
+    title,
+    department,
+    priority,
+    status,
+    permissionLevel,
+    actionType: String(action.actionType || action.action_type || "command").trim() || "command",
+    command: String(action.command || title).trim(),
+    detail: String(action.detail || "").trim(),
+    view: String(action.view || "executive-command").trim(),
+    source: String(action.source || "nova_kernel").trim(),
+    payload: action.payload && typeof action.payload === "object" ? action.payload : {},
+    result: action.result && typeof action.result === "object" ? action.result : {}
+  };
+}
+
+async function saveNovaActionToPostgres(action = {}) {
+  const init = await ensureNovaStoreTables();
+  if (!init.ok) {
+    const record = {
+      ...prepareNovaActionRecord(action),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      completedAt: ""
+    };
+    runtimeNovaActions = [
+      record,
+      ...runtimeNovaActions.filter((item) => item.id !== record.id)
+    ].slice(0, 200);
+    return { ok: true, fallback: true, action: record };
+  }
+
+  const record = prepareNovaActionRecord(action);
+  const result = await getClientStorePgPool().query(
+    `
+    INSERT INTO mission_nova_actions (
+      id, title, department, priority, status, permission_level, action_type,
+      command, detail, view, source, payload, result, created_at, updated_at, completed_at
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7,
+      $8, $9, $10, $11, $12::jsonb, $13::jsonb, now(), now(),
+      CASE WHEN $5 IN ('completed', 'dismissed') THEN now() ELSE NULL END
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      title = EXCLUDED.title,
+      department = EXCLUDED.department,
+      priority = EXCLUDED.priority,
+      permission_level = EXCLUDED.permission_level,
+      action_type = EXCLUDED.action_type,
+      command = EXCLUDED.command,
+      detail = EXCLUDED.detail,
+      view = EXCLUDED.view,
+      source = EXCLUDED.source,
+      payload = mission_nova_actions.payload || EXCLUDED.payload,
+      status = CASE
+        WHEN mission_nova_actions.status IN ('completed', 'dismissed') THEN mission_nova_actions.status
+        ELSE mission_nova_actions.status
+      END,
+      updated_at = now()
+    RETURNING *;
+    `,
+    [
+      record.id,
+      record.title,
+      record.department,
+      record.priority,
+      record.status,
+      record.permissionLevel,
+      record.actionType,
+      record.command,
+      record.detail,
+      record.view,
+      record.source,
+      JSON.stringify(record.payload || {}),
+      JSON.stringify(record.result || {})
+    ]
+  );
+
+  return { ok: true, action: dbRowToNovaAction(result.rows[0]) };
+}
+
+async function syncNovaKernelActionsToPostgres(actions = []) {
+  const init = await ensureNovaStoreTables();
+  if (!init.ok) {
+    return { ...init, actions: [] };
+  }
+
+  const synced = [];
+  for (const action of actions) {
+    const result = await saveNovaActionToPostgres({
+      ...action,
+      source: action.source || "nova_kernel",
+      payload: {
+        generated: true,
+        generatedAt: new Date().toISOString()
+      }
+    });
+    if (result.ok && result.action) {
+      synced.push(result.action);
+    }
+  }
+  return { ok: true, actions: synced };
+}
+
+async function readNovaActionsFromPostgres(options = {}) {
+  const init = await ensureNovaStoreTables();
+  if (!init.ok) {
+    const status = String(options.status || "").trim();
+    const actions = status
+      ? runtimeNovaActions.filter((action) => action.status === status)
+      : runtimeNovaActions;
+    return { ok: true, fallback: true, actions: actions.slice(0, Math.max(1, Math.min(300, Number(options.limit || 100)))) };
+  }
+
+  const status = String(options.status || "").trim();
+  const limit = Math.max(1, Math.min(300, Number(options.limit || 100)));
+  const result = status
+    ? await getClientStorePgPool().query(
+        "SELECT * FROM mission_nova_actions WHERE status = $1 ORDER BY updated_at DESC LIMIT $2",
+        [status, limit]
+      )
+    : await getClientStorePgPool().query(
+        "SELECT * FROM mission_nova_actions ORDER BY CASE status WHEN 'queued' THEN 1 WHEN 'staged' THEN 2 WHEN 'approval_required' THEN 3 WHEN 'approved' THEN 4 ELSE 5 END, updated_at DESC LIMIT $1",
+        [limit]
+      );
+
+  return { ok: true, actions: result.rows.map(dbRowToNovaAction).filter(Boolean) };
+}
+
+async function updateNovaActionInPostgres(id, updates = {}) {
+  const init = await ensureNovaStoreTables();
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) {
+    return { ok: false, status: 400, error: "NOVA action id is required." };
+  }
+
+  const status = normalizeNovaActionStatus(updates.status || "queued");
+  const resultPayload = updates.result && typeof updates.result === "object" ? updates.result : {};
+  if (!init.ok) {
+    const existing = runtimeNovaActions.find((action) => action.id === normalizedId);
+    if (!existing) {
+      return { ok: false, status: 404, error: "NOVA action was not found." };
+    }
+    const updated = {
+      ...existing,
+      status,
+      result: { ...(existing.result || {}), ...resultPayload },
+      updatedAt: new Date().toISOString(),
+      completedAt: ["completed", "dismissed"].includes(status) ? new Date().toISOString() : existing.completedAt || ""
+    };
+    runtimeNovaActions = runtimeNovaActions.map((action) => action.id === normalizedId ? updated : action);
+    return { ok: true, fallback: true, action: updated };
+  }
+
+  const result = await getClientStorePgPool().query(
+    `
+    UPDATE mission_nova_actions
+    SET
+      status = $2,
+      result = COALESCE(result, '{}'::jsonb) || $3::jsonb,
+      updated_at = now(),
+      completed_at = CASE WHEN $2 IN ('completed', 'dismissed') THEN now() ELSE completed_at END
+    WHERE id = $1
+    RETURNING *;
+    `,
+    [normalizedId, status, JSON.stringify(resultPayload)]
+  );
+
+  if (!result.rows.length) {
+    return { ok: false, status: 404, error: "NOVA action was not found." };
+  }
+
+  return { ok: true, action: dbRowToNovaAction(result.rows[0]) };
+}
+
+async function readNovaActionByIdFromPostgres(id) {
+  const init = await ensureNovaStoreTables();
+  const normalizedId = String(id || "").trim();
+  if (!normalizedId) {
+    return { ok: false, status: 400, error: "NOVA action id is required." };
+  }
+
+  if (!init.ok) {
+    const action = runtimeNovaActions.find((item) => item.id === normalizedId);
+    return action
+      ? { ok: true, fallback: true, action }
+      : { ok: false, status: 404, error: "NOVA action was not found." };
+  }
+
+  const result = await getClientStorePgPool().query("SELECT * FROM mission_nova_actions WHERE id = $1 LIMIT 1", [normalizedId]);
+  if (!result.rows.length) {
+    return { ok: false, status: 404, error: "NOVA action was not found." };
+  }
+
+  return { ok: true, action: dbRowToNovaAction(result.rows[0]) };
+}
+
+async function saveNovaMemoryToPostgres(memory = {}) {
+  const init = await ensureNovaStoreTables();
+  const label = String(memory.label || "").trim();
+  if (!label) {
+    return { ok: false, status: 400, error: "NOVA memory label is required." };
+  }
+
+  const id = String(memory.id || slugify(`${memory.category || "general"}-${label}`).slice(0, 72) || createNovaId("nova_memory")).trim();
+  if (!init.ok) {
+    const record = {
+      id,
+      label,
+      value: String(memory.value || "").trim(),
+      category: String(memory.category || "general").trim(),
+      source: String(memory.source || "nova").trim(),
+      payload: memory.payload || {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    runtimeNovaMemories = [
+      record,
+      ...runtimeNovaMemories.filter((item) => item.id !== record.id)
+    ].slice(0, 200);
+    return { ok: true, fallback: true, memory: record };
+  }
+
+  const result = await getClientStorePgPool().query(
+    `
+    INSERT INTO mission_nova_memories (id, label, value, category, source, payload, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6::jsonb, now(), now())
+    ON CONFLICT (id) DO UPDATE SET
+      label = EXCLUDED.label,
+      value = EXCLUDED.value,
+      category = EXCLUDED.category,
+      source = EXCLUDED.source,
+      payload = mission_nova_memories.payload || EXCLUDED.payload,
+      updated_at = now()
+    RETURNING *;
+    `,
+    [
+      id,
+      label,
+      String(memory.value || "").trim(),
+      String(memory.category || "general").trim(),
+      String(memory.source || "nova").trim(),
+      JSON.stringify(memory.payload || {})
+    ]
+  );
+
+  return { ok: true, memory: dbRowToNovaMemory(result.rows[0]) };
+}
+
+async function readNovaMemoriesFromPostgres(options = {}) {
+  const init = await ensureNovaStoreTables();
+  if (!init.ok) {
+    const category = String(options.category || "").trim();
+    const memories = category
+      ? runtimeNovaMemories.filter((memory) => memory.category === category)
+      : runtimeNovaMemories;
+    return { ok: true, fallback: true, memories: memories.slice(0, Math.max(1, Math.min(300, Number(options.limit || 100)))) };
+  }
+
+  const category = String(options.category || "").trim();
+  const limit = Math.max(1, Math.min(300, Number(options.limit || 100)));
+  const result = category
+    ? await getClientStorePgPool().query(
+        "SELECT * FROM mission_nova_memories WHERE category = $1 ORDER BY updated_at DESC LIMIT $2",
+        [category, limit]
+      )
+    : await getClientStorePgPool().query("SELECT * FROM mission_nova_memories ORDER BY updated_at DESC LIMIT $1", [limit]);
+
+  return { ok: true, memories: result.rows.map(dbRowToNovaMemory).filter(Boolean) };
+}
+
+async function saveNovaToolRunToPostgres(run = {}) {
+  const init = await ensureNovaStoreTables();
+  const id = String(run.id || createNovaId("nova_tool_run")).trim();
+  if (!init.ok) {
+    const record = {
+      id,
+      actionId: String(run.actionId || run.action_id || "").trim(),
+      toolId: String(run.toolId || run.tool_id || "mission_control").trim(),
+      status: String(run.status || "completed").trim(),
+      input: run.input || {},
+      output: run.output || {},
+      error: String(run.error || "").trim(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    runtimeNovaToolRuns = [
+      record,
+      ...runtimeNovaToolRuns.filter((item) => item.id !== record.id)
+    ].slice(0, 200);
+    return { ok: true, fallback: true, run: record };
+  }
+
+  const result = await getClientStorePgPool().query(
+    `
+    INSERT INTO mission_nova_tool_runs (id, action_id, tool_id, status, input, output, error, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, now(), now())
+    ON CONFLICT (id) DO UPDATE SET
+      action_id = EXCLUDED.action_id,
+      tool_id = EXCLUDED.tool_id,
+      status = EXCLUDED.status,
+      input = EXCLUDED.input,
+      output = EXCLUDED.output,
+      error = EXCLUDED.error,
+      updated_at = now()
+    RETURNING *;
+    `,
+    [
+      id,
+      String(run.actionId || run.action_id || "").trim(),
+      String(run.toolId || run.tool_id || "mission_control").trim(),
+      String(run.status || "completed").trim(),
+      JSON.stringify(run.input || {}),
+      JSON.stringify(run.output || {}),
+      String(run.error || "").trim()
+    ]
+  );
+
+  return { ok: true, run: dbRowToNovaToolRun(result.rows[0]) };
+}
+
+async function readNovaToolRunsFromPostgres(options = {}) {
+  const init = await ensureNovaStoreTables();
+  if (!init.ok) {
+    const actionId = String(options.actionId || "").trim();
+    const runs = actionId
+      ? runtimeNovaToolRuns.filter((run) => run.actionId === actionId || run.action_id === actionId)
+      : runtimeNovaToolRuns;
+    return { ok: true, fallback: true, runs: runs.slice(0, Math.max(1, Math.min(300, Number(options.limit || 100)))) };
+  }
+
+  const actionId = String(options.actionId || "").trim();
+  const limit = Math.max(1, Math.min(300, Number(options.limit || 100)));
+  const result = actionId
+    ? await getClientStorePgPool().query(
+        "SELECT * FROM mission_nova_tool_runs WHERE action_id = $1 ORDER BY updated_at DESC LIMIT $2",
+        [actionId, limit]
+      )
+    : await getClientStorePgPool().query("SELECT * FROM mission_nova_tool_runs ORDER BY updated_at DESC LIMIT $1", [limit]);
+
+  return { ok: true, runs: result.rows.map(dbRowToNovaToolRun).filter(Boolean) };
+}
+
+async function runNovaActionFromPostgres(actionId, options = {}) {
+  const found = await readNovaActionByIdFromPostgres(actionId);
+  if (!found.ok) {
+    return found;
+  }
+
+  const action = found.action;
+  const mode = String(options.mode || "run").trim();
+  const permission = normalizeNovaPermissionLevel(action.permissionLevel);
+  let nextStatus = "staged";
+  let message = "NOVA staged this command for owner review.";
+
+  if (mode === "dismiss") {
+    nextStatus = "dismissed";
+    message = "NOVA action dismissed.";
+  } else if (mode === "approve") {
+    nextStatus = permission === "owner_approval_required" ? "approved" : "completed";
+    message = permission === "owner_approval_required"
+      ? "Owner approval captured. NOVA can hand this to the next automation."
+      : "Action approved and completed.";
+  } else if (permission === "read_only") {
+    nextStatus = "completed";
+    message = "Read-only action completed.";
+  } else if (permission === "autonomous_safe") {
+    nextStatus = "completed";
+    message = "Autonomous-safe action completed.";
+  } else if (permission === "owner_approval_required") {
+    nextStatus = "approval_required";
+    message = "Action requires owner approval before irreversible work.";
+  }
+
+  const run = await saveNovaToolRunToPostgres({
+    actionId: action.id,
+    toolId: action.actionType || "command",
+    status: nextStatus === "dismissed" ? "dismissed" : "completed",
+    input: {
+      mode,
+      command: action.command,
+      permissionLevel: permission
+    },
+    output: {
+      message,
+      view: action.view,
+      command: action.command,
+      nextStatus
+    }
+  });
+
+  const updated = await updateNovaActionInPostgres(action.id, {
+    status: nextStatus,
+    result: {
+      message,
+      lastRunId: run.run?.id || "",
+      lastRunAt: new Date().toISOString()
+    }
+  });
+
+  return {
+    ok: true,
+    action: updated.action,
+    run: run.run,
+    message
   };
 }
 
@@ -11949,7 +12541,29 @@ async function buildNovaKernelSnapshot(context = {}) {
   }));
   const webHelperRequests = webHelperResult.requests || [];
   const actionQueue = getNovaKernelActionQueue(context, clients, webHelperRequests);
-  const memory = getNovaMemoryState(clients, webHelperRequests);
+  const staticMemory = getNovaMemoryState(clients, webHelperRequests);
+  const syncResult = await syncNovaKernelActionsToPostgres(actionQueue).catch((error) => ({
+    ok: false,
+    error: String(error?.message || error),
+    actions: []
+  }));
+  const actionInboxResult = await readNovaActionsFromPostgres({ limit: 120 }).catch((error) => ({
+    ok: false,
+    error: String(error?.message || error),
+    actions: []
+  }));
+  const memoryResult = await readNovaMemoriesFromPostgres({ limit: 120 }).catch((error) => ({
+    ok: false,
+    error: String(error?.message || error),
+    memories: []
+  }));
+  const toolRunResult = await readNovaToolRunsFromPostgres({ limit: 80 }).catch((error) => ({
+    ok: false,
+    error: String(error?.message || error),
+    runs: []
+  }));
+  const actionInbox = actionInboxResult.actions?.length ? actionInboxResult.actions : actionQueue.map(prepareNovaActionRecord);
+  const memory = [...(memoryResult.memories || []), ...staticMemory].slice(0, 80);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -11964,7 +12578,7 @@ async function buildNovaKernelSnapshot(context = {}) {
       departments: departments.length,
       tools: tools.length,
       activeTools: tools.filter((tool) => tool.status === "active").length,
-      actionItems: actionQueue.length,
+      actionItems: actionInbox.length || actionQueue.length,
       clients: clients.length,
       webHelperTickets: webHelperRequests.filter((request) => !isOperationalWebHelperTask(request)).length
     },
@@ -11972,10 +12586,16 @@ async function buildNovaKernelSnapshot(context = {}) {
     tools,
     memory,
     actionQueue,
+    actionInbox,
+    toolRuns: toolRunResult.runs || [],
     dataHealth: getClientDataHealth(clients),
     webHelperSync: {
       ok: Boolean(webHelperResult.ok),
       error: webHelperResult.error || ""
+    },
+    novaStoreSync: {
+      ok: Boolean(syncResult.ok && actionInboxResult.ok),
+      error: syncResult.error || actionInboxResult.error || memoryResult.error || toolRunResult.error || ""
     }
   };
 }
@@ -13757,6 +14377,133 @@ const server = http.createServer((request, response) => {
       .catch((error) => {
         sendJson(request, response, 500, {
           error: "Unable to build NOVA kernel snapshot",
+          detail: String(error?.message || error)
+        });
+      });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/nova/actions") {
+    readNovaActionsFromPostgres({
+      status: url.searchParams.get("status") || "",
+      limit: url.searchParams.get("limit") || 120
+    })
+      .then((result) => {
+        if (!result.ok) {
+          sendJson(request, response, 200, { ...result, actions: [] });
+          return;
+        }
+        sendJson(request, response, 200, result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to load NOVA actions",
+          detail: String(error?.message || error)
+        });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/nova/actions") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const result = await saveNovaActionToPostgres(payload || {});
+        if (!result.ok) {
+          sendJson(request, response, result.status || 500, result);
+          return;
+        }
+        sendJson(request, response, 201, result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/nova/actions/run") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const actionId = String(payload?.actionId || payload?.id || "").trim();
+        if (!actionId) {
+          sendJson(request, response, 400, { error: "NOVA action id is required." });
+          return;
+        }
+        const result = await runNovaActionFromPostgres(actionId, {
+          mode: payload?.mode || "run"
+        });
+        if (!result.ok) {
+          sendJson(request, response, result.status || 500, result);
+          return;
+        }
+        sendJson(request, response, 200, result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
+  if (request.method === "PATCH" && url.pathname.startsWith("/mission/nova/actions/")) {
+    const actionId = decodeURIComponent(url.pathname.replace("/mission/nova/actions/", "")).trim();
+    readJsonBody(request)
+      .then(async (payload) => {
+        const result = await updateNovaActionInPostgres(actionId, payload || {});
+        if (!result.ok) {
+          sendJson(request, response, result.status || 500, result);
+          return;
+        }
+        sendJson(request, response, 200, result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/nova/memory") {
+    readNovaMemoriesFromPostgres({
+      category: url.searchParams.get("category") || "",
+      limit: url.searchParams.get("limit") || 120
+    })
+      .then((result) => {
+        sendJson(request, response, result.ok ? 200 : 200, result.ok ? result : { ...result, memories: [] });
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to load NOVA memory",
+          detail: String(error?.message || error)
+        });
+      });
+    return;
+  }
+
+  if (request.method === "POST" && url.pathname === "/mission/nova/memory") {
+    readJsonBody(request)
+      .then(async (payload) => {
+        const result = await saveNovaMemoryToPostgres(payload || {});
+        if (!result.ok) {
+          sendJson(request, response, result.status || 500, result);
+          return;
+        }
+        sendJson(request, response, 201, result);
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, { error: String(error?.message || error || "Invalid JSON payload") });
+      });
+    return;
+  }
+
+  if (request.method === "GET" && url.pathname === "/mission/nova/tool-runs") {
+    readNovaToolRunsFromPostgres({
+      actionId: url.searchParams.get("actionId") || "",
+      limit: url.searchParams.get("limit") || 100
+    })
+      .then((result) => {
+        sendJson(request, response, result.ok ? 200 : 200, result.ok ? result : { ...result, runs: [] });
+      })
+      .catch((error) => {
+        sendJson(request, response, 500, {
+          error: "Unable to load NOVA tool runs",
           detail: String(error?.message || error)
         });
       });
