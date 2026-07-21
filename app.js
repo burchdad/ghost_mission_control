@@ -9612,6 +9612,7 @@ function renderWebHelperTicketActions(ticket) {
     { label: "Ready for Review", action: "review", status: "ready_review", tone: "secondary", hint: "Prepared work is ready for owner/client review.", columns: ["in_progress"] },
     { label: "Request Approval", action: "approval", status: "needs_approval", tone: "secondary", hint: "Move the prepared fix into owner approval.", columns: ["ready_review"] },
     { label: "Approve Change", action: "approve-merge", tone: "primary", hint: "Owner approves merge after testing and review.", columns: ["ready_review", "needs_approval"] },
+    { label: "Check Merge", action: "check-merge", tone: "primary", hint: "Confirm GitHub merged the testing branch and close the ticket.", columns: ["approved"] },
     { label: "Redo", action: "redo", tone: "secondary", hint: "Send this back through the Codex build loop.", columns: ["ready_review", "needs_approval", "approved"] },
     { label: "Redo with Chat", action: "redo-chat", tone: "secondary", hint: "Use the ticket note as owner feedback for Codex.", columns: ["ready_review", "needs_approval", "approved", "blocked"] },
     { label: "Complete / Archive", action: "done", status: "done", tone: "secondary", hint: "Close the ticket after merge, delivery, or archive.", columns: ["approved", "blocked"] },
@@ -9934,6 +9935,8 @@ async function handleWebHelperOwnerAction(ticketId, action) {
   const instructions = String(noteInput?.value || "").trim();
   const normalizedAction = action === "approve-merge"
     ? "approve_merge"
+    : action === "check-merge"
+      ? "check_merge"
     : action === "redo-chat"
       ? "redo_with_chat"
       : action;
@@ -9947,7 +9950,11 @@ async function handleWebHelperOwnerAction(ticketId, action) {
   }
 
   if (actionResponse) {
-    actionResponse.textContent = action === "approve-merge" ? "Approving merge handoff..." : "Sending redo request...";
+    actionResponse.textContent = action === "approve-merge"
+      ? "Approving merge handoff..."
+      : action === "check-merge"
+        ? "Checking GitHub merge status..."
+        : "Sending redo request...";
   }
 
   try {
@@ -9972,9 +9979,15 @@ async function handleWebHelperOwnerAction(ticketId, action) {
     const refreshedResponse = document.getElementById("webHelperTicketActionResponse");
     if (refreshedResponse) {
       if (action === "approve-merge") {
-        refreshedResponse.textContent = payload.relay?.ok
+        refreshedResponse.textContent = payload.merged
+          ? "Merge confirmed and ticket moved to Done / Merged."
+          : payload.relay?.ok
           ? "Merge approval sent to the Codex runner."
           : "Merge approval queued for the Codex runner.";
+      } else if (action === "check-merge") {
+        refreshedResponse.textContent = payload.merged
+          ? "Merge confirmed and ticket moved to Done / Merged."
+          : "GitHub has not confirmed the testing branch is merged yet.";
       } else {
         refreshedResponse.textContent = payload.relay?.ok
           ? "Redo instructions sent to the Codex runner."
@@ -11226,7 +11239,7 @@ async function init() {
       return;
     }
 
-    if (["approve-merge", "redo", "redo-chat"].includes(actionButton.dataset.webHelperTicketAction)) {
+    if (["approve-merge", "check-merge", "redo", "redo-chat"].includes(actionButton.dataset.webHelperTicketAction)) {
       handleWebHelperOwnerAction(ticketId, actionButton.dataset.webHelperTicketAction);
       return;
     }

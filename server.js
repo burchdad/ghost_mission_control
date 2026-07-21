@@ -3096,6 +3096,7 @@ async function runWebHelperAutomationForTicket(ticket, options = {}) {
 
 const scheduledWebHelperAutomations = new Set();
 const scheduledCodexVerificationChecks = new Set();
+const scheduledCodexMergeChecks = new Set();
 
 function scheduleWebHelperAutomation(ticket, options = {}) {
   if (!WEB_HELPER_AUTOMATION_ENABLED || !ticket?.id) {
@@ -3172,6 +3173,60 @@ function scheduleCodexExternalVerificationWatcher(payload = {}, options = {}) {
     } catch (error) {
       console.error("[codex-verification] External verification watcher failed.", error);
       scheduledCodexVerificationChecks.delete(key);
+    }
+  };
+
+  setTimeout(() => poll(1), intervalMs);
+  return { ok: true, scheduled: true, intervalMs, maxAttempts };
+}
+
+function scheduleCodexMergeWatcher(payload = {}, options = {}) {
+  const ticketId = String(payload.ticketId || payload.ticket_id || payload.sourceTicketId || "").trim();
+  const taskId = String(payload.taskId || payload.task_id || (ticketId ? `codex_${ticketId}` : "")).trim();
+  if (!ticketId || !taskId) {
+    return { ok: false, scheduled: false, reason: "ticketId and taskId are required for merge watcher." };
+  }
+
+  const key = `${ticketId}:${taskId}`;
+  if (scheduledCodexMergeChecks.has(key)) {
+    return { ok: true, scheduled: false, reason: "Merge watcher is already scheduled." };
+  }
+
+  scheduledCodexMergeChecks.add(key);
+  const intervalMs = Math.max(5000, Number(options.intervalMs ?? CODEX_EXTERNAL_VERIFICATION_POLL_INTERVAL_MS));
+  const maxAttempts = Math.max(1, Number(options.maxAttempts ?? CODEX_EXTERNAL_VERIFICATION_MAX_ATTEMPTS));
+  const checkPayload = {
+    ticketId,
+    taskId,
+    repo: payload.repo || "",
+    baseBranch: payload.baseBranch || "",
+    targetBranch: payload.targetBranch || payload.branch || "",
+    silentPending: true
+  };
+
+  const poll = async (attempt = 1) => {
+    try {
+      const result = await reconcileCodexMergeCompletion(checkPayload);
+      if (result.merged || result.status === "done") {
+        scheduledCodexMergeChecks.delete(key);
+        return;
+      }
+
+      if (attempt >= maxAttempts) {
+        await appendWebHelperRequestEventInPostgres(ticketId, {
+          type: "merge_watch_timeout",
+          status: "approved_to_merge",
+          actor: "mission_control",
+          message: "Merge watcher did not see the testing branch merged into main yet. Run merge status check again after GitHub completes."
+        }).catch(() => {});
+        scheduledCodexMergeChecks.delete(key);
+        return;
+      }
+
+      setTimeout(() => poll(attempt + 1), intervalMs);
+    } catch (error) {
+      console.error("[codex-merge] Merge watcher failed.", error);
+      scheduledCodexMergeChecks.delete(key);
     }
   };
 
@@ -3971,7 +4026,8 @@ async function approveCodexMerge(ticketId) {
     return { ok: completion.ok, task, relay, merge: directMerge, completion, merged: true };
   }
 
-  return { ok: true, task, relay };
+  const watcher = scheduleCodexMergeWatcher(relayPayload);
+  return { ok: true, task, relay, watcher };
 }
 
 function hasWebHelperEvent(events, type, status = "") {
@@ -3998,6 +4054,7 @@ async function markWebHelperMergeComplete(ticketId, taskId, options = {}) {
     task.status === "merged" ||
     hasWebHelperEvent(taskEvents, "merge_complete") ||
     hasWebHelperEvent(ticketEvents, "merge_complete");
+  const ticketAlreadyDone = ["done", "merged", "completed", "complete", "closed"].includes(String(ticket.status || "").toLowerCase());
   const emailAlreadySent = hasWebHelperEvent(ticketEvents, "client_email_sent", "client_review");
   const emailAlreadyQueued = hasWebHelperEvent(ticketEvents, "client_email_queued", "client_review");
 
@@ -4021,9 +4078,9 @@ async function markWebHelperMergeComplete(ticketId, taskId, options = {}) {
     });
   }
 
-  const ticketUpdate = mergeAlreadyRecorded
+  const ticketUpdate = mergeAlreadyRecorded && ticketAlreadyDone
     ? { ok: true, request: ticket }
-    : await updateWebHelperRequestStatusInPostgres(ticketId, "approved_to_merge", {
+    : await updateWebHelperRequestStatusInPostgres(ticketId, "done", {
         actor: options.actor || "codex_runner",
         message: "Merge completed. Waiting for client confirmation."
       });
@@ -4039,6 +4096,53 @@ async function markWebHelperMergeComplete(ticketId, taskId, options = {}) {
   }
 
   return { ok: true, ticket: updatedTicket, task, email, dedupedMerge: mergeAlreadyRecorded };
+}
+
+async function reconcileCodexMergeCompletion(payload = {}) {
+  const ticketId = String(payload.ticketId || payload.ticket_id || payload.sourceTicketId || payload.id || "").trim();
+  const taskId = String(payload.taskId || payload.task_id || (ticketId ? `codex_${ticketId}` : "")).trim();
+  const linkedTask = taskId ? await readCodexBuildTaskById(taskId) : await findCodexBuildTaskForTicket(ticketId);
+  if (!linkedTask.ok) {
+    return linkedTask;
+  }
+
+  const task = linkedTask.task;
+  const repo = normalizeGithubRepoFullName(payload.repo || task.repo || task.payload?.repo || "");
+  const baseBranch = String(payload.baseBranch || task.baseBranch || task.payload?.baseBranch || CODEX_BUILD_DEFAULT_BASE_BRANCH || "main").trim();
+  const targetBranch = String(payload.targetBranch || payload.branch || task.targetBranch || task.payload?.targetBranch || "").trim();
+  const mergeStatus = await readGithubBranchMergeStatus(repo, baseBranch, targetBranch);
+  if (!mergeStatus.ok) {
+    return mergeStatus;
+  }
+
+  if (!mergeStatus.merged) {
+    if (payload.silentPending) {
+      return { ok: true, pending: true, merged: false, mergeStatus };
+    }
+
+    await appendWebHelperRequestEventInPostgres(task.sourceTicketId || ticketId, {
+      type: "merge_status_pending",
+      status: "approved_to_merge",
+      actor: "mission_control",
+      message: mergeStatus.message || "Testing branch is not confirmed merged yet.",
+      data: mergeStatus
+    }).catch(() => {});
+    return { ok: true, pending: true, merged: false, mergeStatus };
+  }
+
+  const completed = await markWebHelperMergeComplete(task.sourceTicketId || ticketId, task.id, {
+    actor: "mission_control",
+    message: mergeStatus.message || "GitHub confirmed the testing branch is merged into main.",
+    branch: targetBranch,
+    commitSha: mergeStatus.compare?.mergeBaseCommitSha || ""
+  });
+  return {
+    ok: completed.ok,
+    merged: true,
+    status: "done",
+    mergeStatus,
+    completion: completed
+  };
 }
 
 function parsePostgresJsonList(value) {
@@ -6644,6 +6748,68 @@ async function mergeGithubBranchIntoBase(payload = {}) {
       : `GitHub merge failed for ${targetBranch} into ${baseBranch}.`,
     detail: merge.body,
     github: merge
+  };
+}
+
+async function readGithubBranchMergeStatus(repoFullName, baseBranch, targetBranch) {
+  const repo = normalizeGithubRepoFullName(repoFullName);
+  const base = String(baseBranch || CODEX_BUILD_DEFAULT_BASE_BRANCH || "main").trim();
+  const head = String(targetBranch || "").trim();
+  if (!repo || !base || !head) {
+    return { ok: false, status: 400, merged: false, error: "Repo, base branch, and testing branch are required." };
+  }
+
+  const parsed = splitGithubRepo(repo);
+  const comparePath = githubRepoPath(repo, `/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`);
+  const compare = await callGitHubApi("GET", comparePath, null, "codex-runner-merge-status");
+  let mergedByCompare = false;
+  if (compare.ok) {
+    const aheadBy = Number(compare.data?.ahead_by || 0);
+    const compareStatus = String(compare.data?.status || "").toLowerCase();
+    mergedByCompare = aheadBy === 0 || ["behind", "identical"].includes(compareStatus);
+  }
+
+  let pull = { ok: false, merged: false };
+  if (parsed) {
+    const headFilter = `${parsed.owner}:${head}`;
+    const pullsPath = githubRepoPath(
+      repo,
+      `/pulls?state=closed&base=${encodeURIComponent(base)}&head=${encodeURIComponent(headFilter)}&per_page=20`
+    );
+    const pulls = await callGitHubApi("GET", pullsPath, null, "codex-runner-merge-pr-status");
+    if (pulls.ok) {
+      const mergedPull = (Array.isArray(pulls.data) ? pulls.data : []).find((entry) => entry?.merged_at);
+      pull = {
+        ok: true,
+        merged: Boolean(mergedPull),
+        number: mergedPull?.number || null,
+        mergedAt: mergedPull?.merged_at || ""
+      };
+    } else {
+      pull = { ok: false, merged: false, status: pulls.status, detail: pulls.body };
+    }
+  }
+
+  const merged = mergedByCompare || pull.merged;
+  return {
+    ok: compare.ok || pull.ok,
+    merged,
+    repo,
+    baseBranch: base,
+    targetBranch: head,
+    status: compare.status || pull.status,
+    compare: compare.ok
+      ? {
+          status: compare.data?.status || "",
+          aheadBy: Number(compare.data?.ahead_by || 0),
+          behindBy: Number(compare.data?.behind_by || 0),
+          mergeBaseCommitSha: compare.data?.merge_base_commit?.sha || ""
+        }
+      : { ok: false, status: compare.status, detail: compare.body },
+    pull,
+    message: merged
+      ? `${head} has been merged into ${base}.`
+      : `${head} is not confirmed merged into ${base} yet.`
   };
 }
 
@@ -14545,6 +14711,14 @@ const server = http.createServer((request, response) => {
           result = await markWebHelperMergeComplete(ticketId, payload.taskId || payload.task_id, {
             actor: "mission_control",
             message: instructions || "Owner marked the merge complete and ready for client confirmation."
+          });
+        } else if (["check_merge", "check_merge_status", "sync_merge"].includes(action)) {
+          result = await reconcileCodexMergeCompletion({
+            ticketId,
+            taskId: payload.taskId || payload.task_id,
+            repo: payload.repo,
+            baseBranch: payload.baseBranch || payload.base_branch,
+            targetBranch: payload.targetBranch || payload.target_branch || payload.branch
           });
         } else {
           result = { ok: false, status: 400, error: "Unsupported owner action." };
