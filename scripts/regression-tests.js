@@ -27,7 +27,8 @@ const {
   buildClientSupportToken,
   isWebHelperHandoffAutomationCandidate,
   summarizePageHtml,
-  extractSameOriginLinks
+  extractSameOriginLinks,
+  getSlackWebSupportActions
 } = require("../server");
 
 function testCanonicalClientAliases() {
@@ -418,6 +419,23 @@ function testGithubVerificationSummary() {
   assert.strictEqual(pending.ok, false);
 }
 
+function testSlackWebSupportActionsAreStageAware() {
+  const inProgressActions = getSlackWebSupportActions({
+    id: "whr-slack-1",
+    status: "in_progress"
+  });
+  assert.deepStrictEqual(inProgressActions.map((action) => action.text.text), ["Ready for Review", "Needs Info"]);
+  assert.ok(inProgressActions.every((action) => action.value.includes("whr-slack-1")));
+  assert.ok(inProgressActions.every((action) => !action.url));
+
+  const reviewActions = getSlackWebSupportActions({
+    id: "whr-slack-2",
+    status: "ready_review"
+  });
+  assert.ok(reviewActions.some((action) => action.text.text === "Approve Merge"));
+  assert.ok(reviewActions.some((action) => action.text.text === "Redo"));
+}
+
 [
   testCanonicalClientAliases,
   testClientMergePreservesRuntimeUpdates,
@@ -437,7 +455,8 @@ function testGithubVerificationSummary() {
   testWebHelperHandoffAutomationCandidate,
   testLiveSiteMemoryHtmlSummary,
   testClientSupportUrlUsesSignedClientLink,
-  testGithubVerificationSummary
+  testGithubVerificationSummary,
+  testSlackWebSupportActionsAreStageAware
 ].forEach((test) => test());
 
 console.log("Regression tests passed");

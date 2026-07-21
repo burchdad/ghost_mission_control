@@ -310,9 +310,20 @@ Mission Control can notify the Web Support Slack channel when a client ticket is
 
 ```bash
 SLACK_WEB_SUPPORT_WEBHOOK_URL=<slack-incoming-webhook-url>
+SLACK_SIGNING_SECRET=<slack-app-signing-secret>
 ```
 
-Store this value only in Railway/Vercel environment variables. If a Slack webhook is pasted in chat or logs, rotate it in Slack and update this variable.
+The webhook URL sends the alert message. The signing secret verifies interactive button clicks from Slack.
+
+In the Slack app, enable Interactivity and set the request URL to:
+
+```text
+https://missioncontrol.ghostai.solutions/mission/slack/web-support/actions
+```
+
+If the custom domain is not routed to the Railway backend, use the Railway backend URL with the same path.
+
+Store these values only in Railway/Vercel environment variables. If a Slack webhook or signing secret is pasted in chat or logs, rotate it in Slack and update the matching variable.
 
 ## AI Provider Integration (OpenAI + Anthropic + OpenRouter)
 

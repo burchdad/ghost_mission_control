@@ -96,6 +96,7 @@ const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const RESEND_FROM_EMAIL = stripWrappingQuotes(String(process.env.RESEND_FROM_EMAIL || process.env.CLIENT_UPDATE_EMAIL_FROM || "Ghost Mission Control <onboarding@resend.dev>").trim());
 const RESEND_REPLY_TO_EMAIL = stripWrappingQuotes(String(process.env.RESEND_REPLY_TO_EMAIL || process.env.SUPPORT_EMAIL || "").trim());
 const SLACK_WEB_SUPPORT_WEBHOOK_URL = stripWrappingQuotes(String(process.env.SLACK_WEB_SUPPORT_WEBHOOK_URL || "").trim());
+const SLACK_SIGNING_SECRET = stripWrappingQuotes(String(process.env.SLACK_SIGNING_SECRET || "").trim());
 const CODEX_RUNNER_WORK_ORDER_DIR = String(process.env.CODEX_RUNNER_WORK_ORDER_DIR || ".ghost/web-helper-requests").trim();
 const MONTHLY_GEO_SYNC_DIR = String(process.env.MONTHLY_GEO_SYNC_DIR || ".ghost/monthly-geo-syncs").trim();
 const runtimeClients = [];
@@ -3402,6 +3403,65 @@ function getWebHelperSlackNotificationMeta(ticket = {}, event = {}) {
   };
 }
 
+const WEB_HELPER_SLACK_COLUMNS = [
+  { id: "new", match: ["new", "intake", "received"] },
+  { id: "triage", match: ["triage", "queued", "needs_triage", "needs-triage"] },
+  { id: "in_progress", match: ["in_progress", "in-progress", "running", "working", "codex_queued", "codex-queued", "sent_to_runner", "sent-to-runner", "external_verification"] },
+  { id: "ready_review", match: ["ready_review", "ready-for-review", "ready_for_review", "review", "owner_review", "changes_requested", "changes-requested"] },
+  { id: "needs_approval", match: ["needs_approval", "needs-approval", "needs_review", "needs-review", "approval", "owner_approval", "owner-approval"] },
+  { id: "approved", match: ["approved", "approved_to_merge", "approved-to-merge", "ready", "safe", "assigned"] },
+  { id: "done", match: ["done", "merged", "closed", "complete", "completed"] },
+  { id: "blocked", match: ["blocked", "failed", "error", "retry_needed", "retry-needed"] }
+];
+
+function normalizeSlackWebHelperStatus(value) {
+  return String(value || "new").trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function getSlackWebHelperTicketColumn(ticket = {}) {
+  const status = normalizeSlackWebHelperStatus(ticket.status);
+  const directColumn = WEB_HELPER_SLACK_COLUMNS.find((column) => column.match.includes(status));
+  if (directColumn) {
+    return directColumn.id;
+  }
+
+  return ticket.approvalRequired && status !== "new" ? "needs_approval" : "triage";
+}
+
+function buildSlackWebSupportAction(ticket = {}, action) {
+  return {
+    action_id: `web_support_${action.id}`,
+    type: "button",
+    text: { type: "plain_text", text: action.label, emoji: true },
+    value: JSON.stringify({
+      ticketId: ticket.id,
+      action: action.id
+    }).slice(0, 1900),
+    ...(action.style ? { style: action.style } : {})
+  };
+}
+
+function getSlackWebSupportActions(ticket = {}) {
+  const column = getSlackWebHelperTicketColumn(ticket);
+  const actions = [
+    { id: "triage", label: "Acknowledge", columns: ["new", "blocked"] },
+    { id: "codex_build", label: "Send to Codex", columns: ["triage", "blocked"], style: "primary" },
+    { id: "in_progress", label: "Assign / Start", columns: ["triage"] },
+    { id: "ready_review", label: "Ready for Review", columns: ["in_progress"], style: "primary" },
+    { id: "needs_approval", label: "Request Approval", columns: ["ready_review"] },
+    { id: "approve_merge", label: "Approve Merge", columns: ["ready_review", "needs_approval"], style: "primary" },
+    { id: "check_merge", label: "Check Merge", columns: ["approved"], style: "primary" },
+    { id: "redo", label: "Redo", columns: ["ready_review", "needs_approval", "approved"] },
+    { id: "blocked", label: "Needs Info", columns: ["new", "triage", "in_progress", "ready_review", "needs_approval", "approved"], style: "danger" },
+    { id: "done", label: "Complete", columns: ["approved", "blocked"] }
+  ];
+
+  return actions
+    .filter((action) => action.columns.includes(column))
+    .slice(0, 5)
+    .map((action) => buildSlackWebSupportAction(ticket, action));
+}
+
 async function notifySlackWebSupport(ticket = {}, event = {}, options = {}) {
   if (!SLACK_WEB_SUPPORT_WEBHOOK_URL) {
     return { ok: false, skipped: true, reason: "SLACK_WEB_SUPPORT_WEBHOOK_URL is not configured." };
@@ -3409,6 +3469,7 @@ async function notifySlackWebSupport(ticket = {}, event = {}, options = {}) {
 
   const meta = getWebHelperSlackNotificationMeta(ticket, event);
   const ticketLink = buildWebHelperSlackLink(ticket);
+  const slackActions = getSlackWebSupportActions(ticket);
   const eventMessage = String(event.message || options.message || ticket.details || ticket.summary || "").trim();
   const text = `${meta.emoji} ${meta.label}: ${meta.clientName} - ${meta.title}`;
   const payload = {
@@ -3455,6 +3516,10 @@ async function notifySlackWebSupport(ticket = {}, event = {}, options = {}) {
           url: ticketLink,
           style: meta.status === "blocked" ? "danger" : meta.status.includes("review") ? "primary" : undefined
         }]
+      }] : []),
+      ...(slackActions.length ? [{
+        type: "actions",
+        elements: slackActions
       }] : [])
     ]
   };
@@ -3497,6 +3562,125 @@ function maybeNotifySlackWebSupport(ticket = {}, event = {}, options = {}) {
 
   notifySlackWebSupport(ticket, event, options).catch(() => {});
   return { ok: true, queued: true };
+}
+
+function verifySlackSignature(request, rawBody) {
+  if (!SLACK_SIGNING_SECRET) {
+    return { ok: false, status: 503, error: "SLACK_SIGNING_SECRET is not configured." };
+  }
+
+  const timestamp = String(request.headers["x-slack-request-timestamp"] || "").trim();
+  const signature = String(request.headers["x-slack-signature"] || "").trim();
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const timestampSeconds = Number(timestamp);
+  if (!timestamp || !signature || !Number.isFinite(timestampSeconds)) {
+    return { ok: false, status: 401, error: "Missing Slack signature headers." };
+  }
+
+  if (Math.abs(nowSeconds - timestampSeconds) > 60 * 5) {
+    return { ok: false, status: 401, error: "Slack signature timestamp is outside the allowed window." };
+  }
+
+  const base = `v0:${timestamp}:${rawBody}`;
+  const expected = `v0=${crypto.createHmac("sha256", SLACK_SIGNING_SECRET).update(base).digest("hex")}`;
+  return timingSafeEqualText(signature, expected)
+    ? { ok: true }
+    : { ok: false, status: 401, error: "Invalid Slack signature." };
+}
+
+async function postSlackInteractionResponse(responseUrl, text, options = {}) {
+  const url = String(responseUrl || "").trim();
+  if (!url) {
+    return { ok: false, skipped: true, reason: "No Slack response_url provided." };
+  }
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        response_type: "ephemeral",
+        replace_original: false,
+        text,
+        ...(options.blocks ? { blocks: options.blocks } : {})
+      })
+    });
+    return { ok: response.ok, status: response.status };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error) };
+  }
+}
+
+async function executeSlackWebSupportAction(ticketId, action, options = {}) {
+  const normalizedTicketId = String(ticketId || "").trim();
+  const normalizedAction = String(action || "").trim().toLowerCase().replace(/-/g, "_");
+  if (!normalizedTicketId || !normalizedAction) {
+    return { ok: false, status: 400, error: "Ticket id and action are required." };
+  }
+
+  if (normalizedAction === "codex_build") {
+    return createCodexBuildTaskFromWebHelperRequest(normalizedTicketId);
+  }
+
+  if (["approve_merge", "approve"].includes(normalizedAction)) {
+    return approveCodexMerge(normalizedTicketId);
+  }
+
+  if (["check_merge", "check_merge_status", "sync_merge"].includes(normalizedAction)) {
+    return reconcileCodexMergeCompletion({ ticketId: normalizedTicketId });
+  }
+
+  if (["redo", "redo_with_chat", "changes_requested"].includes(normalizedAction)) {
+    return requestCodexRedo(normalizedTicketId, options.instructions || "Redo requested from Slack. Review the ticket and revise the testing branch update.");
+  }
+
+  if (["triage", "in_progress", "ready_review", "ready_for_review", "needs_approval", "blocked", "done"].includes(normalizedAction)) {
+    const status = normalizedAction === "ready_for_review" ? "ready_review" : normalizedAction;
+    const updated = await updateWebHelperRequestStatusInPostgres(normalizedTicketId, status, {
+      actor: options.actor || "slack_web_support",
+      message: options.message || `Slack action moved ticket to ${status}.`
+    });
+    return updated.ok ? { ok: true, ticket: updated.request } : updated;
+  }
+
+  return { ok: false, status: 400, error: `Unsupported Slack Web Support action: ${normalizedAction}` };
+}
+
+function parseSlackActionValue(value) {
+  try {
+    return JSON.parse(String(value || "{}"));
+  } catch {
+    return {};
+  }
+}
+
+async function handleSlackWebSupportInteraction(slackPayload = {}) {
+  const actionPayload = Array.isArray(slackPayload.actions) ? slackPayload.actions[0] : null;
+  const actionValue = parseSlackActionValue(actionPayload?.value);
+  const ticketId = String(actionValue.ticketId || slackPayload.view?.private_metadata || "").trim();
+  const action = String(actionValue.action || actionPayload?.action_id || "").replace(/^web_support_/, "");
+  const user = slackPayload.user?.username || slackPayload.user?.name || slackPayload.user?.id || "slack_user";
+  const result = await executeSlackWebSupportAction(ticketId, action, {
+    actor: `slack:${user}`,
+    message: `Slack action ${action} triggered by ${user}.`
+  });
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      text: `Unable to complete Web Support action: ${result.error || result.reason || result.detail || "unknown error"}`,
+      result
+    };
+  }
+
+  const actionLabel = String(action || "action").replace(/_/g, " ");
+  const ticket = result.ticket || result.request || result.completion?.ticket || result.task || {};
+  const mergedText = result.merged ? " Merge confirmed and ticket moved to Done / Merged." : "";
+  return {
+    ok: true,
+    text: `Done: ${actionLabel} completed for ${ticket.clientName || ticketId}.${mergedText}`,
+    result
+  };
 }
 
 function buildClientConfirmationUrl(ticketId, taskId) {
@@ -10781,6 +10965,26 @@ function readJsonBody(request, maxBytes = 1_000_000) {
   });
 }
 
+function readRawBody(request, maxBytes = 1_000_000) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+
+    request.on("data", (chunk) => {
+      body += chunk;
+      if (body.length > maxBytes) {
+        reject(new Error("Request body too large"));
+        request.destroy();
+      }
+    });
+
+    request.on("end", () => {
+      resolve(body);
+    });
+
+    request.on("error", reject);
+  });
+}
+
 function readFormBody(request, maxBytes = 1_000_000) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -14485,6 +14689,42 @@ const server = http.createServer((request, response) => {
     return;
   }
 
+  if (request.method === "POST" && url.pathname === "/mission/slack/web-support/actions") {
+    readRawBody(request)
+      .then(async (rawBody) => {
+        const auth = verifySlackSignature(request, rawBody);
+        if (!auth.ok) {
+          sendJson(request, response, auth.status || 401, {
+            error: auth.error || "Unauthorized Slack request."
+          });
+          return;
+        }
+
+        const form = new URLSearchParams(rawBody);
+        const slackPayload = JSON.parse(form.get("payload") || "{}");
+        sendJson(request, response, 200, {
+          response_type: "ephemeral",
+          text: "Working on that Web Support action..."
+        });
+
+        handleSlackWebSupportInteraction(slackPayload)
+          .then((result) => {
+            const responseText = result.text || "Web Support action completed.";
+            return postSlackInteractionResponse(slackPayload.response_url, responseText);
+          })
+          .catch((error) => {
+            const message = `Unable to complete Web Support action: ${String(error?.message || error || "unknown error")}`;
+            return postSlackInteractionResponse(slackPayload.response_url, message);
+          });
+      })
+      .catch((error) => {
+        sendJson(request, response, 400, {
+          error: String(error?.message || error || "Invalid Slack payload")
+        });
+      });
+    return;
+  }
+
   if (request.method === "GET" && url.pathname === "/mission/web-helpers") {
     const forceRefresh = url.searchParams.get("refresh") === "true";
     const requestedSiteId = url.searchParams.get("siteId") || "";
@@ -15484,6 +15724,7 @@ if (require.main === module) {
     buildClientSupportToken,
     isWebHelperHandoffAutomationCandidate,
     summarizePageHtml,
-    extractSameOriginLinks
+    extractSameOriginLinks,
+    getSlackWebSupportActions
   };
 }
