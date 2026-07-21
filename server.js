@@ -3913,12 +3913,63 @@ async function approveCodexMerge(ticketId) {
     mergeApproved: true
   };
   const relay = await relayCodexBuildTask({ ...task, payload: relayPayload });
+  const relayBody = parseCodexRelayBody(relay);
+  const relayRunner = relayBody?.runner || null;
   await updateCodexBuildTaskStatus(task.id, relay.ok ? "merge_sent_to_runner" : "merge_queued", {
     type: "merge_handoff",
     actor: "mission_control",
     message: relay.ok ? "Merge request sent to Codex runner." : "Merge approval queued for Codex runner pickup.",
     data: { relay }
   });
+
+  if (relayRunner?.blocked || relayRunner?.ok === false) {
+    return {
+      ok: false,
+      status: relayRunner?.merge?.status || relay.status || 503,
+      error: relayRunner.error || relayRunner?.merge?.error || "Codex runner could not merge the approved branch.",
+      detail: relayRunner?.merge?.detail || relay.bodyPreview || "",
+      task,
+      relay,
+      runner: relayRunner
+    };
+  }
+
+  if (relayRunner?.merged) {
+    return { ok: true, task, relay, runner: relayRunner, merged: true };
+  }
+
+  if (!relay.ok && relay.skipped) {
+    const directMerge = await mergeGithubBranchIntoBase(relayPayload);
+    if (!directMerge.ok) {
+      await updateCodexBuildTaskStatus(task.id, "merge_blocked", {
+        type: "merge_failed",
+        actor: "mission_control",
+        message: directMerge.error || "GitHub merge failed.",
+        data: directMerge
+      });
+      await updateWebHelperRequestStatusInPostgres(ticketId, "blocked", {
+        actor: "mission_control",
+        message: directMerge.error || "GitHub merge failed."
+      });
+      return {
+        ok: false,
+        status: directMerge.status || 503,
+        error: directMerge.error || "GitHub merge failed.",
+        detail: directMerge.detail || "",
+        task,
+        relay,
+        merge: directMerge
+      };
+    }
+
+    const completion = await markWebHelperMergeComplete(ticketId, task.id, {
+      actor: "mission_control",
+      message: directMerge.message || "Testing branch merged into main.",
+      branch: directMerge.targetBranch,
+      commitSha: directMerge.commitSha
+    });
+    return { ok: completion.ok, task, relay, merge: directMerge, completion, merged: true };
+  }
 
   return { ok: true, task, relay };
 }
@@ -3946,7 +3997,7 @@ async function markWebHelperMergeComplete(ticketId, taskId, options = {}) {
   const mergeAlreadyRecorded =
     task.status === "merged" ||
     hasWebHelperEvent(taskEvents, "merge_complete") ||
-    hasWebHelperEvent(ticketEvents, "status_change", "approved_to_merge");
+    hasWebHelperEvent(ticketEvents, "merge_complete");
   const emailAlreadySent = hasWebHelperEvent(ticketEvents, "client_email_sent", "client_review");
   const emailAlreadyQueued = hasWebHelperEvent(ticketEvents, "client_email_queued", "client_review");
 
@@ -6541,6 +6592,58 @@ async function commitCodexRunnerWorkOrder(payload = {}) {
     path: filePath,
     commitSha: write.data?.commit?.sha || "",
     htmlUrl: write.data?.content?.html_url || ""
+  };
+}
+
+async function mergeGithubBranchIntoBase(payload = {}) {
+  const repo = normalizeGithubRepoFullName(payload.repo);
+  const baseBranch = String(payload.baseBranch || CODEX_BUILD_DEFAULT_BASE_BRANCH || "main").trim();
+  const targetBranch = String(payload.targetBranch || payload.branch || "").trim();
+  const ticketId = String(payload.ticketId || payload.ticket_id || "").trim();
+  if (!repo) {
+    return { ok: false, status: 400, error: "A valid repo is required for merge." };
+  }
+  if (!baseBranch || !targetBranch) {
+    return { ok: false, status: 400, error: "Base branch and testing branch are required for merge." };
+  }
+  if (baseBranch === targetBranch) {
+    return { ok: false, status: 400, error: "Base branch and testing branch cannot be the same." };
+  }
+
+  const apiPath = githubRepoPath(repo, "/merges");
+  const merge = await callGitHubApi("POST", apiPath, {
+    base: baseBranch,
+    head: targetBranch,
+    commit_message: `Merge Web Helper update ${ticketId || targetBranch}`
+  }, "codex-runner-merge");
+
+  if (merge.ok) {
+    const baseHead = await getGithubBranchHeadSha(repo, baseBranch);
+    return {
+      ok: true,
+      repo,
+      baseBranch,
+      targetBranch,
+      status: merge.status,
+      commitSha: merge.data?.sha || baseHead.sha || "",
+      message: merge.status === 204
+        ? `${targetBranch} was already merged into ${baseBranch}.`
+        : `${targetBranch} merged into ${baseBranch}.`,
+      github: merge
+    };
+  }
+
+  return {
+    ok: false,
+    repo,
+    baseBranch,
+    targetBranch,
+    status: merge.status,
+    error: merge.status === 409
+      ? `GitHub could not automatically merge ${targetBranch} into ${baseBranch}. Resolve conflicts or review branch state.`
+      : `GitHub merge failed for ${targetBranch} into ${baseBranch}.`,
+    detail: merge.body,
+    github: merge
   };
 }
 
@@ -14285,7 +14388,41 @@ const server = http.createServer((request, response) => {
         });
 
         let runner = { ok: false, skipped: true, reason: "Merge handoff does not create a build branch." };
-        if (!isMerge) {
+        if (isMerge) {
+          const mergeResult = await mergeGithubBranchIntoBase(payload);
+          if (mergeResult.ok) {
+            const completion = await markWebHelperMergeComplete(ticketId, taskId, {
+              actor: "codex_runner",
+              message: mergeResult.message || "Testing branch merged into main.",
+              branch: mergeResult.targetBranch,
+              commitSha: mergeResult.commitSha,
+              productionUrl: payload.productionUrl || payload.production_url || ""
+            });
+            runner = {
+              ok: completion.ok,
+              merged: true,
+              merge: mergeResult,
+              completion
+            };
+          } else {
+            await updateCodexBuildTaskStatus(taskId, "merge_blocked", {
+              type: "merge_failed",
+              actor: "codex_runner",
+              message: mergeResult.error || "GitHub merge failed.",
+              data: mergeResult
+            });
+            await updateWebHelperRequestStatusInPostgres(ticketId, "blocked", {
+              actor: "codex_runner",
+              message: mergeResult.error || "GitHub merge failed."
+            });
+            runner = {
+              ok: false,
+              blocked: true,
+              merge: mergeResult,
+              error: mergeResult.error || "GitHub merge failed."
+            };
+          }
+        } else {
           if (CODEX_WORKER_AUTORUN) {
             runner = await runCodexBuildWorker(payload);
           } else {
