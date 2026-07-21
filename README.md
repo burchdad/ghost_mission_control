@@ -304,6 +304,16 @@ RESEND_REPLY_TO_EMAIL=support@your-domain.com
 
 For early testing before a sending domain is verified, Resend allows `Ghost Mission Control <onboarding@resend.dev>` as the from address. Production client emails should use a verified domain.
 
+## Web Support Slack Alerts
+
+Mission Control can notify the Web Support Slack channel when a client ticket is received, blocked, ready for owner review, approved to merge, or completed.
+
+```bash
+SLACK_WEB_SUPPORT_WEBHOOK_URL=<slack-incoming-webhook-url>
+```
+
+Store this value only in Railway/Vercel environment variables. If a Slack webhook is pasted in chat or logs, rotate it in Slack and update this variable.
+
 ## AI Provider Integration (OpenAI + Anthropic + OpenRouter)
 
 Mission Command now supports optional AI copilot guidance from OpenAI, Anthropic, and OpenRouter with automatic fallback.

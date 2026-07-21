@@ -95,6 +95,7 @@ const GHOST_MISSION_CONTROL_PUBLIC_URL = String(process.env.GHOST_MISSION_CONTRO
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || "").trim();
 const RESEND_FROM_EMAIL = stripWrappingQuotes(String(process.env.RESEND_FROM_EMAIL || process.env.CLIENT_UPDATE_EMAIL_FROM || "Ghost Mission Control <onboarding@resend.dev>").trim());
 const RESEND_REPLY_TO_EMAIL = stripWrappingQuotes(String(process.env.RESEND_REPLY_TO_EMAIL || process.env.SUPPORT_EMAIL || "").trim());
+const SLACK_WEB_SUPPORT_WEBHOOK_URL = stripWrappingQuotes(String(process.env.SLACK_WEB_SUPPORT_WEBHOOK_URL || "").trim());
 const CODEX_RUNNER_WORK_ORDER_DIR = String(process.env.CODEX_RUNNER_WORK_ORDER_DIR || ".ghost/web-helper-requests").trim();
 const MONTHLY_GEO_SYNC_DIR = String(process.env.MONTHLY_GEO_SYNC_DIR || ".ghost/monthly-geo-syncs").trim();
 const runtimeClients = [];
@@ -2076,11 +2077,14 @@ async function updateWebHelperRequestStatusInPostgres(id, status, options = {}) 
     return { ok: false, status: 404, error: "Web Helper request was not found in the request store." };
   }
 
+  const request = dbRowToWebHelperRequest(result.rows[0]);
+  maybeNotifySlackWebSupport(request, event);
+
   return {
     ok: true,
     target: "postgres",
     table: "mission_web_helper_requests",
-    request: dbRowToWebHelperRequest(result.rows[0])
+    request
   };
 }
 
@@ -3335,6 +3339,164 @@ function buildMissionControlUrl(pathname) {
 
   const normalizedPath = String(pathname || "");
   return `${base.replace(/\/+$/, "")}${normalizedPath.startsWith("/") ? normalizedPath : `/${normalizedPath}`}`;
+}
+
+function buildWebHelperSlackLink(ticket = {}) {
+  const base = buildMissionControlUrl("");
+  if (!base) {
+    return "";
+  }
+
+  const ticketId = encodeURIComponent(String(ticket.id || "").trim());
+  const suffix = ticketId ? `?view=web-helpers&ticket=${ticketId}` : "?view=web-helpers";
+  return `${base.replace(/\/+$/, "/")}${suffix.replace(/^\?/, "?")}`;
+}
+
+function getWebHelperSlackNotificationMeta(ticket = {}, event = {}) {
+  const status = String(event.status || ticket.status || "new").toLowerCase().trim();
+  const title = ticket.title || ticket.summary || "Website support ticket";
+  const clientName = ticket.clientName || ticket.client || "Client";
+  const priority = ticket.priority || "normal";
+  const page = ticket.pageUrl || ticket.page_url || "Sitewide";
+  const requestType = ticket.requestType || ticket.request_type || "web_helper_request";
+  const labels = {
+    new: "New Web Helper intake",
+    triage: "Ticket triaged",
+    in_progress: "Codex build in progress",
+    sent_to_runner: "Codex runner started",
+    external_verification: "Waiting on GitHub/Vercel checks",
+    ready_review: "Ready for owner review",
+    ready_for_review: "Ready for owner review",
+    owner_review: "Ready for owner review",
+    approved_to_merge: "Approved to merge",
+    blocked: "Web Helper ticket blocked",
+    done: "Web Helper ticket completed",
+    merged: "Web Helper ticket completed",
+    completed: "Web Helper ticket completed"
+  };
+  const emoji = {
+    new: ":inbox_tray:",
+    triage: ":mag:",
+    in_progress: ":hammer_and_wrench:",
+    sent_to_runner: ":hammer_and_wrench:",
+    external_verification: ":hourglass_flowing_sand:",
+    ready_review: ":eyes:",
+    ready_for_review: ":eyes:",
+    owner_review: ":eyes:",
+    approved_to_merge: ":white_check_mark:",
+    blocked: ":rotating_light:",
+    done: ":tada:",
+    merged: ":tada:",
+    completed: ":tada:"
+  };
+
+  return {
+    status,
+    title,
+    clientName,
+    priority,
+    page,
+    requestType,
+    label: labels[status] || `Web Helper status: ${status}`,
+    emoji: emoji[status] || ":bell:"
+  };
+}
+
+async function notifySlackWebSupport(ticket = {}, event = {}, options = {}) {
+  if (!SLACK_WEB_SUPPORT_WEBHOOK_URL) {
+    return { ok: false, skipped: true, reason: "SLACK_WEB_SUPPORT_WEBHOOK_URL is not configured." };
+  }
+
+  const meta = getWebHelperSlackNotificationMeta(ticket, event);
+  const ticketLink = buildWebHelperSlackLink(ticket);
+  const eventMessage = String(event.message || options.message || ticket.details || ticket.summary || "").trim();
+  const text = `${meta.emoji} ${meta.label}: ${meta.clientName} - ${meta.title}`;
+  const payload = {
+    text,
+    blocks: [
+      {
+        type: "header",
+        text: {
+          type: "plain_text",
+          text: `${meta.emoji} ${meta.label}`,
+          emoji: true
+        }
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*${meta.clientName}*\n*${meta.title}*`
+        }
+      },
+      {
+        type: "section",
+        fields: [
+          { type: "mrkdwn", text: `*Priority:*\n${meta.priority}` },
+          { type: "mrkdwn", text: `*Status:*\n${meta.status}` },
+          { type: "mrkdwn", text: `*Type:*\n${meta.requestType}` },
+          { type: "mrkdwn", text: `*Page:*\n${meta.page}` },
+          { type: "mrkdwn", text: `*Ticket:*\n${ticket.id || "pending"}` },
+          { type: "mrkdwn", text: `*Actor:*\n${event.actor || options.actor || "mission_control"}` }
+        ]
+      },
+      ...(eventMessage ? [{
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Update:*\n${eventMessage.slice(0, 1200)}`
+        }
+      }] : []),
+      ...(ticketLink ? [{
+        type: "actions",
+        elements: [{
+          type: "button",
+          text: { type: "plain_text", text: "Open Mission Control", emoji: true },
+          url: ticketLink,
+          style: meta.status === "blocked" ? "danger" : meta.status.includes("review") ? "primary" : undefined
+        }]
+      }] : [])
+    ]
+  };
+
+  try {
+    const result = await fetch(SLACK_WEB_SUPPORT_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!result.ok) {
+      return { ok: false, status: result.status, error: await result.text().catch(() => "") };
+    }
+
+    return { ok: true, status: result.status };
+  } catch (error) {
+    console.error("[slack-web-support] Notification failed.", error);
+    return { ok: false, error: String(error?.message || error) };
+  }
+}
+
+function maybeNotifySlackWebSupport(ticket = {}, event = {}, options = {}) {
+  const status = String(event.status || ticket.status || "").toLowerCase().trim();
+  const notifyStatuses = new Set([
+    "new",
+    "blocked",
+    "ready_review",
+    "ready_for_review",
+    "owner_review",
+    "approved_to_merge",
+    "done",
+    "merged",
+    "completed"
+  ]);
+
+  if (!notifyStatuses.has(status) && !options.force) {
+    return { ok: true, skipped: true, reason: "Status does not require Slack notification." };
+  }
+
+  notifySlackWebSupport(ticket, event, options).catch(() => {});
+  return { ok: true, queued: true };
 }
 
 function buildClientConfirmationUrl(ticketId, taskId) {
@@ -14401,6 +14563,12 @@ const server = http.createServer((request, response) => {
         }
 
         const automation = scheduleWebHelperAutomation(stored.request);
+        maybeNotifySlackWebSupport(stored.request, {
+          type: "web_helper_intake",
+          status: "new",
+          actor: "client_dashboard",
+          message: `New Web Helper support ticket received from ${client.clientName}.`
+        }, { force: true });
 
         sendJson(request, response, 201, {
           ok: true,
